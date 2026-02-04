@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Calm & Clay Theme: Stone-50 background, Stone-800 text */
+    
+    /* Background: Stone-50 #fafaf9 */
+    --background: 60 9.1% 97.8%;
+    
+    /* Foreground: Stone-800 #292524 */
+    --foreground: 24 5.4% 15.3%;
+
+    /* Card: White with a tint of warmth */
+    --card: 0 0% 100%;
+    --card-foreground: 24 5.4% 15.3%;
+
+    /* Popover: White */
+    --popover: 0 0% 100%;
+    --popover-foreground: 24 5.4% 15.3%;
+
+    /* Primary: Terracotta #E07A5F */
+    --primary: 13 68% 63%;
+    --primary-foreground: 60 9.1% 97.8%;
+
+    /* Secondary: Sage #81B29A */
+    --secondary: 150 23% 60%;
+    --secondary-foreground: 60 9.1% 97.8%;
+
+    /* Muted: Stone-100 #f5f5f4 */
+    --muted: 60 4.8% 95.9%;
+    --muted-foreground: 24 5.4% 63.9%;
+
+    /* Accent: Stone-100 #f5f5f4 (Hover state etc) */
+    --accent: 60 4.8% 95.9%;
+    --accent-foreground: 24 5.4% 15.3%;
+
+    /* Destructive: Soft Red */
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 60 9.1% 97.8%;
+
+    /* Border: Stone-200 #e7e5e4 */
+    --border: 20 5.9% 90%;
+    
+    /* Input: Stone-200 */
+    --input: 20 5.9% 90%;
+    
+    /* Ring: Terracotta (faded) */
+    --ring: 13 68% 63%;
+
+    /* Radius: 1rem (16px) for soft look */
+    --radius: 1rem;
+  }
+
+  .dark {
+    /* Dark mode adjustments (Midnight Focus elements if needed later) */
+    --background: 24 10% 10%;
+    --foreground: 60 9.1% 97.8%;
+    --card: 24 10% 12%;
+    --card-foreground: 60 9.1% 97.8%;
+    --popover: 24 10% 12%;
+    --popover-foreground: 60 9.1% 97.8%;
+    --primary: 13 68% 63%;
+    --primary-foreground: 60 9.1% 97.8%;
+    --secondary: 150 23% 60%;
+    --secondary-foreground: 60 9.1% 97.8%;
+    --muted: 24 10% 15%;
+    --muted-foreground: 24 5% 64%;
+    --accent: 24 10% 15%;
+    --accent-foreground: 60 9.1% 97.8%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 60 9.1% 97.8%;
+    --border: 24 10% 20%;
+    --input: 24 10% 20%;
+    --ring: 13 68% 63%;
+  }
+}
+
+@layer base {
+  @font-face {
+    font-family: 'Material Symbols Outlined';
+    font-style: normal;
+    font-weight: 100 700;
+    src: url(https://fonts.gstatic.com/s/materialsymbolsoutlined/v161/kJExL6msG6796g167vOO7mE18wdpZXY3S1rLyvL9Xjk3-YApFEOfqw.woff2) format('woff2');
+  }
+
+  .material-symbols-outlined {
+    font-family: 'Material Symbols Outlined';
+    font-weight: normal;
+    font-style: normal;
+    font-size: 24px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'liga';
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ふんわりとした影（Soft Shadow） */
+@layer utilities {
+  .shadow-soft {
+    box-shadow: 0 4px 20px -2px rgba(41, 37, 36, 0.08), 0 0 8px -2px rgba(41, 37, 36, 0.04);
+  }
+  .shadow-soft-lg {
+    box-shadow: 0 10px 40px -4px rgba(41, 37, 36, 0.1), 0 0 12px -4px rgba(41, 37, 36, 0.06);
+  }
+  
+  .ios-shadow {
+    box-shadow: 0 4px 20px -2px rgba(249, 115, 22, 0.08), 0 2px 10px -2px rgba(0, 0, 0, 0.04);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .container-responsive {
+    @apply px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto;
+  }
+
+  .pattern-grid-lg {
+    background-image: linear-gradient(to right, rgba(41, 37, 36, 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(41, 37, 36, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+}
+
+/* スクロールバー（Stone系に調整） */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}

@@ -1,0 +1,461 @@
+
+
+# 1) 画面別コンポーネント設計（Next.js App Router / shadcn/ui）
+
+> 方針
+
+* **データ取得・更新は原則 Server Actions**（一覧系は必要に応じて server component + action）
+* **権限チェックは三重**：UIガード / Server Actions / RLS
+* **画面は「Container（データ）＋Presentational（表示）」**で分離
+* フォームは **React Hook Form + Zod**
+* 日付計算は **date-fns**
+* 大きい表は **TanStack Table**
+
+---
+
+## 共通（全画面で使う部品）
+
+### `app/(admin)/layout.tsx`
+
+* **責務**
+
+  * 認証ガード（ログイン必須）
+  * role取得（`getMyStaffProfile()`）
+  * サイドナビ、ヘッダ表示
+* **主要コンポーネント**
+
+  * `AppShell`
+  * `SideNav`
+  * `TopBar`（現在ロール/ユーザー表示）
+  * `RoleGate`（roleに応じてメニューを出し分け）
+
+### `components/common/*`
+
+* `PageHeader`（タイトル、右側アクションボタン）
+* `EmptyState`（空表示）
+* `ErrorState`（致命的エラー）
+* `LoadingSkeleton`
+* `BadgePlan`, `BadgeStatus`, `BadgeTag`
+* `ConfirmDialog`（代理返信・価格変更・精算確定など）
+* `Toast`（操作成功/失敗）
+
+### `components/auth/*`
+
+* `LoginForm`（RHF+Zod）
+* `AuthGuard`（未ログイン → `/login`）
+
+---
+
+## 1. `/login`
+
+### ページ：`app/(public)/login/page.tsx`
+
+* **コンテナ**
+
+  * `LoginPage`
+* **UI**
+
+  * `LoginForm`
+* **アクション**
+
+  * Supabase Authのサインイン（メール+パス等）
+* **バリデーション**
+
+  * email/password 必須
+* **成功時**
+
+  * `/inbox` へ遷移
+
+---
+
+## 2. `/inbox`（運用の中心）
+
+### ページ：`app/(admin)/inbox/page.tsx`
+
+* **コンテナ**
+
+  * `InboxPage`
+* **データ**
+
+  * `getInboxItems(filters)`（Server Action or server fetch）
+
+    * 未返信時間
+    * SLA残
+    * 危険フラグ
+    * 未報告2日
+    * pausedペナルティ反映済み
+* **主要コンポーネント**
+
+  * `InboxFilters`（プラン/状態/担当/タグ/危険/未報告）
+  * `InboxTable`（TanStack Table）
+
+    * columns：nickname / plan badge / status badge / assigned cast / next renewal / unreplied time / tags / priority
+  * `InboxRowActions`（「開く」「ユーザー詳細」）
+* **権限**
+
+  * Castは担当ユーザーのみ表示される前提（RLS）
+* **エラー**
+
+  * 取得失敗：`ErrorState`＋リトライ
+* **メモ**
+
+  * SLA・未返信などの計算が重ければ、将来は `inbox_metrics` view/table に移行可能
+
+---
+
+## 3. `/users`
+
+### ページ：`app/(admin)/users/page.tsx`
+
+* **コンテナ**
+
+  * `UsersPage`
+* **データ**
+
+  * `searchUsers(query, filters)`（Server Action）
+* **主要コンポーネント**
+
+  * `UserSearchBar`
+  * `UsersTable`（TanStack Table）
+  * `UserQuickBadges`（plan/status/tags）
+* **権限**
+
+  * Castは担当ユーザーのみ（RLS）
+* **遷移**
+
+  * rowクリックで `/users/[id]` or `/chat/[id]`
+
+---
+
+## 4. `/users/[id]`（ユーザー詳細）
+
+### ページ：`app/(admin)/users/[id]/page.tsx`
+
+* **コンテナ**
+
+  * `UserDetailPage`
+* **データ**
+
+  * `getUserDetail(endUserId)`
+
+    * end_user（基本情報）
+    * subscriptionカード（status/period_end/applied_price）
+    * recent messages（要約でOK）
+    * checkins（7/30日）
+    * memos（カテゴリ・ピン）
+    * birthday_congrats（当年）
+    * points（ledger sum）
+    * gifts（gift_sends）
+    * revenue（gift_redeem events）
+* **主要コンポーネント**
+
+  * `UserHeaderCard`（nickname/tags/担当/状態）
+  * `SubscriptionCard`
+  * `CheckinMiniChart`（簡易リストでOK）
+  * `BirthdayCard`（当日強調、送信済み表示）
+  * `MemoPanel`（カテゴリ表示、ピン表示）
+  * `GiftPanel`
+
+    * `PointBalanceCard`
+    * `GiftHistoryList`
+    * `RevenueEventList`（税抜/税/税込）
+* **アクション**
+
+  * `upsertMemo(...)`
+  * `markBirthdayCongratulated(...)`
+  * （Admin/Supervisorのみ）`assignCast(...)`
+* **権限**
+
+  * Castは担当ユーザーのみ
+
+---
+
+## 5. `/chat/[id]`（チャット）
+
+### ページ：`app/(admin)/chat/[id]/page.tsx`
+
+* **コンテナ**
+
+  * `ChatPage`
+* **データ**
+
+  * `getChatThread(endUserId, pagination)`
+  * `getUserSideInfo(endUserId)`（右カラム）
+* **主要コンポーネント（左）**
+
+  * `ChatHistory`
+
+    * `MessageBubble`（in/out/代理返信バッジ/🎁イベント）
+    * `ChatPagination`（無限スクロール or もっと読む）
+* **主要コンポーネント（右）**
+
+  * `UserProfileCard`
+  * `PinnedMemosCard`
+  * `MemoEditor`（カテゴリ選択＋本文、履歴は別ボタン）
+  * `CheckinSummary`（7日）
+  * `BirthdayWidget`
+* **入力エリア**
+
+  * `MessageComposer`（RHF+Zod）
+  * `ProxyReplyToggle`（Supervisor/Adminのみ）
+  * `AiDraftButton`（3案生成）
+  * `AiDraftList`（クリックで本文に挿入）
+  * `ShadowDraftComposer`（Shadow対象Castのみ：送信ボタンなし）
+* **アクション**
+
+  * `sendMessage(endUserId, body)`
+  * `sendProxyMessage(endUserId, body, reason?)`
+  * `generateAiDrafts(endUserId)`
+  * `createShadowDraft(endUserId, body)`（Shadow cast）
+* **ガード**
+
+  * 代理返信は ConfirmDialog 必須
+  * 送信失敗時はトースト＋再送導線（将来 message_status 追加で改善）
+
+---
+
+## 6. `/admin/staff`（スタッフ管理：Admin）
+
+### ページ：`app/(admin)/admin/staff/page.tsx`
+
+* **権限**：Adminのみ
+* **主要コンポーネント**
+
+  * `StaffTable`
+  * `InviteStaffDialog`（招待/role付与は運用次第。MVPは既存ユーザーにrole付与でもOK）
+  * `CapacityEditor`（capacity_limit）
+* **アクション**
+
+  * `upsertStaffProfile(...)`（Admin）
+
+---
+
+## 7. `/admin/pricing`（キャスト別プラン価格：Admin）
+
+### ページ：`app/(admin)/admin/pricing/page.tsx`
+
+* **権限**：Adminのみ
+* **主要コンポーネント**
+
+  * `CastSelector`
+  * `PlanPriceOverrideTable`
+  * `UpsertPriceOverrideDialog`（plan_code, amount, stripe_price_id, valid_from, active）
+* **アクション**
+
+  * `upsertCastPlanPriceOverride(...)`
+  * `changeUserSubscriptionPrice(endUserId, mode)`（ユーザー詳細から呼ぶUIでも可）
+* **ガード**
+
+  * 変更は ConfirmDialog（影響が大きい）
+
+---
+
+## 8. `/admin/gifts`（ポイント商品・ギフト：Admin）
+
+### ページ：`app/(admin)/admin/gifts/page.tsx`
+
+* **権限**：Adminのみ
+* **主要コンポーネント**
+
+  * `PointProductsTable` + `UpsertPointProductDialog`
+  * `GiftCatalogTable` + `UpsertGiftDialog`
+  * `TaxRateSelector`（DEFAULT_TAX_RATE_ID）
+* **アクション**
+
+  * `upsertPointProduct(...)`
+  * `upsertGiftCatalog(...)`
+  * `upsertTaxRate(...)`（必要なら）
+
+---
+
+## 9. `/admin/payout-rules`（配分率：Admin）
+
+### ページ：`app/(admin)/admin/payout-rules/page.tsx`
+
+* **権限**：Adminのみ
+* **主要コンポーネント**
+
+  * `PayoutRuleEditor`
+
+    * global gift_share（必須）
+    * cast gift_share（必須）
+  * `EffectiveFromDatePicker`
+* **アクション**
+
+  * `upsertPayoutRule(...)`
+* **将来**
+
+  * category/gift単位の上書きUI
+
+---
+
+## 10. `/admin/settlements`（精算：Admin）
+
+### ページ：`app/(admin)/admin/settlements/page.tsx`
+
+* **権限**：Adminのみ
+* **主要コンポーネント**
+
+  * `SettlementPeriodPicker`
+  * `CreateBatchButton`
+  * `SettlementBatchList`
+  * `SettlementBatchDetail`
+
+    * `SettlementItemsTable`（cast別、内訳）
+    * `ApproveButton`
+    * `MarkPaidButton`
+* **アクション**
+
+  * `createSettlementBatch(from,to)`
+  * `approveSettlementBatch(batchId)`
+  * `markSettlementBatchPaid(batchId)`
+* **ガード**
+
+  * approve/paid は ConfirmDialog 必須（取り消し不可）
+
+---
+
+## 11. `/admin/audit`（監査：Admin/Supervisor）
+
+### ページ：`app/(admin)/admin/audit/page.tsx`
+
+* **権限**：Admin/Supervisor
+* **主要コンポーネント**
+
+  * `AuditFilters`（action/actor/target/date）
+  * `AuditTable`（TanStack Table）
+  * `AuditDetailDrawer`（metadata JSON表示）
+* **データ**
+
+  * `searchAuditLogs(filters)`
+
+---
+
+## 12. ユーザー向けWeb（LINEから開く）
+
+> MVPでは「LINEのトークに自動送信しない」方針のため、リッチメニュー「使い方」から到達させる。
+
+### `/help`（使い方）
+
+* `HelpPage`：静的（導線説明、購入/ギフトリンク）
+
+### `/points`（ポイント購入）
+
+* `PointShopPage`
+
+  * `PointProductCards`
+  * 購入ボタン → `createPointCheckoutSession(endUserId, productId)` → Stripe Checkoutへリダイレクト
+* 認証：LINE userId紐づけトークン（設計は実装時に `signed token` で安全に）
+
+### `/gift`（ギフト送信）
+
+* `GiftSendPage`
+
+  * `PointBalanceCard`
+  * `GiftGrid`
+  * `ConfirmGiftDialog`
+  * 送信 → `sendGift(endUserId, giftId)`（トランザクション）
+
+---
+
+# 2) テストケース表（Playwright / Vitest）
+
+> ルール
+
+* **E2E（Playwright）**：ユーザー操作・権限制御・画面遷移・Webhook疑似受信の統合
+* **Unit/Logic（Vitest）**：配分ルール解決、税計算、ポイント台帳集計、制限回数、優先度計算、冪等判定
+
+---
+
+## 2.1 E2E（Playwright）テストケース表
+
+| ID      | 種別     | 対象              | 前提                   | 手順                           | 期待結果                                                     |
+| ------- | ------ | --------------- | -------------------- | ---------------------------- | -------------------------------------------------------- |
+| E2E-001 | 認証     | ログイン            | スタッフユーザー存在           | `/login`で正しい認証情報→送信          | `/inbox`へ遷移、セッション保持                                      |
+| E2E-002 | 認証     | ログイン失敗          |                      | 誤ったPWで送信                     | エラー表示、遷移しない                                              |
+| E2E-003 | 認証     | ガード             | 未ログイン                | `/inbox`直アクセス                | `/login`へリダイレクト                                          |
+| E2E-010 | RBAC   | Castの閲覧制限       | Cast A, 担当ユーザーU1のみ   | Castでログイン→`/users`           | U1のみ表示、他は出ない                                             |
+| E2E-011 | RBAC   | Castのチャット制限     | 同上                   | `/chat/U2`直アクセス              | 403相当（画面エラー/NotFound）                                    |
+| E2E-012 | RBAC   | Supervisorの全閲覧  | Supervisor           | `/users`検索                   | 全ユーザー見える                                                 |
+| E2E-013 | RBAC   | Admin限定メニュー     | Cast                 | サイドナビ表示                      | `/admin/*`メニューが出ない                                       |
+| E2E-014 | RBAC   | Admin限定画面アクセス   | Cast                 | `/admin/pricing`直アクセス        | アクセス拒否                                                   |
+| E2E-020 | Inbox  | 未返信優先           | U1に未返信状態             | `/inbox`表示                   | 未返信が上位、未返信時間表示                                           |
+| E2E-021 | Inbox  | pausedペナルティ     | U2がpaused            | `/inbox`表示                   | pausedが下位（優先度低下）                                         |
+| E2E-022 | Inbox  | 危険フラグ優先         | U3 risk open         | Supervisorで`/inbox`          | U3が最上位付近、⚠️表示                                            |
+| E2E-023 | Inbox  | フィルタ            | 複数プラン                | プランフィルタ操作                    | 対象プランのみ表示                                                |
+| E2E-030 | ユーザー詳細 | 表示              | U1に契約/チェックイン/メモあり    | `/users/U1`                  | 各カード表示、欠損なし                                              |
+| E2E-031 | メモ     | 追加・履歴           | Cast担当U1             | メモ追加→保存→再読み込み                | メモ表示、revisionが増える                                        |
+| E2E-032 | メモ     | ピン              | 同上                   | ピンON→保存                      | ピンセクションへ表示                                               |
+| E2E-033 | 誕生日    | 送信済みフラグ         | U1誕生日当日              | テンプレ挿入→送信→フラグ押下              | `birthday_congrats`登録、再送防止                               |
+| E2E-040 | チャット   | 通常送信            | Cast担当U1             | 返信入力→送信                      | outメッセージ追加、監査ログ追加                                        |
+| E2E-041 | チャット   | 代理返信            | Supervisor           | ProxyモードON→Confirm→送信        | `sent_as_proxy=true`で保存、監査ログ、担当通知（内部）                    |
+| E2E-042 | チャット   | 代理返信ガード         | Cast                 | Proxy UI表示確認                 | Proxyトグルが表示されない                                          |
+| E2E-050 | AI     | 返信案生成           | Cast担当U1             | AI返信案ボタン                     | 3案表示、DBにrequest/drafts                                   |
+| E2E-051 | AI     | 3回制限            | 同上                   | 同日に4回押す                      | 4回目は拒否、エラー表示                                             |
+| E2E-060 | Shadow | 下書き作成           | Shadow期間中のCast B     | Shadow下書き保存                  | `shadow_drafts`に追加、送信不可UI                                |
+| E2E-061 | Shadow | 送信禁止            | Shadow Cast B        | send操作を試みる（URL直叩き含む）         | Server Actionで拒否、DBにも残らない                                |
+| E2E-070 | Admin  | 担当変更            | Admin                | U1の担当をCastA→CastB            | cast_assignments履歴作成、U1担当更新                              |
+| E2E-080 | 価格     | キャスト別プラン価格設定    | Admin                | `/admin/pricing`でoverride作成  | overrideが一覧に反映、監査ログ                                      |
+| E2E-090 | ギフト    | ポイント購入導線        | U1 token準備           | `/points`で商品選択→Checkout作成    | checkout session作成API成功（リダイレクト先）                         |
+| E2E-091 | ギフト    | 購入反映（擬似webhook） | stripe webhookをモック   | webhook送信                    | user_point_ledgerに+points、残高更新                           |
+| E2E-092 | ギフト    | ギフト送信成功         | 残高十分                 | `/gift`でギフト→confirm→送信       | ledger-pt、gift_sends、revenue_event、payout_calc、🎁メッセージ作成 |
+| E2E-093 | ギフト    | 残高不足            | 残高不足                 | ギフト送信                        | 拒否、DBに何も増えない（トランザクション）                                   |
+| E2E-094 | 配分     | 税抜ベース           | 税率10%設定              | ギフト送信（100pt）                 | revenue_event: 税抜100/税10/税込110、payoutは100×%              |
+| E2E-100 | 精算     | バッチ作成           | Admin, payout_calcあり | `/admin/settlements`で期間指定→作成 | batch draft作成、items合算一致                                  |
+| E2E-101 | 精算     | approve         | 同上                   | approve実行→Confirm            | status=approved、監査ログ                                     |
+| E2E-102 | 精算     | paid            | approved状態           | mark paid→Confirm            | status=paid、paid_at記録                                    |
+| E2E-110 | 監査     | 監査ログ閲覧          | Supervisor           | `/admin/audit`               | 操作ログが検索/表示できる                                            |
+| E2E-111 | 監査     | Castは不可         | Cast                 | `/admin/audit`直アクセス          | 拒否                                                       |
+
+---
+
+## 2.2 Unit / Logic（Vitest）テストケース表
+
+| ID     | 対象ロジック            | 前提                              | 入力                     | 期待結果                                     |
+| ------ | ----------------- | ------------------------------- | ---------------------- | ---------------------------------------- |
+| UT-001 | ルール解決（gift_share） | global=10%, castA=30%           | castA                  | castAルールが選ばれる                            |
+| UT-002 | ルール解決（期間）         | castA 30% valid_from=2026-02-01 | occurred_on=2026-01-31 | globalにフォールバック                           |
+| UT-003 | 税計算（税抜→税込）        | rate=0.1                        | excl=100               | tax=10, incl=110                         |
+| UT-004 | 税計算（端数）           | 端数規則固定（例：切り捨て）                  | excl=101               | taxの丸めが規則通り                              |
+| UT-005 | ポイント残高集計          | ledger: +1000, -300             |                        | 残高=700                                   |
+| UT-006 | ギフト送信トランザクション順序   | 残高=100, cost=100                | sendGift               | 全テーブルが一貫して作成                             |
+| UT-007 | ギフト送信残高不足         | 残高=50, cost=100                 | sendGift               | 例外、何も永続化しない想定（モックで検証）                    |
+| UT-008 | revenue_event冪等   | unique(event_type,ref)          | 同じrefで2回作成             | 2回目は拒否/skip                              |
+| UT-009 | webhook冪等         | webhook_events unique           | 同event_id再送            | 2重処理されない                                 |
+| UT-010 | AI制限（1日3回）        | JST日付                           | 4回目                    | 4回目は拒否                                   |
+| UT-011 | Inbox優先度（paused）  | penalty=+N                      | paused=true            | スコアが下がる                                  |
+| UT-012 | Inbox優先度（危険）      | risk=open                       |                        | 最優先になる                                   |
+| UT-013 | 未報告2日判定           | checkins最終日                     | today-2日超              | 未報告フラグtrue                               |
+| UT-014 | SLA残計算            | sla=720min                      | last_user_msg_time     | 残時間が正                                    |
+| UT-015 | 代理返信メタ            | proxy send                      |                        | sent_as_proxy=true / proxy_for_cast_id一致 |
+| UT-016 | 誕生日重複防止           | unique(end_user_id,year)        | 同年2回                   | 2回目は拒否                                   |
+| UT-017 | 配分計算（税抜ベース）       | excl=100, percent=30            |                        | payout=30                                |
+| UT-018 | 未使用ポイントは配分対象外     | purchaseのみ                      |                        | payout_calcが作られない                        |
+| UT-019 | 返金/CB相殺（設計）       | purchase +1000, refund -1000    |                        | 残高0、配分なし                                 |
+| UT-020 | 価格解決（override優先）  | override存在                      | cast+plan              | override priceを返す                        |
+
+> 端数規則（税や配分の丸め）だけは **プロジェクト内で統一**してください。MVPおすすめは「税：切り捨て」「配分：切り捨て」で固定し、将来変更しない（変更すると過去精算がズレます）。
+
+---
+
+# 3) テストデータセット（最低限のフィクスチャ方針）
+
+## スタッフ
+
+* Admin1
+* Supervisor1
+* CastA（担当U1/U2）
+* CastB（担当U3、ShadowでU1を見る期間あり）
+
+## ユーザー
+
+* U1：active + premium、チェックインあり、誕生日当日、ポイント残あり
+* U2：paused + light、未返信あり
+* U3：active + standard、risk_flag=open
+
+## ギフト/配分
+
+* gift: 100pt（税抜100円）
+* payout_rule: global 10%、castA 30%
+
+---

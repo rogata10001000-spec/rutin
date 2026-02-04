@@ -1,0 +1,206 @@
+
+<!DOCTYPE html>
+<html class="light" lang="ja"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>相談員一覧 - オレンジ・日本語</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Noto+Sans+JP:wght@400;500;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#F97316", // Comforting Orange
+                        "primary-dark": "#EA580C",
+                        "background-light": "#FFFBF9", // Warm peach-tinted white
+                        "background-dark": "#181412",
+                        "warm-accent": "#FFF7ED",
+                        "warm-border": "#FED7AA"
+                    },
+                    fontFamily: {
+                        "display": ["Noto Sans JP", "Plus Jakarta Sans", "sans-serif"],
+                        "sans": ["Noto Sans JP", "Plus Jakarta Sans", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "3rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style type="text/tailwindcss">
+        body {
+            font-family: "Noto Sans JP", "Plus Jakarta Sans", sans-serif;
+        }
+        .ios-shadow {
+            box-shadow: 0 4px 20px -2px rgba(249, 115, 22, 0.08), 0 2px 10px -2px rgba(0, 0, 0, 0.04);
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-[#2D241E] dark:text-zinc-100 antialiased min-h-screen">
+<div class="relative flex h-auto min-h-screen w-full flex-col max-w-[480px] mx-auto overflow-x-hidden border-x border-orange-50 dark:border-zinc-800">
+<nav class="sticky top-0 z-50 flex items-center bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-md p-4 pb-2 justify-between">
+<div class="text-primary flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-primary/10 transition-colors cursor-pointer">
+<span class="material-symbols-outlined" style="font-size: 24px;">arrow_back_ios_new</span>
+</div>
+<h2 class="text-[#2D241E] dark:text-white text-lg font-bold leading-tight flex-1 text-center pr-10">相談員を選ぶ</h2>
+</nav>
+<main class="flex-1 pb-24">
+<div class="px-4 py-4">
+<div class="bg-primary/10 dark:bg-primary/20 rounded-2xl p-6 border border-primary/20 flex flex-col gap-4">
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-2 text-primary font-bold text-sm tracking-wide">
+<span class="material-symbols-outlined text-[20px] fill-current">verified_user</span>
+                            期間限定オファー
+                        </div>
+<h1 class="text-[#2D241E] dark:text-white text-xl font-black leading-tight">
+                            7日間無料トライアルで<br/>理想の相談を始めましょう
+                        </h1>
+<p class="text-[#6B5A51] dark:text-zinc-400 text-sm font-medium">いつでも解約可能。まずは気軽にお試しください。</p>
+</div>
+<button class="flex w-full cursor-pointer items-center justify-center rounded-full h-12 bg-primary text-white text-base font-bold transition-transform active:scale-95 shadow-lg shadow-primary/30">
+                        無料で試してみる
+                    </button>
+</div>
+</div>
+<div class="flex gap-2.5 p-4 overflow-x-auto no-scrollbar">
+<div class="flex h-9 shrink-0 items-center justify-center rounded-full bg-primary text-white px-5 shadow-sm">
+<p class="text-sm font-bold">すべて</p>
+</div>
+<div class="flex h-9 shrink-0 items-center justify-center rounded-full bg-white dark:bg-zinc-900 border border-warm-border dark:border-zinc-800 px-5">
+<p class="text-[#2D241E] dark:text-zinc-300 text-sm font-medium">結婚相談</p>
+</div>
+<div class="flex h-9 shrink-0 items-center justify-center rounded-full bg-white dark:bg-zinc-900 border border-warm-border dark:border-zinc-800 px-5">
+<p class="text-[#2D241E] dark:text-zinc-300 text-sm font-medium">片思い</p>
+</div>
+<div class="flex h-9 shrink-0 items-center justify-center rounded-full bg-white dark:bg-zinc-900 border border-warm-border dark:border-zinc-800 px-5">
+<p class="text-[#2D241E] dark:text-zinc-300 text-sm font-medium">復縁</p>
+</div>
+<div class="flex h-9 shrink-0 items-center justify-center rounded-full bg-white dark:bg-zinc-900 border border-warm-border dark:border-zinc-800 px-5">
+<p class="text-[#2D241E] dark:text-zinc-300 text-sm font-medium">自分磨き</p>
+</div>
+</div>
+<div class="px-4 flex flex-col gap-4">
+<div class="bg-white dark:bg-zinc-900 rounded-2xl p-4 flex gap-4 ios-shadow border border-warm-border/40 dark:border-zinc-800">
+<div class="relative">
+<div class="size-24 rounded-2xl bg-center bg-cover shrink-0" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuANKsyPv-rHR3Vr5jMvw7BaA9JlE31s8799JJ2jhEaulob7EtUFJIT23ER67Ge5MMjI8_LG49BXGaTob4D6focNKadf7AKRNEQc33d-_cJ5QeR11ak5IBAeuOYYFqXfFVKke2QoCOtQmIvVo-mXTsBLdsPAUOBRxC1D7k8srzb2XJ7_SXCgzvUOpFdzF1ANI8dhBgc3uI1OCNMuk_PJW6UmlJkX1fdvfwejaj2C3zKSDg4ysYbxnd_TudN_GXnWrY6keo3XL9zW-Q");'></div>
+<div class="absolute -bottom-2 -right-2 bg-green-500 border-2 border-white dark:border-zinc-900 size-4 rounded-full"></div>
+</div>
+<div class="flex flex-col flex-1 gap-1">
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<span class="bg-primary/10 text-primary text-[10px] font-bold px-2 py-0.5 rounded w-fit mb-1">プレミアム</span>
+<h3 class="text-[#2D241E] dark:text-white text-base font-bold">佐藤 さくら</h3>
+</div>
+<div class="flex items-center gap-0.5 text-orange-400">
+<span class="material-symbols-outlined text-[16px] fill-current">star</span>
+<span class="text-xs font-bold text-[#2D241E] dark:text-zinc-300">4.9</span>
+</div>
+</div>
+<p class="text-[#6B5A51] dark:text-zinc-400 text-xs line-clamp-2 leading-relaxed">
+                            結婚相談・婚活のプロ。あなたの魅力を最大限に引き出し、理想のパートナーシップを提案します。
+                        </p>
+<div class="flex items-center justify-between mt-1">
+<span class="text-sm font-bold text-primary">¥12,800<span class="text-[10px] text-[#6B5A51] ml-0.5">/月</span></span>
+<button class="bg-primary hover:bg-primary-dark text-white text-[12px] font-bold px-4 py-1.5 rounded-full transition-colors active:scale-95">
+                                相談する
+                            </button>
+</div>
+</div>
+</div>
+<div class="bg-white dark:bg-zinc-900 rounded-2xl p-4 flex gap-4 ios-shadow border border-warm-border/40 dark:border-zinc-800">
+<div class="relative">
+<div class="size-24 rounded-2xl bg-center bg-cover shrink-0" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuClEciz8IzgRYZ7-xwa8cfqDVigIF7tRHlwRO5UEwDGUrkdr4w-_Opz0Svjiy71FpQuHhke1HiGxXg45l7byAPd8AcwxkW_vIm75uGnnQht8fZD6PRaVdF6L35akso6DRvVGWw28nNT6d3ftSW0znaGK22FRX5srCfPPXXwGXoCN2aIRyNuqFxLk_psg58NEQ2OkL4ieRtoXqv6j3tFilH66Of7JrDl2cNGxH0VIPUzuwiw6LX32Qh4YEv1OCqsfl8RL13CcOOowQ");'></div>
+<div class="absolute -bottom-2 -right-2 bg-zinc-300 border-2 border-white dark:border-zinc-900 size-4 rounded-full"></div>
+</div>
+<div class="flex flex-col flex-1 gap-1">
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<span class="bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-[10px] font-bold px-2 py-0.5 rounded w-fit mb-1">スタンダード</span>
+<h3 class="text-[#2D241E] dark:text-white text-base font-bold">高橋 健太</h3>
+</div>
+<div class="flex items-center gap-0.5 text-orange-400">
+<span class="material-symbols-outlined text-[16px] fill-current">star</span>
+<span class="text-xs font-bold text-[#2D241E] dark:text-zinc-300">4.8</span>
+</div>
+</div>
+<p class="text-[#6B5A51] dark:text-zinc-400 text-xs line-clamp-2 leading-relaxed">
+                            片思いや人間関係のコミュニケーションを専門としています。論理的かつ温かいアドバイスが好評。
+                        </p>
+<div class="flex items-center justify-between mt-1">
+<span class="text-sm font-bold text-primary">¥8,800<span class="text-[10px] text-[#6B5A51] ml-0.5">/月</span></span>
+<button class="bg-primary/10 text-primary text-[12px] font-bold px-4 py-1.5 rounded-full transition-colors active:scale-95">
+                                予約する
+                            </button>
+</div>
+</div>
+</div>
+<div class="bg-white dark:bg-zinc-900 rounded-2xl p-4 flex gap-4 ios-shadow border border-warm-border/40 dark:border-zinc-800">
+<div class="relative">
+<div class="size-24 rounded-2xl bg-center bg-cover shrink-0" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBsKU1-0BkkKvepbfGY9fZn0lgfD9eNeMaX3J4ni3wWjkl64-TQU_l87sWY26sjMp3JoHSKqNv_pt1VxVUGGbFmyw3JkHwoiDEeLdtMGYjxGjGf6Z4vFCx0lKwwXRweIKuyCqNhZ7h9khnHx-DVJeawkTIzoHB_bpqK14CEKKgcWAsgj6j_1m5MZbl1tLPJ_5DbQfC7yorI7bEql9SBbFtOY1alfUtMLgR7isYcOMS4_ZH5TIRL73-YH4MGQ5881lVz0bxwMqji1w");'></div>
+<div class="absolute -bottom-2 -right-2 bg-green-500 border-2 border-white dark:border-zinc-900 size-4 rounded-full"></div>
+</div>
+<div class="flex flex-col flex-1 gap-1">
+<div class="flex justify-between items-start">
+<div class="flex flex-col">
+<span class="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] font-bold px-2 py-0.5 rounded w-fit mb-1">ライト</span>
+<h3 class="text-[#2D241E] dark:text-white text-base font-bold">田中 美咲</h3>
+</div>
+<div class="flex items-center gap-0.5 text-orange-400">
+<span class="material-symbols-outlined text-[16px] fill-current">star</span>
+<span class="text-xs font-bold text-[#2D241E] dark:text-zinc-300">5.0</span>
+</div>
+</div>
+<p class="text-[#6B5A51] dark:text-zinc-400 text-xs line-clamp-2 leading-relaxed">
+                            自分を好きになることから始まる恋愛を。自己肯定感を高め、前向きな一歩をサポートします。
+                        </p>
+<div class="flex items-center justify-between mt-1">
+<span class="text-sm font-bold text-primary">¥4,800<span class="text-[10px] text-[#6B5A51] ml-0.5">/月</span></span>
+<button class="bg-primary hover:bg-primary-dark text-white text-[12px] font-bold px-4 py-1.5 rounded-full transition-colors active:scale-95">
+                                相談する
+                            </button>
+</div>
+</div>
+</div>
+</div>
+</main>
+<nav class="fixed bottom-0 w-full max-w-[480px] bg-white/95 dark:bg-zinc-950/95 backdrop-blur-xl border-t border-warm-border/50 dark:border-zinc-800 px-6 py-3 flex justify-between items-center z-[60]">
+<div class="flex flex-col items-center gap-1 text-[#6B5A51] dark:text-zinc-500">
+<span class="material-symbols-outlined">home</span>
+<span class="text-[10px] font-bold">ホーム</span>
+</div>
+<div class="flex flex-col items-center gap-1 text-primary">
+<span class="material-symbols-outlined fill-current">groups</span>
+<span class="text-[10px] font-bold">相談員</span>
+</div>
+<div class="flex flex-col items-center gap-1 text-[#6B5A51] dark:text-zinc-500">
+<span class="material-symbols-outlined">chat_bubble</span>
+<span class="text-[10px] font-bold">メッセージ</span>
+</div>
+<div class="flex flex-col items-center gap-1 text-[#6B5A51] dark:text-zinc-500">
+<span class="material-symbols-outlined">account_circle</span>
+<span class="text-[10px] font-bold">マイページ</span>
+</div>
+</nav>
+<div class="h-8 bg-white dark:bg-zinc-950"></div>
+</div>
+
+</body></html>
