@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "stripe": {
+      "command": "npm",
+      "args": [
+        "run",
+        "mcp:stripe",
+        "--prefix",
+        "/Users/freefree/システム開発関連/Rutinシステム"
+      ],
+      "env": {
+        "STRIPE_SECRET_KEY": "sk_test_YOUR_STRIPE_SECRET_KEY_HERE"
+      }
+    }
+  }
+}
