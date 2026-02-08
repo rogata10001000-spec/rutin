@@ -250,6 +250,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "list_subscriptions": {
         const params: Stripe.SubscriptionListParams = {
           limit: (args.limit as number) || 10,
+          expand: ["data.customer", "data.items.data.price"],
         };
         if (args.status) {
           params.status = args.status as Stripe.Subscription.Status;
@@ -257,9 +258,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (args.customerId) {
           params.customer = args.customerId as string;
         }
-        const subscriptions = await stripe.subscriptions.list(params, {
-          expand: ["data.customer", "data.items.data.price.product"],
-        });
+        const subscriptions = await stripe.subscriptions.list(params);
         return {
           content: [
             {
@@ -358,10 +357,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "cancel_subscription": {
         const cancelImmediately = args.cancelImmediately as boolean | undefined;
-        const subscription = await stripe.subscriptions.cancel(
-          args.subscriptionId as string,
-          cancelImmediately ? {} : { cancel_at_period_end: true }
-        );
+        let subscription;
+        if (cancelImmediately) {
+          subscription = await stripe.subscriptions.cancel(
+            args.subscriptionId as string
+          );
+        } else {
+          subscription = await stripe.subscriptions.update(
+            args.subscriptionId as string,
+            { cancel_at_period_end: true }
+          );
+        }
         return {
           content: [
             {
@@ -470,8 +476,7 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     switch (uri) {
       case "stripe://subscriptions": {
         const subscriptions = await stripe.subscriptions.list(
-          { limit: 50 },
-          { expand: ["data.customer"] }
+          { limit: 50, expand: ["data.customer"] }
         );
         return {
           contents: [
