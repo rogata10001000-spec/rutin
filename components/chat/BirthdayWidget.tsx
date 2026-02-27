@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
@@ -31,17 +31,17 @@ export function BirthdayWidget({ endUserId, onInsertTemplate }: BirthdayWidgetPr
   const [showTemplates, setShowTemplates] = useState(false);
   const [marking, setMarking] = useState(false);
 
-  useEffect(() => {
-    loadStatus();
-  }, [endUserId]);
-
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     const result = await getBirthdayStatus(endUserId);
     if (result.ok) {
       setStatus(result.data);
     }
     setLoading(false);
-  };
+  }, [endUserId]);
+
+  useEffect(() => {
+    loadStatus();
+  }, [loadStatus]);
 
   const handleInsertTemplate = (template: string) => {
     onInsertTemplate(template);

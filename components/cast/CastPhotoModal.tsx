@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useCallback, useState } from "react";
+import Image from "next/image";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation, Pagination, Keyboard } from "swiper/modules";
 import type { Swiper as SwiperType } from "swiper";
@@ -114,11 +115,14 @@ export function CastPhotoModal({
             <SwiperSlide key={photo.id}>
               <div className="flex flex-col items-center">
                 <div className="relative aspect-[3/4] w-full max-h-[70vh] overflow-hidden rounded-2xl bg-black/20">
-                  <img
+                  <Image
                     src={photo.url}
                     alt={photo.caption || `${castName}の写真 ${index + 1}`}
-                    className="size-full object-contain"
-                    loading={index === initialIndex ? "eager" : "lazy"}
+                    fill
+                    unoptimized
+                    className="object-contain"
+                    sizes="(max-width: 768px) 100vw, 768px"
+                    priority={index === initialIndex}
                   />
                 </div>
                 {photo.caption && (

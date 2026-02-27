@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
@@ -32,11 +32,7 @@ export function ShadowDraftButton({
   const [submitting, setSubmitting] = useState(false);
   const [showDrafts, setShowDrafts] = useState(false);
 
-  useEffect(() => {
-    checkAccess();
-  }, [endUserId]);
-
-  const checkAccess = async () => {
+  const checkAccess = useCallback(async () => {
     const accessResult = await checkShadowAccess(endUserId);
     if (accessResult.ok) {
       setIsShadow(accessResult.data.isShadow);
@@ -50,7 +46,11 @@ export function ShadowDraftButton({
       }
     }
     setLoading(false);
-  };
+  }, [endUserId]);
+
+  useEffect(() => {
+    checkAccess();
+  }, [checkAccess]);
 
   const handleSaveDraft = async () => {
     if (!currentBody.trim()) {

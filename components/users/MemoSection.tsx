@@ -42,17 +42,17 @@ export function MemoSection({ endUserId }: MemoSectionProps) {
   const previousFormDataRef = useRef<{ category: string; pinned: boolean; body: string } | null>(null);
   const pendingDeleteRef = useRef<{ memoId: string; timeout: NodeJS.Timeout } | null>(null);
 
-  useEffect(() => {
-    loadMemos();
-  }, [endUserId]);
-
-  const loadMemos = async () => {
+  const loadMemos = useCallback(async () => {
     const result = await getUserMemos(endUserId);
     if (result.ok) {
       setMemos(result.data.memos);
     }
     setLoading(false);
-  };
+  }, [endUserId]);
+
+  useEffect(() => {
+    loadMemos();
+  }, [loadMemos]);
 
   const openNewMemo = () => {
     setIsNewMemo(true);
@@ -145,7 +145,7 @@ export function MemoSection({ endUserId }: MemoSectionProps) {
     } else {
       previousFormDataRef.current = null;
     }
-  }, [editingMemo?.id]);
+  }, [editingMemo, formCategory, formPinned, formBody]);
 
   // 未保存警告
   useEffect(() => {

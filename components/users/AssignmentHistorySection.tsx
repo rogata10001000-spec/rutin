@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import { getAssignmentHistory, type AssignmentHistoryItem } from "@/actions/assignments";
@@ -14,17 +14,17 @@ export function AssignmentHistorySection({ endUserId }: AssignmentHistorySection
   const [loading, setLoading] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
 
-  useEffect(() => {
-    loadHistory();
-  }, [endUserId]);
-
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     const result = await getAssignmentHistory(endUserId);
     if (result.ok) {
       setHistory(result.data.history);
     }
     setLoading(false);
-  };
+  }, [endUserId]);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   if (loading) {
     return (

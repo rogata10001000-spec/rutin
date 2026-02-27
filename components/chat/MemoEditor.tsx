@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   getUserMemos,
@@ -29,17 +29,17 @@ export function MemoEditor({ endUserId }: MemoEditorProps) {
   const [formBody, setFormBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    loadMemos();
-  }, [endUserId]);
-
-  const loadMemos = async () => {
+  const loadMemos = useCallback(async () => {
     const result = await getUserMemos(endUserId);
     if (result.ok) {
       setMemos(result.data.memos);
     }
     setLoading(false);
-  };
+  }, [endUserId]);
+
+  useEffect(() => {
+    loadMemos();
+  }, [loadMemos]);
 
   const openNewMemo = () => {
     setIsNewMemo(true);

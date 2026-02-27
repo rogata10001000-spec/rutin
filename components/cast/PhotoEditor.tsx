@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
+import Image from "next/image";
 import {
   DndContext,
   closestCenter,
@@ -75,10 +76,13 @@ function SortablePhoto({
       style={style}
       className="group relative aspect-square overflow-hidden rounded-xl border border-gray-200 bg-gray-50"
     >
-      <img
+      <Image
         src={photo.url}
         alt={photo.caption || "キャスト写真"}
-        className="size-full object-cover"
+        fill
+        unoptimized
+        className="object-cover"
+        sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
       />
 
       {/* ドラッグハンドル */}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { getStaffList } from "@/actions/admin/staff";
 import { getCastPhotos } from "@/actions/cast-photos";
 
@@ -150,10 +151,13 @@ export default async function CastPhotosPage() {
                 {/* サムネイル */}
                 <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
                   {cast.firstPhotoUrl ? (
-                    <img
+                    <Image
                       src={cast.firstPhotoUrl}
                       alt={cast.displayName}
-                      className="h-full w-full object-cover"
+                      fill
+                      unoptimized
+                      className="object-cover"
+                      sizes="80px"
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-gray-400">
