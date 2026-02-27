@@ -5,9 +5,11 @@ import { Result, toZodErrorMessage } from "./types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { canAccessUser, getCurrentStaff } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
+import { getServerEnv } from "@/lib/env";
+import { fetchWithRetry } from "@/lib/http-client";
 
-const AI_DAILY_LIMIT = parseInt(process.env.AI_DRAFT_DAILY_LIMIT ?? "3", 10);
-const AI_PROVIDER_KEY = process.env.AI_PROVIDER_KEY;
+const AI_DAILY_LIMIT = getServerEnv().AI_DRAFT_DAILY_LIMIT;
+const AI_PROVIDER_KEY = getServerEnv().AI_PROVIDER_KEY;
 
 export type GenerateAiDraftsInput = {
   endUserId: string;
@@ -70,36 +72,29 @@ export async function generateAiDrafts(
 
   // コンテキスト収集
   // 1. 直近20メッセージ
-  const { data: messages } = await supabase
-    .from("messages")
-    .select("direction, body, created_at")
-    .eq("end_user_id", parsed.data.endUserId)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  // 2. ピン留めメモ
-  const { data: pinnedMemos } = await supabase
-    .from("memos")
-    .select("category, latest_body")
-    .eq("end_user_id", parsed.data.endUserId)
-    .eq("pinned", true);
-
-  // 3. 直近7日のチェックイン
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const { data: checkins } = await supabase
-    .from("checkins")
-    .select("date, status")
-    .eq("end_user_id", parsed.data.endUserId)
-    .gte("date", sevenDaysAgo.toISOString().split("T")[0])
-    .order("date", { ascending: false });
-
-  // 4. キャストスタイル要約
-  const { data: castProfile } = await supabase
-    .from("staff_profiles")
-    .select("style_summary")
-    .eq("id", access.id)
-    .single();
+  const [{ data: messages }, { data: pinnedMemos }, { data: checkins }, { data: castProfile }] =
+    await Promise.all([
+      supabase
+        .from("messages")
+        .select("direction, body, created_at")
+        .eq("end_user_id", parsed.data.endUserId)
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabase
+        .from("memos")
+        .select("category, latest_body")
+        .eq("end_user_id", parsed.data.endUserId)
+        .eq("pinned", true),
+      supabase
+        .from("checkins")
+        .select("date, status")
+        .eq("end_user_id", parsed.data.endUserId)
+        .gte("date", sevenDaysAgo.toISOString().split("T")[0])
+        .order("date", { ascending: false }),
+      supabase.from("staff_profiles").select("style_summary").eq("id", access.id).single(),
+    ]);
 
   const contextSnapshot = {
     messages: messages?.map((m) => ({ direction: m.direction, body: m.body })) ?? [],
@@ -119,7 +114,7 @@ export async function generateAiDrafts(
     }
 
     // Anthropic API呼び出し
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -1,10 +1,8 @@
 import Stripe from "stripe";
+import { getServerEnv } from "@/lib/env";
+import { logger } from "@/lib/logger";
 
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-
-if (!STRIPE_SECRET_KEY) {
-  console.warn("STRIPE_SECRET_KEY is not set");
-}
+const STRIPE_SECRET_KEY = getServerEnv().STRIPE_SECRET_KEY;
 
 export const stripe = new Stripe(STRIPE_SECRET_KEY ?? "", {
   apiVersion: "2025-02-24.acacia",
@@ -17,7 +15,7 @@ export function verifyStripeSignature(
   payload: string,
   signature: string | null
 ): Stripe.Event | null {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  const secret = getServerEnv().STRIPE_WEBHOOK_SECRET;
   if (!secret || !signature) {
     return null;
   }
@@ -25,7 +23,9 @@ export function verifyStripeSignature(
   try {
     return stripe.webhooks.constructEvent(payload, signature, secret);
   } catch (err) {
-    console.error("[Stripe] Signature verification failed:", err);
+    logger.error("Stripe signature verification failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
     return null;
   }
 }

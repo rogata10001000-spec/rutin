@@ -425,7 +425,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorType =
+      typeof error === "object" && error !== null && "type" in error
+        ? String((error as { type?: unknown }).type ?? "UnknownError")
+        : "UnknownError";
     return {
       content: [
         {
@@ -433,8 +438,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           text: JSON.stringify(
             {
               error: true,
-              message: error.message,
-              type: error.type || "UnknownError",
+              message: errorMessage,
+              type: errorType,
             },
             null,
             2
@@ -505,13 +510,14 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
       default:
         throw new Error(`Unknown resource: ${uri}`);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return {
       contents: [
         {
           uri,
           mimeType: "text/plain",
-          text: `Error: ${error.message}`,
+          text: `Error: ${errorMessage}`,
         },
       ],
     };

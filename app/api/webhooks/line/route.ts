@@ -8,6 +8,8 @@ import {
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { withWebhookIdempotency } from "@/lib/webhook";
 import { writeAuditLog } from "@/lib/audit";
+import { checkRateLimit, requestKey } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 // LINE Webhook Event Types
 type LineFollowEvent = {
@@ -49,6 +51,15 @@ const WELCOME_MESSAGE = `Rutinへようこそ！
 const DEFAULT_PLAN_CODE = process.env.TRIAL_PLAN_CODE ?? "standard";
 
 export async function POST(request: Request) {
+  const allowed = checkRateLimit({
+    key: requestKey(request, "line_webhook"),
+    windowMs: 60_000,
+    maxRequests: 120,
+  });
+  if (!allowed) {
+    return new Response("Too Many Requests", { status: 429 });
+  }
+
   const body = await request.text();
   const signature = request.headers.get("x-line-signature");
 
@@ -116,7 +127,7 @@ export async function POST(request: Request) {
       });
 
       if (result.status === "error") {
-        console.error("[LINE Webhook] Follow error:", result.message);
+        logger.error("LINE webhook follow error", { message: result.message, eventId });
       }
     }
 
@@ -211,7 +222,7 @@ export async function POST(request: Request) {
       });
 
       if (result.status === "error") {
-        console.error("[LINE Webhook] Message error:", result.message);
+        logger.error("LINE webhook message error", { message: result.message, eventId });
       }
     }
 
@@ -282,7 +293,7 @@ export async function POST(request: Request) {
         });
 
         if (result.status === "error") {
-          console.error("[LINE Webhook] Checkin error:", result.message);
+          logger.error("LINE webhook checkin error", { message: result.message, eventId });
         }
       }
     }

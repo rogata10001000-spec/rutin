@@ -1,9 +1,12 @@
 import crypto from "crypto";
+import { getServerEnv } from "@/lib/env";
+import { fetchWithRetry } from "@/lib/http-client";
+import { logger } from "@/lib/logger";
 
 const LINE_API_BASE = "https://api.line.me/v2/bot";
 
 const getLineAccessToken = () => {
-  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const token = getServerEnv().LINE_CHANNEL_ACCESS_TOKEN;
   if (!token) {
     throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not set");
   }
@@ -11,7 +14,7 @@ const getLineAccessToken = () => {
 };
 
 export const verifyLineSignature = (signature: string | null, body: string) => {
-  const secret = process.env.LINE_CHANNEL_SECRET;
+  const secret = getServerEnv().LINE_CHANNEL_SECRET;
   if (!secret) {
     throw new Error("LINE_CHANNEL_SECRET is not set");
   }
@@ -27,7 +30,7 @@ export const verifyLineSignature = (signature: string | null, body: string) => {
  * LINEにテキストメッセージを送信
  */
 export const pushTextMessage = async (lineUserId: string, text: string) => {
-  const res = await fetch(`${LINE_API_BASE}/message/push`, {
+  const res = await fetchWithRetry(`${LINE_API_BASE}/message/push`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${getLineAccessToken()}`,
@@ -41,7 +44,8 @@ export const pushTextMessage = async (lineUserId: string, text: string) => {
 
   if (!res.ok) {
     const errorText = await res.text();
-    throw new Error(`LINE push failed: ${res.status} - ${errorText}`);
+    logger.error("LINE push failed", { status: res.status, lineUserId });
+    throw new Error(`LINE push failed: ${res.status} - ${errorText.slice(0, 200)}`);
   }
 };
 
@@ -49,7 +53,7 @@ export const pushTextMessage = async (lineUserId: string, text: string) => {
  * リッチメニューを切り替え
  */
 export const switchRichMenu = async (lineUserId: string, richMenuId: string) => {
-  const res = await fetch(`${LINE_API_BASE}/user/${lineUserId}/richmenu/${richMenuId}`, {
+  const res = await fetchWithRetry(`${LINE_API_BASE}/user/${lineUserId}/richmenu/${richMenuId}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${getLineAccessToken()}` },
   });
@@ -124,7 +128,7 @@ export const sendCheckinFlexMessage = async (lineUserId: string) => {
     },
   };
 
-  const res = await fetch(`${LINE_API_BASE}/message/push`, {
+  const res = await fetchWithRetry(`${LINE_API_BASE}/message/push`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${getLineAccessToken()}`,

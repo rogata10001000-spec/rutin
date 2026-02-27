@@ -1,12 +1,4 @@
-"use client";
-
-import { useSearchParams } from "next/navigation";
-import Link from "next/link";
-
 export default function PointsPurchaseCompletePage() {
-  const searchParams = useSearchParams();
-  const sessionId = searchParams.get("session_id");
-
   return (
     <div className="flex min-h-[50vh] flex-col items-center justify-center text-center">
       <div className="mb-4 rounded-full bg-green-100 p-4">

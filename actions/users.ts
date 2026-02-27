@@ -192,56 +192,55 @@ export async function getUserDetail(
     };
   }
 
-  // サブスクリプション（最新）
-  const { data: subscription } = await supabase
-    .from("subscriptions")
-    .select("id, stripe_subscription_id, stripe_customer_id, status, current_period_end, cancel_at_period_end")
-    .eq("end_user_id", input.endUserId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
-
-  // サブスクリプション履歴（全件）
-  const { data: subscriptionHistory } = await supabase
-    .from("subscriptions")
-    .select("id, plan_code, status, current_period_end, created_at")
-    .eq("end_user_id", input.endUserId)
-    .order("created_at", { ascending: false })
-    .limit(10);
-
-  // ポイント残高と取引履歴
-  const { data: ledger } = await supabase
-    .from("user_point_ledger")
-    .select("id, delta_points, reason, created_at")
-    .eq("end_user_id", input.endUserId)
-    .order("created_at", { ascending: false })
-    .limit(50);
-
-  const pointBalance = (ledger ?? []).reduce((sum, row) => sum + row.delta_points, 0);
-
-  // 直近7日のチェックイン
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const { data: checkins } = await supabase
-    .from("checkins")
-    .select("date, status")
-    .eq("end_user_id", input.endUserId)
-    .gte("date", sevenDaysAgo.toISOString().split("T")[0])
-    .order("date", { ascending: false });
+  const [
+    { data: subscription },
+    { data: subscriptionHistory },
+    { data: ledger },
+    { data: checkins },
+    { data: giftSends },
+  ] = await Promise.all([
+    supabase
+      .from("subscriptions")
+      .select("id, stripe_subscription_id, stripe_customer_id, status, current_period_end, cancel_at_period_end")
+      .eq("end_user_id", input.endUserId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single(),
+    supabase
+      .from("subscriptions")
+      .select("id, plan_code, status, current_period_end, created_at")
+      .eq("end_user_id", input.endUserId)
+      .order("created_at", { ascending: false })
+      .limit(10),
+    supabase
+      .from("user_point_ledger")
+      .select("id, delta_points, reason, created_at")
+      .eq("end_user_id", input.endUserId)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("checkins")
+      .select("date, status")
+      .eq("end_user_id", input.endUserId)
+      .gte("date", sevenDaysAgo.toISOString().split("T")[0])
+      .order("date", { ascending: false }),
+    supabase
+      .from("gift_sends")
+      .select(`
+        sent_at,
+        cost_points,
+        gift_catalog (
+          name
+        )
+      `)
+      .eq("end_user_id", input.endUserId)
+      .order("sent_at", { ascending: false })
+      .limit(10),
+  ]);
 
-  // 直近のギフト
-  const { data: giftSends } = await supabase
-    .from("gift_sends")
-    .select(`
-      sent_at,
-      cost_points,
-      gift_catalog (
-        name
-      )
-    `)
-    .eq("end_user_id", input.endUserId)
-    .order("sent_at", { ascending: false })
-    .limit(10);
+  const pointBalance = (ledger ?? []).reduce((sum, row) => sum + row.delta_points, 0);
 
   const staffProfile = user.staff_profiles as unknown as { display_name: string } | null;
 

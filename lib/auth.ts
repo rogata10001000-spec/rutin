@@ -1,6 +1,9 @@
 import { createServerSupabaseClient } from "./supabase/server";
 import type { StaffRole } from "./supabase/types";
 import jwt from "jsonwebtoken";
+import { cookies } from "next/headers";
+import { getServerEnv } from "@/lib/env";
+import { USER_SESSION_COOKIE } from "@/lib/constants";
 
 /**
  * 現在ログイン中のスタッフ情報を取得
@@ -138,7 +141,7 @@ export async function canSendMessage(endUserId: string): Promise<{
 // ユーザー向けWebページ用JWT認証
 // =====================================================
 
-const USER_TOKEN_SECRET = process.env.LINE_USER_TOKEN_SECRET;
+const USER_TOKEN_SECRET = getServerEnv().LINE_USER_TOKEN_SECRET;
 const USER_TOKEN_EXPIRY = 60 * 30; // 30分
 
 interface UserTokenPayload {
@@ -200,12 +203,23 @@ export function getUserFromRequest(request: Request): {
   ok: false;
   error: "missing" | "invalid" | "expired";
 } {
-  const url = new URL(request.url);
-  const token = url.searchParams.get("token");
+  const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
 
   if (!token) {
     return { ok: false, error: "missing" };
   }
 
+  return verifyUserToken(token);
+}
+
+export async function getUserFromServerCookies(): Promise<
+  | { ok: true; lineUserId: string }
+  | { ok: false; error: "missing" | "invalid" | "expired" }
+> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(USER_SESSION_COOKIE)?.value;
+  if (!token) {
+    return { ok: false, error: "missing" };
+  }
   return verifyUserToken(token);
 }

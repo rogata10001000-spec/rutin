@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "./supabase/server";
+import { logger } from "./logger";
 
 /**
  * 監査アクション定義（付録A準拠）
@@ -87,6 +88,7 @@ export async function writeAuditLog(params: {
   success: boolean;
   metadata?: Record<string, unknown>;
   actorStaffId?: string | null;
+  required?: boolean;
 }): Promise<{ ok: true; id: string; error?: undefined } | { ok: false; id?: undefined; error: string }> {
   try {
     const supabase = await createServerSupabaseClient();
@@ -114,14 +116,24 @@ export async function writeAuditLog(params: {
       .single();
 
     if (error) {
-      console.error("[AuditLog] Write failed:", error);
+      logger.error("Audit log write failed", { error: error.message, action: params.action });
+      if (params.required) {
+        throw new Error(error.message);
+      }
       return { ok: false, error: error.message };
     }
 
     return { ok: true, id: data.id };
   } catch (err) {
-    console.error("[AuditLog] Unexpected error:", err);
-    return { ok: false, error: "Unexpected error writing audit log" };
+    logger.error("Audit log unexpected error", {
+      error: err instanceof Error ? err.message : "unknown",
+      action: params.action,
+    });
+    const message = "Unexpected error writing audit log";
+    if (params.required) {
+      throw new Error(message);
+    }
+    return { ok: false, error: message };
   }
 }
 
@@ -182,7 +194,7 @@ export async function withAuditLog<T>(
     });
 
     if (!auditResult.ok) {
-      console.error("[AuditLog] Failed to write audit log:", auditResult.error);
+      logger.error("Audit log failed in wrapper", { error: auditResult.error, action: params.action });
     }
   }
 

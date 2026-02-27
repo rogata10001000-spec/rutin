@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import {
   getGiftCatalog,
   getUserPointBalance,
@@ -11,9 +10,6 @@ import {
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 
 export default function GiftPage() {
-  const searchParams = useSearchParams();
-  const token = searchParams.get("token") ?? "";
-
   const [gifts, setGifts] = useState<GiftCatalogItem[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,17 +20,11 @@ export default function GiftPage() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    if (!token) {
-      setError("認証トークンがありません");
-      setLoading(false);
-      return;
-    }
-
     const fetchData = async () => {
       try {
         const [giftsResult, balanceResult] = await Promise.all([
           getGiftCatalog(),
-          getUserPointBalance({ token }),
+          getUserPointBalance(),
         ]);
 
         if (giftsResult.ok) {
@@ -53,7 +43,7 @@ export default function GiftPage() {
     };
 
     fetchData();
-  }, [token]);
+  }, []);
 
   const handleSelectGift = (gift: GiftCatalogItem) => {
     if (balance !== null && balance < gift.costPoints) {
@@ -72,7 +62,6 @@ export default function GiftPage() {
 
     try {
       const result = await sendGift({
-        token,
         giftId: selectedGift.id,
       });
 

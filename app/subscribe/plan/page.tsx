@@ -20,12 +20,13 @@ const planSla: Record<PlanCode, string> = {
 const formatYen = (amount: number) => `¥${amount.toLocaleString("ja-JP")}`;
 
 type PageProps = {
-  searchParams?: { castId?: string; lineUserId?: string };
+  searchParams?: Promise<{ castId?: string; lineUserId?: string }>;
 };
 
 export default async function SubscribePlanPage({ searchParams }: PageProps) {
-  const castId = searchParams?.castId;
-  const lineUserId = searchParams?.lineUserId ?? "";
+  const params = await searchParams;
+  const castId = params?.castId;
+  const lineUserId = params?.lineUserId ?? "";
 
   if (!castId) {
     return (

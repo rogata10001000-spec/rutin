@@ -2,15 +2,23 @@
 
 import { pointCheckoutSchema, sendGiftSchema } from "@/schemas/gifts";
 import { Result, toZodErrorMessage } from "./types";
-import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase/server";
+import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { createPointCheckout } from "@/lib/stripe";
-import { verifyUserToken } from "@/lib/auth";
+import { verifyUserToken, getUserFromServerCookies } from "@/lib/auth";
+import { getServerEnv } from "@/lib/env";
 
-const APP_BASE_URL = process.env.APP_BASE_URL ?? "http://localhost:3000";
+const APP_BASE_URL = getServerEnv().APP_BASE_URL;
+
+async function resolveUserToken(token?: string) {
+  const cookieUser = await getUserFromServerCookies();
+  if (cookieUser.ok) return cookieUser;
+  if (token) return verifyUserToken(token);
+  return cookieUser;
+}
 
 export type CreatePointCheckoutInput = {
-  token: string; // ユーザー認証トークン
+  token?: string; // 互換性維持用（Cookie優先）
   productId: string;
 };
 
@@ -23,14 +31,14 @@ export type CreatePointCheckoutResult = Result<{ checkoutUrl: string }>;
 export async function createPointCheckoutSession(
   input: CreatePointCheckoutInput
 ): Promise<CreatePointCheckoutResult> {
-  // トークン検証
-  const tokenResult = verifyUserToken(input.token);
+  const tokenResult = await resolveUserToken(input.token);
   if (!tokenResult.ok) {
+    const isExpired = "error" in tokenResult && tokenResult.error === "expired";
     return {
       ok: false,
       error: { 
         code: "UNAUTHORIZED", 
-        message: tokenResult.error === "expired" ? "セッションが期限切れです" : "認証エラー" 
+        message: isExpired ? "セッションが期限切れです" : "認証エラー" 
       },
     };
   }
@@ -120,7 +128,7 @@ export async function createPointCheckoutSession(
 }
 
 export type SendGiftInput = {
-  token: string; // ユーザー認証トークン
+  token?: string; // 互換性維持用（Cookie優先）
   giftId: string;
 };
 
@@ -143,14 +151,14 @@ export type SendGiftResult = Result<{
  * 6. messages insert（🎁イベント）
  */
 export async function sendGift(input: SendGiftInput): Promise<SendGiftResult> {
-  // トークン検証
-  const tokenResult = verifyUserToken(input.token);
+  const tokenResult = await resolveUserToken(input.token);
   if (!tokenResult.ok) {
+    const isExpired = "error" in tokenResult && tokenResult.error === "expired";
     return {
       ok: false,
       error: { 
         code: "UNAUTHORIZED", 
-        message: tokenResult.error === "expired" ? "セッションが期限切れです" : "認証エラー" 
+        message: isExpired ? "セッションが期限切れです" : "認証エラー" 
       },
     };
   }
@@ -170,242 +178,59 @@ export async function sendGift(input: SendGiftInput): Promise<SendGiftResult> {
   }
 
   const supabase = createAdminSupabaseClient();
-
-  // ユーザー取得
-  const { data: user } = await supabase
-    .from("end_users")
-    .select("id, assigned_cast_id")
-    .eq("line_user_id", lineUserId)
-    .single();
-
-  if (!user || !user.assigned_cast_id) {
-    return {
-      ok: false,
-      error: { code: "NOT_FOUND", message: "ユーザーまたは担当キャストが見つかりません" },
-    };
-  }
-
-  // ギフト取得
-  const { data: gift } = await supabase
-    .from("gift_catalog")
-    .select("*")
-    .eq("id", parsed.data.giftId)
-    .eq("active", true)
-    .single();
-
-  if (!gift) {
-    return {
-      ok: false,
-      error: { code: "NOT_FOUND", message: "ギフトが見つかりません" },
-    };
-  }
-
-  // 残高計算（集計）
-  const { data: ledgerSum } = await supabase
-    .from("user_point_ledger")
-    .select("delta_points")
-    .eq("end_user_id", user.id);
-
-  const currentBalance = (ledgerSum ?? []).reduce((sum, row) => sum + row.delta_points, 0);
-
-  if (currentBalance < gift.cost_points) {
-    return {
-      ok: false,
-      error: { code: "CONFLICT", message: `ポイントが不足しています（残高: ${currentBalance}pt）` },
-    };
-  }
-
-  // 税率取得
-  const { data: taxRate } = await supabase
-    .from("tax_rates")
-    .select("*")
-    .eq("active", true)
-    .order("effective_from", { ascending: false })
-    .limit(1)
-    .single();
-
-  if (!taxRate) {
-    return {
-      ok: false,
-      error: { code: "UNKNOWN", message: "税率の取得に失敗しました" },
-    };
-  }
-
-  // 配分ルール取得（cast → global の順で解決）
-  let payoutRule;
-  const { data: castRule } = await supabase
-    .from("payout_rules")
-    .select("*")
-    .eq("rule_type", "gift_share")
-    .eq("scope_type", "cast")
-    .eq("cast_id", user.assigned_cast_id)
-    .eq("active", true)
-    .lte("effective_from", new Date().toISOString().split("T")[0])
-    .order("effective_from", { ascending: false })
-    .limit(1)
-    .single();
-
-  if (castRule) {
-    payoutRule = castRule;
-  } else {
-    const { data: globalRule } = await supabase
-      .from("payout_rules")
-      .select("*")
-      .eq("rule_type", "gift_share")
-      .eq("scope_type", "global")
-      .eq("active", true)
-      .lte("effective_from", new Date().toISOString().split("T")[0])
-      .order("effective_from", { ascending: false })
-      .limit(1)
-      .single();
-
-    payoutRule = globalRule;
-  }
-
-  if (!payoutRule) {
-    return {
-      ok: false,
-      error: { code: "UNKNOWN", message: "配分ルールが設定されていません" },
-    };
-  }
-
-  // JSTで今日の日付
-  const occurredOn = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
-
-  // 税・配分計算（税抜ベース、端数切り捨て）
-  const amountExclTax = gift.cost_points; // 1pt = 1円（税抜）
-  const taxJpy = Math.floor(amountExclTax * Number(taxRate.rate));
-  const amountInclTax = amountExclTax + taxJpy;
-  const payoutAmount = Math.floor(amountExclTax * Number(payoutRule.percent) / 100);
-
-  // --- トランザクション開始（PostgreSQLのトランザクションはSupabaseでは使えないため、
-  // 冪等性とエラーハンドリングで整合性を担保）---
-
-  // 1. gift_sends insert
-  const { data: giftSend, error: giftError } = await supabase
-    .from("gift_sends")
-    .insert({
-      end_user_id: user.id,
-      cast_id: user.assigned_cast_id,
-      gift_id: gift.id,
-      cost_points: gift.cost_points,
-    })
-    .select("id")
-    .single();
-
-  if (giftError) {
-    return {
-      ok: false,
-      error: { code: "UNKNOWN", message: "ギフト送信の記録に失敗しました" },
-    };
-  }
-
-  // 2. user_point_ledger insert（残高減）
-  const { error: ledgerError } = await supabase.from("user_point_ledger").insert({
-    end_user_id: user.id,
-    delta_points: -gift.cost_points,
-    reason: "gift_redeem",
-    ref_type: "gift_send",
-    ref_id: giftSend.id,
+  const { data: rpcResult, error } = await (supabase as any).rpc("send_gift_atomic", {
+    p_line_user_id: lineUserId,
+    p_gift_id: parsed.data.giftId,
   });
 
-  if (ledgerError) {
-    // ロールバック的対応は将来の課題
-    console.error("[Gift] Ledger insert failed:", ledgerError);
+  const rows = (rpcResult as any[]) ?? [];
+  if (error || !rows[0]) {
+    const message = error?.message ?? "ギフト送信の処理に失敗しました";
+    if (message.includes("INSUFFICIENT_BALANCE")) {
+      return {
+        ok: false,
+        error: { code: "CONFLICT", message: "ポイントが不足しています" },
+      };
+    }
+    if (message.includes("GIFT_NOT_FOUND")) {
+      return {
+        ok: false,
+        error: { code: "NOT_FOUND", message: "ギフトが見つかりません" },
+      };
+    }
+    if (message.includes("USER_OR_CAST_NOT_FOUND")) {
+      return {
+        ok: false,
+        error: { code: "NOT_FOUND", message: "ユーザーまたは担当キャストが見つかりません" },
+      };
+    }
     return {
       ok: false,
-      error: { code: "UNKNOWN", message: "ポイント消費の記録に失敗しました" },
+      error: { code: "UNKNOWN", message: "ギフト送信に失敗しました" },
     };
   }
 
-  // 3. revenue_events insert（売上認識）
-  const { data: revenue, error: revenueError } = await supabase
-    .from("revenue_events")
-    .insert({
-      event_type: "gift_redeem",
-      end_user_id: user.id,
-      cast_id: user.assigned_cast_id,
-      occurred_on: occurredOn,
-      amount_excl_tax_jpy: amountExclTax,
-      tax_rate_id: taxRate.id,
-      tax_jpy: taxJpy,
-      amount_incl_tax_jpy: amountInclTax,
-      source_ref_type: "gift_send",
-      source_ref_id: giftSend.id,
-      metadata: { gift_id: gift.id, gift_name: gift.name },
-    })
-    .select("id")
-    .single();
-
-  if (revenueError) {
-    console.error("[Gift] Revenue insert failed:", revenueError);
-    return {
-      ok: false,
-      error: { code: "UNKNOWN", message: "売上の記録に失敗しました" },
-    };
-  }
-
-  // 4. payout_calculations insert（配分計算）
-  const { data: payout, error: payoutError } = await supabase
-    .from("payout_calculations")
-    .insert({
-      revenue_event_id: revenue.id,
-      cast_id: user.assigned_cast_id,
-      rule_id: payoutRule.id,
-      percent_snapshot: payoutRule.percent,
-      amount_jpy: payoutAmount,
-    })
-    .select("id")
-    .single();
-
-  if (payoutError) {
-    console.error("[Gift] Payout insert failed:", payoutError);
-    return {
-      ok: false,
-      error: { code: "UNKNOWN", message: "配分計算の記録に失敗しました" },
-    };
-  }
-
-  // 5. messages insert（🎁イベント表示用、LINEには送信しない）
-  const { data: message } = await supabase
-    .from("messages")
-    .insert({
-      end_user_id: user.id,
-      direction: "in",
-      body: `🎁 ${gift.icon ?? "🎁"} ${gift.name} を送りました`,
-      sent_by_staff_id: null,
-    })
-    .select("id")
-    .single();
-
-  // gift_sendsにmessage_idを更新
-  if (message) {
-    await supabase
-      .from("gift_sends")
-      .update({ message_id: message.id })
-      .eq("id", giftSend.id);
-  }
+  const row = rows[0];
 
   // 監査ログ
   await writeAuditLog({
     action: "GIFT_SEND",
     targetType: "gift_sends",
-    targetId: giftSend.id,
+    targetId: row.gift_send_id,
     success: true,
     metadata: buildAuditMetadata(
       {
         line_user_id: lineUserId,
-        gift_id: gift.id,
-        gift_name: gift.name,
-        cost_points: gift.cost_points,
+        gift_id: parsed.data.giftId,
+        gift_name: row.gift_name,
+        cost_points: row.cost_points,
       },
       {
         calculations: {
-          amount_excl_tax: amountExclTax,
-          tax_jpy: taxJpy,
-          amount_incl_tax: amountInclTax,
-          payout_percent: payoutRule.percent,
-          payout_amount: payoutAmount,
+          amount_excl_tax: row.amount_excl_tax,
+          tax_jpy: row.tax_jpy,
+          amount_incl_tax: row.amount_incl_tax,
+          payout_percent: row.payout_percent,
         },
       }
     ),
@@ -415,9 +240,9 @@ export async function sendGift(input: SendGiftInput): Promise<SendGiftResult> {
   return {
     ok: true,
     data: {
-      giftSendId: giftSend.id,
-      revenueEventId: revenue.id,
-      payoutId: payout.id,
+      giftSendId: row.gift_send_id,
+      revenueEventId: row.revenue_event_id,
+      payoutId: row.payout_id,
     },
   };
 }
@@ -513,10 +338,10 @@ export async function getGiftCatalog(): Promise<GetGiftCatalogResult> {
 /**
  * ユーザーのポイント残高取得
  */
-export async function getUserPointBalance(input: {
-  token: string;
+export async function getUserPointBalance(input?: {
+  token?: string;
 }): Promise<Result<{ balance: number }>> {
-  const tokenResult = verifyUserToken(input.token);
+  const tokenResult = await resolveUserToken(input?.token);
   if (!tokenResult.ok) {
     return {
       ok: false,

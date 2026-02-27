@@ -4,8 +4,19 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { withWebhookIdempotency } from "@/lib/webhook";
 import { writeAuditLog } from "@/lib/audit";
 import { switchRichMenu } from "@/lib/line";
+import { checkRateLimit, requestKey } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: Request) {
+  const allowed = checkRateLimit({
+    key: requestKey(request, "stripe_webhook"),
+    windowMs: 60_000,
+    maxRequests: 120,
+  });
+  if (!allowed) {
+    return new Response("Too Many Requests", { status: 429 });
+  }
+
   const payload = await request.text();
   const signature = request.headers.get("stripe-signature");
 
@@ -111,7 +122,10 @@ export async function POST(request: Request) {
           try {
             await switchRichMenu(lineUserId, richMenuId);
           } catch (err) {
-            console.error("[Stripe Webhook] Rich menu switch failed:", err);
+            logger.error("Stripe webhook rich menu switch failed", {
+              lineUserId,
+              error: err instanceof Error ? err.message : "unknown",
+            });
           }
         }
 
@@ -190,7 +204,7 @@ export async function POST(request: Request) {
     });
 
     if (result.status === "error") {
-      console.error("[Stripe Webhook] Checkout error:", result.message);
+      logger.error("Stripe webhook checkout error", { message: result.message, eventId });
     }
   }
 
@@ -257,7 +271,7 @@ export async function POST(request: Request) {
     });
 
     if (result.status === "error") {
-      console.error("[Stripe Webhook] Subscription update error:", result.message);
+      logger.error("Stripe webhook subscription update error", { message: result.message, eventId });
     }
   }
 
@@ -305,7 +319,7 @@ export async function POST(request: Request) {
     });
 
     if (result.status === "error") {
-      console.error("[Stripe Webhook] Subscription delete error:", result.message);
+      logger.error("Stripe webhook subscription delete error", { message: result.message, eventId });
     }
   }
 
@@ -356,7 +370,7 @@ export async function POST(request: Request) {
     });
 
     if (result.status === "error") {
-      console.error("[Stripe Webhook] Payment failed error:", result.message);
+      logger.error("Stripe webhook payment failed error", { message: result.message, eventId });
     }
   }
 
@@ -413,7 +427,7 @@ export async function POST(request: Request) {
     });
 
     if (result.status === "error") {
-      console.error("[Stripe Webhook] Refund error:", result.message);
+      logger.error("Stripe webhook refund error", { message: result.message, eventId });
     }
   }
 

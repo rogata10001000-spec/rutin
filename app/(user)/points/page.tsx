@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { getPointProducts, getUserPointBalance, createPointCheckoutSession } from "@/actions/gifts";
 
 type PointProduct = {
@@ -12,10 +12,8 @@ type PointProduct = {
 };
 
 export default function PointsPage() {
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const token = searchParams.get("token") ?? "";
-  const canceled = searchParams.get("canceled") === "true";
+  const [canceled, setCanceled] = useState(false);
 
   const [products, setProducts] = useState<PointProduct[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
@@ -24,17 +22,14 @@ export default function PointsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) {
-      setError("認証トークンがありません");
-      setLoading(false);
-      return;
-    }
+    const params = new URLSearchParams(window.location.search);
+    setCanceled(params.get("canceled") === "true");
 
     const fetchData = async () => {
       try {
         const [productsResult, balanceResult] = await Promise.all([
           getPointProducts(),
-          getUserPointBalance({ token }),
+          getUserPointBalance(),
         ]);
 
         if (productsResult.ok) {
@@ -53,7 +48,7 @@ export default function PointsPage() {
     };
 
     fetchData();
-  }, [token]);
+  }, []);
 
   const handlePurchase = async (productId: string) => {
     setPurchasing(productId);
@@ -61,7 +56,6 @@ export default function PointsPage() {
 
     try {
       const result = await createPointCheckoutSession({
-        token,
         productId,
       });
 

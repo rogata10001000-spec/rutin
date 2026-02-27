@@ -1,5 +1,6 @@
 import { createAdminSupabaseClient } from "./supabase/server";
 import type { WebhookProvider } from "./supabase/types";
+import { logger } from "./logger";
 
 /**
  * Webhook冪等性チェック結果
@@ -40,13 +41,17 @@ export async function checkWebhookIdempotency(
       if (error.code === "23505") {
         return { status: "duplicate" };
       }
-      console.error("[Webhook] Idempotency check failed:", error);
+      logger.error("Webhook idempotency check failed", { provider, eventId, error: error.message });
       return { status: "error", message: error.message };
     }
 
     return { status: "new", eventRecordId: data.id };
   } catch (err) {
-    console.error("[Webhook] Unexpected error:", err);
+    logger.error("Webhook unexpected error", {
+      provider,
+      eventId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
     return { status: "error", message: "Unexpected error" };
   }
 }
