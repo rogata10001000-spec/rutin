@@ -5,6 +5,7 @@ import { SideNav } from "./SideNav";
 import { TopBar } from "./TopBar";
 import { CommandPalette } from "@/components/common/CommandPalette";
 import { ShortcutHelp } from "@/components/common/ShortcutHelp";
+import { RealtimeNotification } from "@/components/common/RealtimeNotification";
 import type { StaffRole } from "@/lib/supabase/types";
 
 type AppShellProps = {
@@ -52,6 +53,7 @@ export function AppShell({ staffId, staffName, staffRole, children }: AppShellPr
       {/* グローバルキーボードショートカット */}
       <CommandPalette />
       <ShortcutHelp />
+      <RealtimeNotification staffId={staffId} />
     </div>
   );
 }

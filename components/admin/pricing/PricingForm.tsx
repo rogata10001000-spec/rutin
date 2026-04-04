@@ -167,7 +167,7 @@ export function PricingForm({ casts }: PricingFormProps) {
           type="number"
           value={amountMonthly}
           onChange={(e) => setAmountMonthly(e.target.value)}
-          placeholder="9800"
+          placeholder="6980"
           className={`mt-1.5 block w-full rounded-xl border bg-stone-50 px-4 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
             errors.amountMonthly
               ? "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500"

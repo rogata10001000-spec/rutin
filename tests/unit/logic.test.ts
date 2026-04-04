@@ -528,7 +528,7 @@ describe("Unit/Zod - 価格スキーマ", () => {
       castId: "550e8400-e29b-41d4-a716-446655440000",
       planCode: "standard",
       stripePriceId: "price_xxx",
-      amountMonthly: 9800,
+      amountMonthly: 6980,
       validFrom: "2024-01-01",
       active: true,
     };
@@ -541,7 +541,7 @@ describe("Unit/Zod - 価格スキーマ", () => {
       castId: "550e8400-e29b-41d4-a716-446655440000",
       planCode: "invalid",
       stripePriceId: "price_xxx",
-      amountMonthly: 9800,
+      amountMonthly: 6980,
       validFrom: "2024-01-01",
       active: true,
     };
@@ -554,7 +554,7 @@ describe("Unit/Zod - 価格スキーマ", () => {
       castId: "550e8400-e29b-41d4-a716-446655440000",
       planCode: "standard",
       stripePriceId: "price_xxx",
-      amountMonthly: 9800,
+      amountMonthly: 6980,
       validFrom: "2024/01/01", // スラッシュ形式は不正
       active: true,
     };
@@ -758,7 +758,7 @@ describe("Unit/Logic - サブスクリプション", () => {
   });
 
   test("価格オーバーライド解決", () => {
-    const DEFAULT_PRICES = { light: 4980, standard: 9800, premium: 29800 };
+    const DEFAULT_PRICES = { light: 2980, standard: 6980, premium: 14800 };
 
     const resolvePrices = (
       defaults: typeof DEFAULT_PRICES,
@@ -779,6 +779,6 @@ describe("Unit/Logic - サブスクリプション", () => {
     // standardのみオーバーライド
     expect(
       resolvePrices(DEFAULT_PRICES, [{ plan_code: "standard", amount_monthly: 8800 }])
-    ).toEqual({ light: 4980, standard: 8800, premium: 29800 });
+    ).toEqual({ light: 2980, standard: 8800, premium: 14800 });
   });
 });

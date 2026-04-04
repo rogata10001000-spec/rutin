@@ -7,6 +7,8 @@ import { sendMessage, sendProxyMessage } from "@/actions/messages";
 import { ChatHistory } from "./ChatHistory";
 import { MessageComposer } from "./MessageComposer";
 import { ChatSidePanel } from "./ChatSidePanel";
+import { TodayProgressBar } from "./TodayProgressBar";
+import { NextUserButton } from "./NextUserButton";
 import { useToast } from "@/components/common/Toast";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 
@@ -105,22 +107,28 @@ export function ChatContainer({
         <div className="flex items-center justify-between border-b border-stone-100 bg-stone-50/50 px-6 py-4">
           <div>
             <h2 className="font-bold text-stone-800 text-lg">{sideInfo.nickname}</h2>
-            <p className="text-sm font-medium text-stone-500">
-              {sideInfo.planCode.charAt(0).toUpperCase() + sideInfo.planCode.slice(1)} ・{" "}
-              {sideInfo.assignedCastName ?? "担当未割当"}
-            </p>
+            <div className="flex items-center gap-3 mt-0.5">
+              <p className="text-sm font-medium text-stone-500">
+                {sideInfo.planCode.charAt(0).toUpperCase() + sideInfo.planCode.slice(1)} ・{" "}
+                {sideInfo.assignedCastName ?? "担当未割当"}
+              </p>
+              <TodayProgressBar />
+            </div>
           </div>
-          {canProxy && (
-            <label className="flex items-center gap-2 text-sm font-medium cursor-pointer bg-white px-3 py-1.5 rounded-lg border border-stone-200 shadow-sm hover:bg-stone-50 transition-colors">
-              <input
-                type="checkbox"
-                checked={proxyMode}
-                onChange={(e) => setProxyMode(e.target.checked)}
-                className="rounded border-stone-300 text-purple-600 focus:ring-purple-500"
-              />
-              <span className="text-stone-600">代理返信モード</span>
-            </label>
-          )}
+          <div className="flex items-center gap-3">
+            <NextUserButton currentUserId={endUserId} />
+            {canProxy && (
+              <label className="flex items-center gap-2 text-sm font-medium cursor-pointer bg-white px-3 py-1.5 rounded-lg border border-stone-200 shadow-sm hover:bg-stone-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={proxyMode}
+                  onChange={(e) => setProxyMode(e.target.checked)}
+                  className="rounded border-stone-300 text-purple-600 focus:ring-purple-500"
+                />
+                <span className="text-stone-600">代理返信モード</span>
+              </label>
+            )}
+          </div>
         </div>
 
         {/* メッセージ履歴 */}

@@ -8,6 +8,75 @@ import { canSendMessage, requireAdminOrSupervisor } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { pushTextMessage } from "@/lib/line";
 
+const planSlaConfig: Record<string, number> = {
+  light: 1440,
+  standard: 720,
+  premium: 120,
+};
+
+async function recordResponseMetric(
+  endUserId: string,
+  staffId: string,
+  replyMessageId: string
+) {
+  try {
+    const supabase = await createServerSupabaseClient();
+
+    const { data: user } = await supabase
+      .from("end_users")
+      .select("plan_code")
+      .eq("id", endUserId)
+      .single();
+
+    const planCode = user?.plan_code ?? "standard";
+    const slaMinutes = planSlaConfig[planCode] ?? 720;
+
+    const { data: lastInMsg } = await supabase
+      .from("messages")
+      .select("id, created_at")
+      .eq("end_user_id", endUserId)
+      .eq("direction", "in")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!lastInMsg) return;
+
+    const { data: prevOut } = await supabase
+      .from("messages")
+      .select("created_at")
+      .eq("end_user_id", endUserId)
+      .eq("direction", "out")
+      .neq("id", replyMessageId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    const lastInTime = new Date(lastInMsg.created_at);
+    const prevOutTime = prevOut ? new Date(prevOut.created_at) : null;
+
+    if (prevOutTime && prevOutTime > lastInTime) return;
+
+    const now = new Date();
+    const responseMinutes = Math.floor(
+      (now.getTime() - lastInTime.getTime()) / (1000 * 60)
+    );
+
+    await supabase.from("response_metrics").insert({
+      end_user_id: endUserId,
+      staff_id: staffId,
+      user_message_id: lastInMsg.id,
+      reply_message_id: replyMessageId,
+      response_minutes: responseMinutes,
+      plan_code: planCode,
+      sla_minutes: slaMinutes,
+      sla_breached: responseMinutes > slaMinutes,
+    });
+  } catch {
+    // メトリクス記録の失敗はメッセージ送信を妨げない
+  }
+}
+
 export type SendMessageInput = {
   endUserId: string;
   body: string;
@@ -108,6 +177,9 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
       body_length: parsed.data.body.length,
     }),
   });
+
+  // レスポンスメトリクス記録（非同期、失敗しても送信は成功）
+  recordResponseMetric(user.id, auth.id, message.id);
 
   revalidatePath("/inbox");
   revalidatePath(`/chat/${user.id}`);
@@ -224,6 +296,9 @@ export async function sendProxyMessage(
       { reason: parsed.data.reason }
     ),
   });
+
+  // レスポンスメトリクス記録
+  recordResponseMetric(user.id, auth.id, message.id);
 
   revalidatePath("/inbox");
   revalidatePath(`/chat/${user.id}`);

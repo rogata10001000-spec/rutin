@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { AiDraftButton } from "./AiDraftButton";
 import { BirthdayWidget } from "./BirthdayWidget";
 import { ShadowDraftButton } from "./ShadowDraftButton";
+import { TemplateSelector } from "./TemplateSelector";
 import { SaveStatus } from "@/components/common/SaveStatus";
 import { useKeyboardShortcut } from "@/hooks/useKeyboardShortcut";
 
@@ -141,6 +142,7 @@ export function MessageComposer({
             endUserId={endUserId}
             onSelectDraft={(draft) => setBody(draft)}
           />
+          <TemplateSelector onSelect={(text) => setBody(text)} />
         </div>
         <SaveStatus status={saveStatus} className="text-xs" />
       </div>

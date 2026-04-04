@@ -209,9 +209,9 @@ export async function POST(request: Request) {
   }
 
   // =====================================================
-  // customer.subscription.updated - サブスク状態変更
+  // customer.subscription.created / updated - サブスク状態同期
   // =====================================================
-  if (eventType === "customer.subscription.updated") {
+  if (eventType === "customer.subscription.created" || eventType === "customer.subscription.updated") {
     const subscription = event.data.object as Stripe.Subscription;
 
     const result = await withWebhookIdempotency("stripe", eventId, eventType, async () => {
@@ -221,6 +221,7 @@ export async function POST(request: Request) {
         ? new Date(subscription.current_period_end * 1000).toISOString()
         : null;
       const cancelAtPeriodEnd = subscription.cancel_at_period_end;
+      const appliedStripePriceId = subscription.items.data[0]?.price?.id ?? null;
 
       // サブスクリプションを検索
       const { data: sub } = await supabase
@@ -230,8 +231,87 @@ export async function POST(request: Request) {
         .single();
 
       if (!sub) {
-        console.warn(`[Stripe Webhook] Subscription not found: ${subscriptionId}`);
-        return { skipped: true };
+        if (eventType !== "customer.subscription.created") {
+          console.warn(`[Stripe Webhook] Subscription not found: ${subscriptionId}`);
+          return { skipped: true };
+        }
+
+        const metadata = subscription.metadata ?? {};
+        const lineUserId = metadata.line_user_id;
+        const castId = metadata.cast_id;
+        const planCode = metadata.plan_code;
+        const customerId =
+          typeof subscription.customer === "string"
+            ? subscription.customer
+            : subscription.customer?.id;
+
+        if (!lineUserId || !castId || !planCode || !customerId || !appliedStripePriceId) {
+          throw new Error("Missing metadata for subscription create sync");
+        }
+
+        let { data: user } = await supabase
+          .from("end_users")
+          .select("id")
+          .eq("line_user_id", lineUserId)
+          .single();
+
+        if (!user) {
+          const { data: newUser, error: userCreateError } = await supabase
+            .from("end_users")
+            .insert({
+              line_user_id: lineUserId,
+              nickname: `ユーザー_${lineUserId.slice(-6)}`,
+              status: newStatus,
+              plan_code: planCode,
+              assigned_cast_id: castId,
+            })
+            .select("id")
+            .single();
+
+          if (userCreateError) {
+            throw new Error(`Failed to create end_user: ${userCreateError.message}`);
+          }
+          user = { id: newUser.id };
+        } else {
+          await supabase
+            .from("end_users")
+            .update({
+              status: newStatus,
+              plan_code: planCode,
+              assigned_cast_id: castId,
+            })
+            .eq("id", user.id);
+        }
+
+        const { error: insertError } = await supabase.from("subscriptions").insert({
+          end_user_id: user.id,
+          stripe_customer_id: customerId,
+          stripe_subscription_id: subscriptionId,
+          status: newStatus,
+          plan_code: planCode,
+          applied_stripe_price_id: appliedStripePriceId,
+          current_period_end: currentPeriodEnd,
+          cancel_at_period_end: cancelAtPeriodEnd,
+        });
+
+        if (insertError && insertError.code !== "23505") {
+          throw new Error(`Failed to create subscription: ${insertError.message}`);
+        }
+
+        await writeAuditLog({
+          action: "SUBSCRIPTION_SYNC",
+          targetType: "subscriptions",
+          targetId: subscriptionId,
+          success: true,
+          metadata: {
+            event: eventType,
+            new_status: newStatus,
+            synced_from: "subscription.created",
+          },
+          actorStaffId: null,
+        });
+
+        return { subscriptionId, newStatus, created: true };
       }
 
       const previousStatus = sub.status;
@@ -243,6 +323,7 @@ export async function POST(request: Request) {
           status: newStatus,
           current_period_end: currentPeriodEnd,
           cancel_at_period_end: cancelAtPeriodEnd,
+          ...(appliedStripePriceId ? { applied_stripe_price_id: appliedStripePriceId } : {}),
         })
         .eq("id", sub.id);
 

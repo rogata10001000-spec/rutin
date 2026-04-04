@@ -83,12 +83,14 @@ export async function createSubscriptionCheckout(params: {
         line_user_id: params.lineUserId,
         cast_id: params.castId,
         plan_code: params.planCode,
+        stripe_price_id: params.stripePriceId,
       },
     },
     metadata: {
       line_user_id: params.lineUserId,
       cast_id: params.castId,
       plan_code: params.planCode,
+      stripe_price_id: params.stripePriceId,
       type: "subscription",
     },
     customer_email: params.customerEmail,
@@ -119,6 +121,14 @@ export async function createPointCheckout(params: {
         quantity: 1,
       },
     ],
+    payment_intent_data: {
+      metadata: {
+        line_user_id: params.lineUserId,
+        product_id: params.productId,
+        points: params.points.toString(),
+        type: "point_purchase",
+      },
+    },
     metadata: {
       line_user_id: params.lineUserId,
       product_id: params.productId,

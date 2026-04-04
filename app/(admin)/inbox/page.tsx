@@ -3,6 +3,7 @@ import { getInboxItems, type InboxFilters as InboxFiltersType } from "@/actions/
 import { getCastOptions } from "@/actions/assignments";
 import { InboxTable } from "@/components/inbox/InboxTable";
 import { InboxFilters } from "@/components/inbox/InboxFilters";
+import { InboxAutoRefresh } from "@/components/inbox/InboxAutoRefresh";
 import { TableSkeleton } from "@/components/common/LoadingSkeleton";
 import { EmptyState } from "@/components/common/EmptyState";
 
@@ -17,6 +18,9 @@ type SearchParams = {
   cast?: string;
   unassigned?: string;
   sort?: string;
+  sla?: string;
+  excludePaused?: string;
+  todaySentZero?: string;
 };
 
 export default async function InboxPage({
@@ -35,6 +39,9 @@ export default async function InboxPage({
     assignedCastId: params.cast ?? undefined,
     hasUnassigned: params.unassigned === "true" ? true : undefined,
     sortBy: params.sort as InboxFiltersType["sortBy"] ?? undefined,
+    slaStatus: params.sla as InboxFiltersType["slaStatus"] ?? undefined,
+    excludePaused: params.excludePaused === "true" ? true : undefined,
+    todaySentZero: params.todaySentZero === "true" ? true : undefined,
   };
 
   // データを並列で取得
@@ -49,16 +56,16 @@ export default async function InboxPage({
 
   return (
     <div className="space-y-6">
+      <InboxAutoRefresh intervalMs={30000} />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-stone-800">
             受信トレイ
           </h1>
           <p className="mt-1 text-sm text-stone-500">
-            全ユーザーを優先度順で表示しています
+            全ユーザーを優先度順で表示しています（30秒ごとに自動更新）
           </p>
         </div>
-        {/* 将来的にここに一括操作ボタンなどを配置 */}
       </div>
 
       <div className="rounded-2xl border border-stone-200 bg-white p-1 shadow-soft">

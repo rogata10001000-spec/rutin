@@ -165,10 +165,13 @@ export function calculateInboxPriority(params: {
   isUnreported: boolean;
   isPaused: boolean;
   planPriorityLevel: number; // 1=Premium, 2=Standard, 3=Light
-  // 新しいパラメータ
   hasUnrepliedMessage?: boolean;
   hasSentTodayMessage?: boolean;
-  lastMessageTimestamp?: number; // より新しいメッセージを優先するため
+  lastMessageTimestamp?: number;
+  isTrial?: boolean;
+  daysSinceCreation?: number;
+  unreportedDays?: number;
+  hadPreviousRisk?: boolean;
 }): number {
   let score = 0;
 
@@ -219,6 +222,26 @@ export function calculateInboxPriority(params: {
     const nowMs = Date.now();
     const ageHours = (nowMs - params.lastMessageTimestamp) / (1000 * 60 * 60);
     score += Math.max(0, 50 - Math.floor(ageHours));
+  }
+
+  // トライアルユーザー優先ブースト (+400)
+  if (params.isTrial) {
+    score += 400;
+  }
+
+  // 新規ユーザー（契約後7日以内）ブースト (+200)
+  if (params.daysSinceCreation !== undefined && params.daysSinceCreation <= 7) {
+    score += 200;
+  }
+
+  // 未報告日数に応じたエスカレーション（3日以上でさらに加点）
+  if (params.unreportedDays !== undefined && params.unreportedDays >= 3) {
+    score += Math.min(500, (params.unreportedDays - 2) * 100);
+  }
+
+  // 過去にリスクフラグが立ったことがある（再発リスク考慮）
+  if (params.hadPreviousRisk) {
+    score += 150;
   }
 
   // paused は優先度を大幅に下げる (-5000)

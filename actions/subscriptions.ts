@@ -15,9 +15,9 @@ const TRIAL_PERIOD_DAYS = parseInt(process.env.TRIAL_PERIOD_DAYS ?? "7", 10);
 
 // デフォルト価格（plan_pricesテーブルから取得するべきだが、フォールバック用）
 const DEFAULT_PRICES: Record<string, number> = {
-  light: 4980,
-  standard: 9800,
-  premium: 29800,
+  light: 2980,
+  standard: 6980,
+  premium: 14800,
 };
 
 // デフォルトStripe Price ID（環境変数から取得）

@@ -338,6 +338,31 @@ type CastPhotosRow = {
   updated_at: string;
 };
 
+type ResponseMetricsRow = {
+  id: string;
+  end_user_id: string;
+  staff_id: string;
+  user_message_id: string | null;
+  reply_message_id: string | null;
+  response_minutes: number;
+  plan_code: string;
+  sla_minutes: number;
+  sla_breached: boolean;
+  created_at: string;
+};
+
+type MessageTemplatesRow = {
+  id: string;
+  category: string;
+  title: string;
+  body: string;
+  staff_id: string | null;
+  is_global: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export interface Database {
   public: {
     Tables: {
@@ -577,6 +602,22 @@ export interface Database {
           display_order?: number;
         };
         Update: Partial<Pick<CastPhotosRow, "storage_path" | "display_order" | "caption" | "active">>;
+        Relationships: [];
+      };
+      response_metrics: {
+        Row: ResponseMetricsRow;
+        Insert: Omit<ResponseMetricsRow, "id" | "created_at"> & { id?: string };
+        Update: Record<string, never>;
+        Relationships: [];
+      };
+      message_templates: {
+        Row: MessageTemplatesRow;
+        Insert: Omit<MessageTemplatesRow, "id" | "created_at" | "updated_at" | "sort_order" | "is_global"> & {
+          id?: string;
+          sort_order?: number;
+          is_global?: boolean;
+        };
+        Update: Partial<Omit<MessageTemplatesRow, "id" | "created_at">>;
         Relationships: [];
       };
     };

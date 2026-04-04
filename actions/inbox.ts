@@ -44,10 +44,12 @@ export type InboxFilters = {
   assignedCastId?: string;
   hasRisk?: boolean;
   isUnreported?: boolean;
-  // 新しいフィルタ
   replyStatus?: "unreplied" | "not_sent_today" | "all";
   hasUnassigned?: boolean;
-  sortBy?: "priority" | "last_message" | "nickname";
+  slaStatus?: "breached" | "warning" | "all";
+  excludePaused?: boolean;
+  todaySentZero?: boolean;
+  sortBy?: "priority" | "last_message" | "nickname" | "unreplied_duration" | "today_sent_asc" | "last_reply_oldest";
 };
 
 export type GetInboxItemsInput = {
@@ -120,6 +122,7 @@ export async function getInboxItems(
       tags,
       birthday,
       paused_priority_penalty,
+      created_at,
       staff_profiles!end_users_assigned_cast_id_fkey (
         display_name
       )
@@ -196,6 +199,17 @@ export async function getInboxItems(
     .in("end_user_id", userIds)
     .eq("status", "open")
     .order("created_at", { ascending: false });
+
+  // 過去にリスクフラグが立ったことのあるユーザーを取得
+  const { data: allHistoricalRisks } = await supabase
+    .from("risk_flags")
+    .select("end_user_id")
+    .in("end_user_id", userIds)
+    .in("status", ["resolved", "ack"]);
+
+  const previousRiskUserIds = new Set(
+    (allHistoricalRisks ?? []).map((r) => r.end_user_id)
+  );
 
   // ===== データをユーザーIDでグループ化 =====
   
@@ -289,6 +303,25 @@ export async function getInboxItems(
       isBirthdayToday = birthdayMd === todayMd;
     }
 
+    // ユーザー作成日からの日数
+    const createdAt = (user as unknown as { created_at: string }).created_at;
+    const daysSinceCreation = createdAt
+      ? Math.floor((now.getTime() - new Date(createdAt).getTime()) / (1000 * 60 * 60 * 24))
+      : undefined;
+
+    // 未報告日数
+    let unreportedDays: number | undefined;
+    if (unreported) {
+      const latestContact = [
+        lastCheckinDate ? lastCheckinDate.getTime() : 0,
+        lastMessageDate ? lastMessageDate.getTime() : 0,
+      ];
+      const lastContactTime = Math.max(...latestContact);
+      if (lastContactTime > 0) {
+        unreportedDays = Math.floor((now.getTime() - lastContactTime) / (1000 * 60 * 60 * 24));
+      }
+    }
+
     // 優先度スコア計算（改善版）
     const priorityScore = calculateInboxPriority({
       hasRisk: !!riskFlag,
@@ -298,12 +331,15 @@ export async function getInboxItems(
       isPaused: user.status === "paused",
       planPriorityLevel:
         planCode === "premium" ? 1 : planCode === "standard" ? 2 : 3,
-      // 新しいパラメータ
       hasUnrepliedMessage,
       hasSentTodayMessage: sentTodayMessage,
       lastMessageTimestamp: lastUserMsg?.created_at
         ? new Date(lastUserMsg.created_at).getTime()
         : undefined,
+      isTrial: user.status === "trial",
+      daysSinceCreation,
+      unreportedDays,
+      hadPreviousRisk: previousRiskUserIds.has(user.id),
     });
 
     const staffProfile = user.staff_profiles as unknown as { display_name: string } | null;
@@ -365,6 +401,32 @@ export async function getInboxItems(
     filteredItems = filteredItems.filter((item) => item.isUnreported);
   }
 
+  // SLAフィルタ
+  if (filters?.slaStatus && filters.slaStatus !== "all") {
+    if (filters.slaStatus === "breached") {
+      filteredItems = filteredItems.filter(
+        (item) => item.slaRemainingMinutes !== null && item.slaRemainingMinutes === 0
+      );
+    } else if (filters.slaStatus === "warning") {
+      filteredItems = filteredItems.filter(
+        (item) =>
+          item.slaRemainingMinutes !== null &&
+          item.slaRemainingMinutes > 0 &&
+          item.slaRemainingMinutes <= item.slaWarningMinutes
+      );
+    }
+  }
+
+  // 休止ユーザー除外
+  if (filters?.excludePaused) {
+    filteredItems = filteredItems.filter((item) => item.status !== "paused");
+  }
+
+  // 今日0回対応フィルタ
+  if (filters?.todaySentZero) {
+    filteredItems = filteredItems.filter((item) => item.todaySentCount === 0);
+  }
+
   // ソート
   const sortBy = filters?.sortBy ?? "priority";
   if (sortBy === "priority") {
@@ -377,6 +439,16 @@ export async function getInboxItems(
     });
   } else if (sortBy === "nickname") {
     filteredItems.sort((a, b) => a.nickname.localeCompare(b.nickname, "ja"));
+  } else if (sortBy === "unreplied_duration") {
+    filteredItems.sort((a, b) => (b.unrepliedMinutes ?? -1) - (a.unrepliedMinutes ?? -1));
+  } else if (sortBy === "today_sent_asc") {
+    filteredItems.sort((a, b) => a.todaySentCount - b.todaySentCount);
+  } else if (sortBy === "last_reply_oldest") {
+    filteredItems.sort((a, b) => {
+      const aTime = a.lastCastMessageAt ? new Date(a.lastCastMessageAt).getTime() : 0;
+      const bTime = b.lastCastMessageAt ? new Date(b.lastCastMessageAt).getTime() : 0;
+      return aTime - bTime;
+    });
   }
 
   return { ok: true, data: { items: filteredItems, summary } };
