@@ -1,6 +1,5 @@
 "use server";
 
-import { randomInt } from "crypto";
 import { revalidatePath } from "next/cache";
 import { createStaffAccountSchema, resetStaffPasswordSchema, setCastAcceptingSchema, upsertStaffProfileSchema } from "@/schemas/staff";
 import { Result, toZodErrorMessage } from "../types";
@@ -17,14 +16,30 @@ const PASSWORD_GROUPS = [
 ] as const;
 const PASSWORD_ALPHABET = PASSWORD_GROUPS.join("");
 
+function getSecureRandomInt(max: number) {
+  const cryptoApi = globalThis.crypto;
+  if (!cryptoApi?.getRandomValues) {
+    throw new Error("Secure random API is unavailable");
+  }
+
+  const limit = Math.floor(0x100000000 / max) * max;
+  const values = new Uint32Array(1);
+
+  do {
+    cryptoApi.getRandomValues(values);
+  } while (values[0] >= limit);
+
+  return values[0] % max;
+}
+
 function pickRandomChar(chars: string) {
-  return chars[randomInt(0, chars.length)];
+  return chars[getSecureRandomInt(chars.length)];
 }
 
 function shuffleString(value: string) {
   const chars = value.split("");
   for (let i = chars.length - 1; i > 0; i -= 1) {
-    const j = randomInt(0, i + 1);
+    const j = getSecureRandomInt(i + 1);
     const current = chars[i];
     chars[i] = chars[j];
     chars[j] = current;
@@ -366,87 +381,95 @@ export async function createStaffAccount(
     };
   }
 
-  // Admin用Supabaseクライアント（service_role）を使用
-  const adminSupabase = createAdminSupabaseClient();
-  const temporaryPassword = generateTemporaryPassword();
+  try {
+    // Admin用Supabaseクライアント（service_role）を使用
+    const adminSupabase = createAdminSupabaseClient();
+    const temporaryPassword = generateTemporaryPassword();
 
-  // Supabase Authでユーザー作成
-  const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
-    email: parsed.data.email,
-    password: temporaryPassword,
-    email_confirm: true,
-  });
-
-  if (authError) {
-    // メールが既に使用されている場合
-    if (isEmailConflict(authError.message)) {
-      return {
-        ok: false,
-        error: { code: "CONFLICT", message: "このメールアドレスは既に登録されています" },
-      };
-    }
-    console.error("Auth create user error:", authError);
-    return {
-      ok: false,
-      error: { code: "EXTERNAL_API_ERROR", message: "アカウントの作成に失敗しました" },
-    };
-  }
-
-  if (!authData.user) {
-    return {
-      ok: false,
-      error: { code: "UNKNOWN", message: "ユーザーの作成に失敗しました" },
-    };
-  }
-
-  // staff_profilesにレコード作成
-  const { error: profileError } = await adminSupabase
-    .from("staff_profiles")
-    .insert({
-      id: authData.user.id,
-      display_name: parsed.data.displayName,
-      role: parsed.data.role,
-      capacity_limit: parsed.data.capacityLimit ?? null,
-      active: true,
-      accepting_new_users: true,
+    // Supabase Authでユーザー作成
+    const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
+      email: parsed.data.email,
+      password: temporaryPassword,
+      email_confirm: true,
     });
 
-  if (profileError) {
-    console.error("Profile insert error:", profileError);
-    // ユーザーは作成されたがプロフィールの作成に失敗した場合
-    // ユーザーを削除してロールバック
-    await adminSupabase.auth.admin.deleteUser(authData.user.id);
+    if (authError) {
+      // メールが既に使用されている場合
+      if (isEmailConflict(authError.message)) {
+        return {
+          ok: false,
+          error: { code: "CONFLICT", message: "このメールアドレスは既に登録されています" },
+        };
+      }
+      console.error("Auth create user error:", authError);
+      return {
+        ok: false,
+        error: { code: "EXTERNAL_API_ERROR", message: "アカウントの作成に失敗しました" },
+      };
+    }
+
+    if (!authData.user) {
+      return {
+        ok: false,
+        error: { code: "UNKNOWN", message: "ユーザーの作成に失敗しました" },
+      };
+    }
+
+    // staff_profilesにレコード作成
+    const { error: profileError } = await adminSupabase
+      .from("staff_profiles")
+      .insert({
+        id: authData.user.id,
+        display_name: parsed.data.displayName,
+        role: parsed.data.role,
+        capacity_limit: parsed.data.capacityLimit ?? null,
+        active: true,
+        accepting_new_users: true,
+      });
+
+    if (profileError) {
+      console.error("Profile insert error:", profileError);
+      // ユーザーは作成されたがプロフィールの作成に失敗した場合
+      // ユーザーを削除してロールバック
+      await adminSupabase.auth.admin.deleteUser(authData.user.id);
+      return {
+        ok: false,
+        error: { code: "UNKNOWN", message: "スタッフプロフィールの作成に失敗しました" },
+      };
+    }
+
+    // 監査ログ記録
+    await writeAuditLog({
+      action: "STAFF_CREATED",
+      targetType: "staff_profiles",
+      targetId: authData.user.id,
+      success: true,
+      metadata: buildAuditMetadata({
+        email: parsed.data.email,
+        display_name: parsed.data.displayName,
+        role: parsed.data.role,
+        capacity_limit: parsed.data.capacityLimit,
+        password_generated: true,
+      }),
+    });
+
+    revalidatePath("/admin/staff");
+
+    return {
+      ok: true,
+      data: {
+        id: authData.user.id,
+        email: parsed.data.email,
+        temporaryPassword,
+      },
+    };
+  } catch (error) {
+    console.error("Staff account create unexpected error:", error);
     return {
       ok: false,
-      error: { code: "UNKNOWN", message: "スタッフプロフィールの作成に失敗しました" },
+      error: { code: "UNKNOWN", message: "アカウントの作成に失敗しました" },
     };
   }
-
-  // 監査ログ記録
-  await writeAuditLog({
-    action: "STAFF_CREATED",
-    targetType: "staff_profiles",
-    targetId: authData.user.id,
-    success: true,
-    metadata: buildAuditMetadata({
-      email: parsed.data.email,
-      display_name: parsed.data.displayName,
-      role: parsed.data.role,
-      capacity_limit: parsed.data.capacityLimit,
-      password_generated: true,
-    }),
-  });
-
-  revalidatePath("/admin/staff");
-
-  return {
-    ok: true,
-    data: {
-      id: authData.user.id,
-      email: parsed.data.email,
-      temporaryPassword,
-    },
-  };
 }
 
 // =====================================
@@ -485,52 +508,60 @@ export async function resetStaffPassword(
     };
   }
 
-  const adminSupabase = createAdminSupabaseClient();
+  try {
+    const adminSupabase = createAdminSupabaseClient();
 
-  const { data: staff, error: staffError } = await adminSupabase
-    .from("staff_profiles")
-    .select("id, display_name, role")
-    .eq("id", parsed.data.staffId)
-    .single();
+    const { data: staff, error: staffError } = await adminSupabase
+      .from("staff_profiles")
+      .select("id, display_name, role")
+      .eq("id", parsed.data.staffId)
+      .single();
 
-  if (staffError || !staff || staff.role !== "cast") {
+    if (staffError || !staff || staff.role !== "cast") {
+      return {
+        ok: false,
+        error: { code: "NOT_FOUND", message: "キャストが見つかりません" },
+      };
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+    const { error: authError } = await adminSupabase.auth.admin.updateUserById(
+      parsed.data.staffId,
+      { password: temporaryPassword }
+    );
+
+    if (authError) {
+      console.error("Auth password reset error:", authError);
+      return {
+        ok: false,
+        error: { code: "EXTERNAL_API_ERROR", message: "パスワードの再設定に失敗しました" },
+      };
+    }
+
+    await writeAuditLog({
+      action: "STAFF_PASSWORD_RESET",
+      targetType: "staff_profiles",
+      targetId: parsed.data.staffId,
+      success: true,
+      metadata: buildAuditMetadata({
+        display_name: staff.display_name,
+        role: staff.role,
+        password_generated: true,
+      }),
+    });
+
+    return {
+      ok: true,
+      data: {
+        staffId: parsed.data.staffId,
+        temporaryPassword,
+      },
+    };
+  } catch (error) {
+    console.error("Staff password reset unexpected error:", error);
     return {
       ok: false,
-      error: { code: "NOT_FOUND", message: "キャストが見つかりません" },
+      error: { code: "UNKNOWN", message: "パスワードの再設定に失敗しました" },
     };
   }
-
-  const temporaryPassword = generateTemporaryPassword();
-  const { error: authError } = await adminSupabase.auth.admin.updateUserById(
-    parsed.data.staffId,
-    { password: temporaryPassword }
-  );
-
-  if (authError) {
-    console.error("Auth password reset error:", authError);
-    return {
-      ok: false,
-      error: { code: "EXTERNAL_API_ERROR", message: "パスワードの再設定に失敗しました" },
-    };
-  }
-
-  await writeAuditLog({
-    action: "STAFF_PASSWORD_RESET",
-    targetType: "staff_profiles",
-    targetId: parsed.data.staffId,
-    success: true,
-    metadata: buildAuditMetadata({
-      display_name: staff.display_name,
-      role: staff.role,
-      password_generated: true,
-    }),
-  });
-
-  return {
-    ok: true,
-    data: {
-      staffId: parsed.data.staffId,
-      temporaryPassword,
-    },
-  };
 }

@@ -89,7 +89,10 @@ export async function uploadCastPhoto(
 ): Promise<UploadCastPhotoResult> {
   const castId = formData.get("castId") as string;
   const file = formData.get("file") as File;
-  const caption = formData.get("caption") as string | null;
+  const captionValue = formData.get("caption");
+  const caption = typeof captionValue === "string" && captionValue.trim() !== ""
+    ? captionValue.trim()
+    : undefined;
   const displayOrderStr = formData.get("displayOrder") as string | null;
   const displayOrder = displayOrderStr ? parseInt(displayOrderStr, 10) : undefined;
 
