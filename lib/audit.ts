@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "./supabase/server";
+import { createAdminSupabaseClient, createServerSupabaseClient } from "./supabase/server";
 import { logger } from "./logger";
 
 /**
@@ -91,18 +91,19 @@ export async function writeAuditLog(params: {
   required?: boolean;
 }): Promise<{ ok: true; id: string; error?: undefined } | { ok: false; id?: undefined; error: string }> {
   try {
-    const supabase = await createServerSupabaseClient();
+    const serverSupabase = await createServerSupabaseClient();
+    const adminSupabase = createAdminSupabaseClient();
 
     // actorStaffIdが指定されていない場合は現在のユーザーを取得
     let actorId = params.actorStaffId;
     if (actorId === undefined) {
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await serverSupabase.auth.getUser();
       actorId = user?.id ?? null;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
       .from("audit_logs")
       .insert({
         actor_staff_id: actorId,

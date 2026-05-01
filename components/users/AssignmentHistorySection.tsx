@@ -75,12 +75,6 @@ export function AssignmentHistorySection({ endUserId }: AssignmentHistorySection
                 </p>
               )}
 
-              {item.shadowUntil && (
-                <p className="mb-2 text-sm text-yellow-700">
-                  Shadow期間: {format(new Date(item.shadowUntil), "yyyy/MM/dd")}まで
-                </p>
-              )}
-
               <div className="flex items-center justify-between text-xs text-gray-400">
                 <span>実行者: {item.createdByName}</span>
                 <span>

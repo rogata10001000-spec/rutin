@@ -6,6 +6,204 @@ import { writeAuditLog } from "@/lib/audit";
 import { switchRichMenu } from "@/lib/line";
 import { checkRateLimit, requestKey } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import type { PayoutScopeType } from "@/lib/supabase/types";
+
+type SupabaseAdmin = ReturnType<typeof createAdminSupabaseClient>;
+
+function stripeWebhookErrorResponse(eventType: string, eventId: string, message: string) {
+  logger.error("Stripe webhook processing error", { eventType, eventId, message });
+  return Response.json(
+    { received: false, error: "processing_failed" },
+    { status: 500 }
+  );
+}
+
+function subscriptionIdFromInvoice(invoice: Stripe.Invoice): string | null {
+  const rawSubscription = (invoice as unknown as { subscription?: string | { id: string } | null })
+    .subscription;
+  if (!rawSubscription) return null;
+  return typeof rawSubscription === "string" ? rawSubscription : rawSubscription.id;
+}
+
+async function getActiveTaxRate(supabase: SupabaseAdmin) {
+  const { data: taxRate, error } = await supabase
+    .from("tax_rates")
+    .select("id, rate")
+    .eq("active", true)
+    .lte("effective_from", new Date().toISOString().split("T")[0])
+    .order("effective_from", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error || !taxRate) {
+    throw new Error("Active tax rate not found");
+  }
+
+  return taxRate;
+}
+
+async function resolveSubscriptionPayoutRule(
+  supabase: SupabaseAdmin,
+  castId: string,
+  planCode: string,
+  occurredOn: string
+) {
+  const candidates: Array<{
+    scope_type: PayoutScopeType;
+    cast_id: string | null;
+    plan_code: string | null;
+  }> = [
+    { scope_type: "cast_plan", cast_id: castId, plan_code: planCode },
+    { scope_type: "cast", cast_id: castId, plan_code: null },
+    { scope_type: "global", cast_id: null, plan_code: null },
+  ];
+
+  for (const candidate of candidates) {
+    let query = supabase
+      .from("payout_rules")
+      .select("id, percent")
+      .eq("rule_type", "subscription_share")
+      .eq("scope_type", candidate.scope_type)
+      .eq("active", true)
+      .lte("effective_from", occurredOn)
+      .or(`effective_to.is.null,effective_to.gte.${occurredOn}`)
+      .order("effective_from", { ascending: false })
+      .limit(1);
+
+    query =
+      candidate.cast_id === null
+        ? query.is("cast_id", null)
+        : query.eq("cast_id", candidate.cast_id);
+
+    query =
+      candidate.plan_code === null
+        ? query.is("plan_code", null)
+        : query.eq("plan_code", candidate.plan_code);
+
+    const { data: rule } = await query.single();
+    if (rule) return rule;
+  }
+
+  throw new Error("Subscription payout rule not found");
+}
+
+async function recognizeSubscriptionRevenue(supabase: SupabaseAdmin, invoice: Stripe.Invoice) {
+  const subscriptionId = subscriptionIdFromInvoice(invoice);
+  if (!subscriptionId) {
+    return { skipped: true, reason: "invoice has no subscription" };
+  }
+
+  const amountInclTax = invoice.amount_paid ?? 0;
+  if (amountInclTax <= 0) {
+    return { skipped: true, reason: "invoice amount is zero" };
+  }
+
+  const { data: subscription } = await supabase
+    .from("subscriptions")
+    .select("id, end_user_id, plan_code, end_users!inner(assigned_cast_id)")
+    .eq("stripe_subscription_id", subscriptionId)
+    .single();
+
+  if (!subscription) {
+    throw new Error(`Subscription not found for invoice: ${invoice.id}`);
+  }
+
+  const endUser = subscription.end_users as unknown as { assigned_cast_id: string | null };
+  const castId = endUser.assigned_cast_id;
+  if (!castId) {
+    throw new Error(`Assigned cast not found for subscription: ${subscription.id}`);
+  }
+
+  const occurredOn = new Date((invoice.created ?? Math.floor(Date.now() / 1000)) * 1000)
+    .toISOString()
+    .split("T")[0];
+  const taxRate = await getActiveTaxRate(supabase);
+  const taxRateValue = Number(taxRate.rate);
+  const amountExclTax = Math.floor(amountInclTax / (1 + taxRateValue));
+  const taxJpy = amountInclTax - amountExclTax;
+
+  let revenueEventId: string | null = null;
+  const { data: insertedRevenue, error: revenueError } = await supabase
+    .from("revenue_events")
+    .insert({
+      event_type: "subscription_monthly",
+      end_user_id: subscription.end_user_id,
+      cast_id: castId,
+      occurred_on: occurredOn,
+      amount_excl_tax_jpy: amountExclTax,
+      tax_rate_id: taxRate.id,
+      tax_jpy: taxJpy,
+      amount_incl_tax_jpy: amountInclTax,
+      source_ref_type: "stripe_invoice",
+      source_ref_id: invoice.id,
+      metadata: {
+        stripe_invoice_id: invoice.id,
+        stripe_subscription_id: subscriptionId,
+        plan_code: subscription.plan_code,
+      },
+    })
+    .select("id")
+    .single();
+
+  if (revenueError) {
+    if (revenueError.code !== "23505") {
+      throw new Error(`Failed to create revenue event: ${revenueError.message}`);
+    }
+
+    const { data: existingRevenue } = await supabase
+      .from("revenue_events")
+      .select("id")
+      .eq("event_type", "subscription_monthly")
+      .eq("source_ref_type", "stripe_invoice")
+      .eq("source_ref_id", invoice.id)
+      .single();
+    revenueEventId = existingRevenue?.id ?? null;
+  } else {
+    revenueEventId = insertedRevenue.id;
+  }
+
+  if (!revenueEventId) {
+    throw new Error("Revenue event lookup failed");
+  }
+
+  const payoutRule = await resolveSubscriptionPayoutRule(
+    supabase,
+    castId,
+    subscription.plan_code,
+    occurredOn
+  );
+  const payoutAmount = Math.floor((amountExclTax * Number(payoutRule.percent)) / 100);
+
+  const { error: payoutError } = await supabase.from("payout_calculations").insert({
+    revenue_event_id: revenueEventId,
+    cast_id: castId,
+    rule_id: payoutRule.id,
+    percent_snapshot: payoutRule.percent,
+    amount_jpy: payoutAmount,
+  });
+
+  if (payoutError && payoutError.code !== "23505") {
+    throw new Error(`Failed to create payout calculation: ${payoutError.message}`);
+  }
+
+  await writeAuditLog({
+    action: "SUBSCRIPTION_SYNC",
+    targetType: "revenue_events",
+    targetId: revenueEventId,
+    success: true,
+    metadata: {
+      event: "invoice.paid",
+      stripe_invoice_id: invoice.id,
+      amount_incl_tax_jpy: amountInclTax,
+      amount_excl_tax_jpy: amountExclTax,
+      payout_amount_jpy: payoutAmount,
+      payout_percent: payoutRule.percent,
+    },
+    actorStaffId: null,
+  });
+
+  return { revenueEventId, payoutAmount };
+}
 
 export async function POST(request: Request) {
   const allowed = checkRateLimit({
@@ -151,60 +349,14 @@ export async function POST(request: Request) {
       // ポイント購入完了
       // --------------------------------------------------
       if (type === "point_purchase") {
-        const lineUserId = metadata.line_user_id;
-        const productId = metadata.product_id;
-        const points = parseInt(metadata.points ?? "0", 10);
-
-        if (!lineUserId || !productId || !points) {
-          throw new Error("Missing metadata for point purchase");
-        }
-
-        // end_user取得
-        const { data: user } = await supabase
-          .from("end_users")
-          .select("id")
-          .eq("line_user_id", lineUserId)
-          .single();
-
-        if (!user) {
-          throw new Error("User not found for point purchase");
-        }
-
-        // ポイント台帳に追加（冪等: unique制約で重複防止）
-        const { error: ledgerError } = await supabase.from("user_point_ledger").insert({
-          end_user_id: user.id,
-          delta_points: points,
-          reason: "purchase",
-          ref_type: "stripe_checkout",
-          ref_id: session.id,
-        });
-
-        if (ledgerError && ledgerError.code !== "23505") {
-          throw new Error(`Failed to add points: ${ledgerError.message}`);
-        }
-
-        // 監査ログ
-        await writeAuditLog({
-          action: "POINT_PURCHASE_CONFIRMED",
-          targetType: "user_point_ledger",
-          targetId: session.id,
-          success: true,
-          metadata: {
-            line_user_id: lineUserId,
-            product_id: productId,
-            points,
-          },
-          actorStaffId: null,
-        });
-
-        return { type: "point_purchase", userId: user.id, points };
+        return { skipped: true, reason: "point purchase disabled for MVP" };
       }
 
       return { type: "unknown" };
     });
 
     if (result.status === "error") {
-      logger.error("Stripe webhook checkout error", { message: result.message, eventId });
+      return stripeWebhookErrorResponse(eventType, eventId, result.message);
     }
   }
 
@@ -352,7 +504,7 @@ export async function POST(request: Request) {
     });
 
     if (result.status === "error") {
-      logger.error("Stripe webhook subscription update error", { message: result.message, eventId });
+      return stripeWebhookErrorResponse(eventType, eventId, result.message);
     }
   }
 
@@ -400,7 +552,22 @@ export async function POST(request: Request) {
     });
 
     if (result.status === "error") {
-      logger.error("Stripe webhook subscription delete error", { message: result.message, eventId });
+      return stripeWebhookErrorResponse(eventType, eventId, result.message);
+    }
+  }
+
+  // =====================================================
+  // invoice.paid - サブスク売上認識・配分計算
+  // =====================================================
+  if (eventType === "invoice.paid") {
+    const invoice = event.data.object as Stripe.Invoice;
+
+    const result = await withWebhookIdempotency("stripe", eventId, eventType, async () =>
+      recognizeSubscriptionRevenue(supabase, invoice)
+    );
+
+    if (result.status === "error") {
+      return stripeWebhookErrorResponse(eventType, eventId, result.message);
     }
   }
 
@@ -411,7 +578,7 @@ export async function POST(request: Request) {
     const invoice = event.data.object as Stripe.Invoice;
 
     const result = await withWebhookIdempotency("stripe", eventId, eventType, async () => {
-      const subscriptionId = invoice.subscription as string | null;
+      const subscriptionId = subscriptionIdFromInvoice(invoice);
       if (!subscriptionId) {
         return { skipped: true };
       }
@@ -451,7 +618,7 @@ export async function POST(request: Request) {
     });
 
     if (result.status === "error") {
-      logger.error("Stripe webhook payment failed error", { message: result.message, eventId });
+      return stripeWebhookErrorResponse(eventType, eventId, result.message);
     }
   }
 
@@ -462,53 +629,13 @@ export async function POST(request: Request) {
     const charge = event.data.object as Stripe.Charge;
 
     const result = await withWebhookIdempotency("stripe", eventId, eventType, async () => {
-      // ポイント購入の返金の場合、台帳から相殺
+      // ポイント/ギフトはMVP対象外のため、返金台帳処理は行わない
       const metadata = charge.metadata ?? {};
-      if (metadata.type !== "point_purchase") {
-        return { skipped: true, reason: "Not a point purchase" };
-      }
-
-      const lineUserId = metadata.line_user_id;
-      const points = parseInt(metadata.points ?? "0", 10);
-
-      const { data: user } = await supabase
-        .from("end_users")
-        .select("id")
-        .eq("line_user_id", lineUserId)
-        .single();
-
-      if (!user || !points) {
-        return { skipped: true };
-      }
-
-      // 相殺エントリ
-      const { error: ledgerError } = await supabase.from("user_point_ledger").insert({
-        end_user_id: user.id,
-        delta_points: -points,
-        reason: "refund",
-        ref_type: "stripe_charge_refund",
-        ref_id: charge.id,
-      });
-
-      if (ledgerError && ledgerError.code !== "23505") {
-        throw new Error(`Failed to process refund: ${ledgerError.message}`);
-      }
-
-      // 監査ログ
-      await writeAuditLog({
-        action: "REFUND_OR_CHARGEBACK_HANDLED",
-        targetType: "user_point_ledger",
-        targetId: charge.id,
-        success: true,
-        metadata: { reason: "refund", points: -points },
-        actorStaffId: null,
-      });
-
-      return { refunded: true, points: -points };
+      return { skipped: true, reason: `${metadata.type ?? "unknown"} refund disabled for MVP` };
     });
 
     if (result.status === "error") {
-      logger.error("Stripe webhook refund error", { message: result.message, eventId });
+      return stripeWebhookErrorResponse(eventType, eventId, result.message);
     }
   }
 

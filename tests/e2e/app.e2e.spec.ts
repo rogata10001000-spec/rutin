@@ -6,15 +6,17 @@ import { test, expect } from "@playwright/test";
 
 test.describe("認証", () => {
   test("E2E-001 認証成功: 有効スタッフでログイン → /inbox へ遷移", async ({ page }) => {
+    test.skip(
+      !process.env.TEST_STAFF_EMAIL || !process.env.TEST_STAFF_PASSWORD,
+      "TEST_STAFF_EMAIL と TEST_STAFF_PASSWORD が必要です"
+    );
+
     await page.goto("/login");
-    await page.fill('input[name="email"]', process.env.TEST_STAFF_EMAIL ?? "admin@example.com");
-    await page.fill('input[name="password"]', process.env.TEST_STAFF_PASSWORD ?? "password");
+    await page.fill('input[name="email"]', process.env.TEST_STAFF_EMAIL!);
+    await page.fill('input[name="password"]', process.env.TEST_STAFF_PASSWORD!);
     await page.click('button[type="submit"]');
 
-    // ログイン処理を待つ
-    await page.waitForURL(/\/inbox/, { timeout: 10000 }).catch(() => {
-      // ログインが失敗した場合はスキップ（テスト環境依存）
-    });
+    await page.waitForURL(/\/inbox/, { timeout: 10000 });
   });
 
   test("E2E-002 認証失敗: 誤PWでエラー表示", async ({ page }) => {
@@ -23,10 +25,7 @@ test.describe("認証", () => {
     await page.fill('input[name="password"]', "wrongpassword");
     await page.click('button[type="submit"]');
 
-    // エラーメッセージが表示される
-    await expect(page.locator("text=正しくありません")).toBeVisible({ timeout: 5000 }).catch(() => {
-      // テスト環境依存
-    });
+    await expect(page.locator("text=正しくありません")).toBeVisible({ timeout: 5000 });
   });
 
   test("E2E-003 ガード: 未ログインで /inbox → /login リダイレクト", async ({ page }) => {
@@ -170,7 +169,7 @@ test.describe("Shadow", () => {
 
   test("E2E-061 送信禁止ガード: セッションなしで送信不可", async ({ page }) => {
     await page.goto("/gift");
-    await expect(page.locator("text=認証エラー")).toBeVisible();
+    await expect(page.locator("text=ギフト機能は準備中です")).toBeVisible();
   });
 });
 
@@ -226,14 +225,14 @@ test.describe("ポイント/ギフト", () => {
     expect(await page.title()).toBeTruthy();
   });
 
-  test("E2E-092 ポイント購入ガード: セッションなしは認証エラー", async ({ page }) => {
+  test("E2E-092 ポイント購入: MVP対象外表示", async ({ page }) => {
     await page.goto("/points");
-    await expect(page.locator("text=認証エラー")).toBeVisible();
+    await expect(page.locator("text=ポイント購入は準備中です")).toBeVisible();
   });
 
-  test("E2E-093 ギフト認証不足: セッションなしは拒否", async ({ page }) => {
+  test("E2E-093 ギフト: MVP対象外表示", async ({ page }) => {
     await page.goto("/gift");
-    await expect(page.locator("text=認証エラー")).toBeVisible();
+    await expect(page.locator("text=ギフト機能は準備中です")).toBeVisible();
   });
 
   test("E2E-094 Webhook署名検証: 署名なしPOSTは拒否", async ({ request }) => {
@@ -332,12 +331,16 @@ test.describe("サブスクリプション導線", () => {
   test("E2E-120 サブスク導線: /subscribe → /subscribe/cast", async ({ page }) => {
     await page.goto("/subscribe");
     await page.waitForURL(/\/subscribe\/cast/);
-    await expect(page.locator("h1")).toContainText("キャスト選択");
+    await expect(
+      page.getByText("相談員を選ぶ").or(page.getByText("現在、新規受付中のキャストがいません。"))
+    ).toBeVisible();
   });
 
   test("E2E-120-cast キャスト選択ページ表示", async ({ page }) => {
     await page.goto("/subscribe/cast");
-    await expect(page.locator("h1")).toContainText("キャスト選択");
+    await expect(
+      page.getByText("相談員を選ぶ").or(page.getByText("現在、新規受付中のキャストがいません。"))
+    ).toBeVisible();
   });
 
   test("E2E-121 プラン選択: castIdなしでエラーメッセージ", async ({ page }) => {
@@ -358,12 +361,14 @@ test.describe("サブスクリプション導線", () => {
 
   test("E2E-123 契約完了ページ表示", async ({ page }) => {
     await page.goto("/subscribe/complete");
-    await expect(page.locator("h1")).toContainText("契約ありがとうございます");
+    await expect(page.locator("h1")).toContainText("契約確認ができません");
   });
 
   test("E2E-124 キャスト選択: 一覧表示", async ({ page }) => {
     await page.goto("/subscribe/cast");
-    await expect(page.locator("h1")).toContainText("キャスト選択");
+    await expect(
+      page.getByText("相談員を選ぶ").or(page.getByText("現在、新規受付中のキャストがいません。"))
+    ).toBeVisible();
   });
 
   test("E2E-125 プラン選択: castIdなしはエラー表示", async ({ page }) => {

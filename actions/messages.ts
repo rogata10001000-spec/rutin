@@ -8,12 +8,6 @@ import { canSendMessage, requireAdminOrSupervisor } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { pushTextMessage } from "@/lib/line";
 
-const planSlaConfig: Record<string, number> = {
-  light: 1440,
-  standard: 720,
-  premium: 120,
-};
-
 async function recordResponseMetric(
   endUserId: string,
   staffId: string,
@@ -29,7 +23,12 @@ async function recordResponseMetric(
       .single();
 
     const planCode = user?.plan_code ?? "standard";
-    const slaMinutes = planSlaConfig[planCode] ?? 720;
+    const { data: plan } = await supabase
+      .from("plans")
+      .select("reply_sla_minutes")
+      .eq("plan_code", planCode)
+      .single();
+    const slaMinutes = plan?.reply_sla_minutes ?? 720;
 
     const { data: lastInMsg } = await supabase
       .from("messages")

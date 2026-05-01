@@ -1,4 +1,43 @@
-export default function SubscribeCompletePage() {
+import { retrieveCheckoutSession } from "@/lib/stripe";
+
+type PageProps = {
+  searchParams?: Promise<{ session_id?: string }>;
+};
+
+export default async function SubscribeCompletePage({ searchParams }: PageProps) {
+  const params = await searchParams;
+  const sessionId = params?.session_id;
+
+  if (!sessionId) {
+    return (
+      <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-12 text-center">
+        <h1 className="text-2xl font-bold text-gray-900">契約確認ができません</h1>
+        <p className="mt-3 text-sm text-gray-600">
+          決済完了後のURLからアクセスしてください。
+        </p>
+      </main>
+    );
+  }
+
+  let verified = false;
+  try {
+    const session = await retrieveCheckoutSession(sessionId);
+    verified = session.mode === "subscription" && session.payment_status !== "unpaid";
+  } catch {
+    verified = false;
+  }
+
+  if (!verified) {
+    return (
+      <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-12 text-center">
+        <h1 className="text-2xl font-bold text-gray-900">契約確認中です</h1>
+        <p className="mt-3 text-sm text-gray-600">
+          決済情報を確認できませんでした。LINEに戻って、しばらくしてからお問い合わせください。
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-12 text-center">
       <div className="mb-6 rounded-full bg-indigo-100 p-4">

@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { AiDraftButton } from "./AiDraftButton";
 import { BirthdayWidget } from "./BirthdayWidget";
-import { ShadowDraftButton } from "./ShadowDraftButton";
 import { TemplateSelector } from "./TemplateSelector";
 import { SaveStatus } from "@/components/common/SaveStatus";
 import { useKeyboardShortcut } from "@/hooks/useKeyboardShortcut";
@@ -14,7 +13,6 @@ type MessageComposerProps = {
   proxyMode: boolean;
   endUserId: string;
   showBirthdayWidget?: boolean;
-  showShadowDraft?: boolean;
 };
 
 // localStorage key for draft
@@ -26,7 +24,6 @@ export function MessageComposer({
   proxyMode,
   endUserId,
   showBirthdayWidget = true,
-  showShadowDraft = true,
 }: MessageComposerProps) {
   const [body, setBody] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -118,15 +115,6 @@ export function MessageComposer({
         <BirthdayWidget
           endUserId={endUserId}
           onInsertTemplate={(text) => setBody(text)}
-        />
-      )}
-
-      {/* Shadow Draft (for shadow period casts) */}
-      {showShadowDraft && (
-        <ShadowDraftButton
-          endUserId={endUserId}
-          currentBody={body}
-          onClearBody={() => setBody("")}
         />
       )}
 

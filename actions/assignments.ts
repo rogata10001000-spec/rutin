@@ -213,7 +213,7 @@ export async function assignCast(input: AssignCastInput): Promise<AssignCastResu
       from_cast_id: fromCastId,
       to_cast_id: parsed.data.toCastId,
       reason: parsed.data.reason,
-      shadow_until: parsed.data.shadowUntil ?? null,
+      shadow_until: null,
       created_by: auth.id,
     })
     .select("id")
@@ -250,7 +250,6 @@ export async function assignCast(input: AssignCastInput): Promise<AssignCastResu
         end_user_id: user.id,
         from_cast_id: fromCastId,
         to_cast_id: parsed.data.toCastId,
-        shadow_until: parsed.data.shadowUntil,
       },
       { reason: parsed.data.reason }
     ),
@@ -273,69 +272,15 @@ export type CreateShadowDraftResult = Result<{ draftId: string }>;
 
 /**
  * Shadow下書き作成
- * 権限: Shadow期間中のCastのみ
+ * MVP対象外のため無効
  */
 export async function createShadowDraft(
-  input: CreateShadowDraftInput
+  _input: CreateShadowDraftInput
 ): Promise<CreateShadowDraftResult> {
-  if (!input.body?.trim()) {
-    return {
-      ok: false,
-      error: { code: "ZOD_ERROR", message: "本文を入力してください" },
-    };
-  }
-
-  // 権限チェック（Shadow期間中のみ）
-  const access = await canAccessUser(input.endUserId);
-  if (!access) {
-    return {
-      ok: false,
-      error: { code: "FORBIDDEN", message: "このユーザーへのアクセス権限がありません" },
-    };
-  }
-
-  // Shadowでなければ下書きを作成する理由がない（通常送信すべき）
-  if (!access.isShadow) {
-    return {
-      ok: false,
-      error: { code: "FORBIDDEN", message: "Shadow期間中のみ下書きを作成できます" },
-    };
-  }
-
-  const supabase = await createServerSupabaseClient();
-
-  const { data: draft, error } = await supabase
-    .from("shadow_drafts")
-    .insert({
-      end_user_id: input.endUserId,
-      created_by: access.id,
-      body: input.body.trim(),
-    })
-    .select("id")
-    .single();
-
-  if (error) {
-    return {
-      ok: false,
-      error: { code: "UNKNOWN", message: "下書きの保存に失敗しました" },
-    };
-  }
-
-  // 監査ログ
-  await writeAuditLog({
-    action: "CREATE_SHADOW_DRAFT",
-    targetType: "shadow_drafts",
-    targetId: draft.id,
-    success: true,
-    metadata: {
-      end_user_id: input.endUserId,
-      body_length: input.body.length,
-    },
-  });
-
-  revalidatePath(`/chat/${input.endUserId}`);
-
-  return { ok: true, data: { draftId: draft.id } };
+  return {
+    ok: false,
+    error: { code: "FORBIDDEN", message: "Shadow下書きはMVP対象外です" },
+  };
 }
 
 export type ShadowDraft = {
@@ -359,37 +304,7 @@ export async function getShadowDrafts(endUserId: string): Promise<GetShadowDraft
     };
   }
 
-  const supabase = await createServerSupabaseClient();
-
-  const { data: drafts, error } = await supabase
-    .from("shadow_drafts")
-    .select(`
-      id,
-      body,
-      created_at,
-      staff_profiles!shadow_drafts_created_by_fkey (
-        display_name
-      )
-    `)
-    .eq("end_user_id", endUserId)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  if (error) {
-    return {
-      ok: false,
-      error: { code: "UNKNOWN", message: "下書きの取得に失敗しました" },
-    };
-  }
-
-  const items: ShadowDraft[] = (drafts ?? []).map((d) => ({
-    id: d.id,
-    body: d.body,
-    createdByName: (d.staff_profiles as unknown as { display_name: string } | null)?.display_name ?? "不明",
-    createdAt: d.created_at,
-  }));
-
-  return { ok: true, data: { drafts: items } };
+  return { ok: true, data: { drafts: [] } };
 }
 
 export type CheckShadowAccessResult = Result<{ isShadow: boolean; shadowUntil: string | null }>;
@@ -406,23 +321,8 @@ export async function checkShadowAccess(endUserId: string): Promise<CheckShadowA
     };
   }
 
-  const supabase = await createServerSupabaseClient();
-
-  // 最新のassignment（to_cast_idが現在のスタッフではない場合）を確認
-  const { data: assignment } = await supabase
-    .from("cast_assignments")
-    .select("shadow_until, to_cast_id")
-    .eq("end_user_id", endUserId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
-
-  // Shadow期間中かどうか
-  const isShadow = access.isShadow;
-  const shadowUntil = assignment?.shadow_until ?? null;
-
   return {
     ok: true,
-    data: { isShadow, shadowUntil },
+    data: { isShadow: false, shadowUntil: null },
   };
 }

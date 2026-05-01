@@ -101,6 +101,12 @@ export async function createSubscriptionCheckout(params: {
   return { url: session.url, sessionId: session.id };
 }
 
+export async function retrieveCheckoutSession(sessionId: string) {
+  return stripe.checkout.sessions.retrieve(sessionId, {
+    expand: ["subscription"],
+  });
+}
+
 /**
  * Checkout Session作成（ポイント購入用）
  */

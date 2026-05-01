@@ -41,21 +41,9 @@ const PricingIcon = () => (
   </svg>
 );
 
-const GiftIcon = () => (
-  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
-  </svg>
-);
-
 const SettlementIcon = () => (
   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-  </svg>
-);
-
-const AnalyticsIcon = () => (
-  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
   </svg>
 );
 
@@ -127,12 +115,6 @@ const navItems: NavItem[] = [
     roles: ["admin"],
   },
   {
-    name: "ギフト管理",
-    href: "/admin/gifts",
-    icon: <GiftIcon />,
-    roles: ["admin"],
-  },
-  {
     name: "プラン管理",
     href: "/admin/plans",
     icon: <PlanIcon />,
@@ -149,12 +131,6 @@ const navItems: NavItem[] = [
     href: "/admin/settlements",
     icon: <SettlementIcon />,
     roles: ["admin"],
-  },
-  {
-    name: "アナリティクス",
-    href: "/admin/analytics",
-    icon: <AnalyticsIcon />,
-    roles: ["admin", "supervisor"],
   },
   {
     name: "Webhook監視",
@@ -179,8 +155,6 @@ const navItems: NavItem[] = [
 export function SideNav({ role, isOpen, onClose }: SideNavProps) {
   const pathname = usePathname();
 
-  const filteredItems = navItems.filter((item) => item.roles.includes(item.roles.includes(role) ? role : "admin")); // Fix: Logic check, simplified below
-  // Correct logic:
   const itemsToShow = navItems.filter((item) => item.roles.includes(role));
 
   return (

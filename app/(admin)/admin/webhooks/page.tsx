@@ -37,7 +37,7 @@ export default async function WebhooksPage({
 
       {/* Stats Cards */}
       {statsResult.ok && (
-        <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        <div className="mb-6 grid gap-4 sm:grid-cols-4">
           <div className="rounded-lg border bg-white p-4">
             <h3 className="text-sm font-medium text-gray-500">今日の処理</h3>
             <p className="mt-2 text-2xl font-bold text-gray-900">
@@ -78,6 +78,15 @@ export default async function WebhooksPage({
                 : 100}
               %
             </p>
+          </div>
+          <div className="rounded-lg border bg-white p-4">
+            <h3 className="text-sm font-medium text-gray-500">要対応</h3>
+            <p className={`mt-2 text-2xl font-bold ${
+              statsResult.data.needsAttention > 0 ? "text-red-600" : "text-gray-900"
+            }`}>
+              {statsResult.data.needsAttention}
+            </p>
+            <p className="mt-1 text-sm text-gray-500">失敗または再処理待ち</p>
           </div>
         </div>
       )}

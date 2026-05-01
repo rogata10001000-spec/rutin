@@ -3,6 +3,7 @@ import { getUserDetail, updateEndUser } from "@/actions/users";
 import { BadgePlan, BadgeStatus } from "@/components/common/Badge";
 import { UserDetailCards } from "@/components/users/UserDetailCards";
 import { UserDetailActions } from "@/components/users/UserDetailActions";
+import { getCurrentStaff } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,8 @@ export default async function UserDetailPage({
   }
 
   const user = result.data;
+  const staff = await getCurrentStaff();
+  const canManageUser = staff?.role === "admin" || staff?.role === "supervisor";
 
   return (
     <div>
@@ -46,11 +49,11 @@ export default async function UserDetailPage({
             )}
           </div>
         </div>
-        <UserDetailActions user={user} />
+        <UserDetailActions user={user} canManage={canManageUser} />
       </div>
 
       {/* 詳細カード */}
-      <UserDetailCards user={user} onUpdateUser={updateEndUser} />
+      <UserDetailCards user={user} onUpdateUser={canManageUser ? updateEndUser : undefined} />
     </div>
   );
 }

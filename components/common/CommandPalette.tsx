@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useKeyboardShortcut } from "@/hooks/useKeyboardShortcut";
+import type { StaffRole } from "@/lib/supabase/types";
 
 type Command = {
   id: string;
@@ -12,28 +13,29 @@ type Command = {
   action?: () => void;
   icon: string;
   keywords?: string[];
+  roles?: StaffRole[];
 };
 
 const defaultCommands: Command[] = [
   // ナビゲーション
-  { id: "inbox", label: "インボックス", path: "/inbox", icon: "📥", keywords: ["inbox", "未返信", "対応"] },
-  { id: "users", label: "ユーザー一覧", path: "/users", icon: "👥", keywords: ["user", "ユーザー", "一覧"] },
-  { id: "audit", label: "監査ログ", path: "/admin/audit", icon: "📋", keywords: ["audit", "監査", "ログ"] },
-  { id: "staff", label: "スタッフ管理", path: "/admin/staff", icon: "👤", keywords: ["staff", "スタッフ"] },
-  { id: "pricing", label: "価格設定", path: "/admin/pricing", icon: "💰", keywords: ["price", "価格", "料金"] },
-  { id: "settlements", label: "精算", path: "/admin/settlements", icon: "💵", keywords: ["settlement", "精算", "支払い"] },
-  { id: "payout-rules", label: "配分ルール", path: "/admin/payout-rules", icon: "📊", keywords: ["payout", "配分", "ルール"] },
-  { id: "gifts", label: "ギフト管理", path: "/admin/gifts", icon: "🎁", keywords: ["gift", "ギフト", "ポイント"] },
-  { id: "plans", label: "プラン管理", path: "/admin/plans", icon: "📝", keywords: ["plan", "プラン"] },
-  { id: "tax-rates", label: "税率管理", path: "/admin/tax-rates", icon: "🧾", keywords: ["tax", "税率"] },
-  { id: "webhooks", label: "Webhook履歴", path: "/admin/webhooks", icon: "🔗", keywords: ["webhook", "ウェブフック"] },
+  { id: "inbox", label: "インボックス", path: "/inbox", icon: "📥", keywords: ["inbox", "未返信", "対応"], roles: ["admin", "supervisor", "cast"] },
+  { id: "users", label: "ユーザー一覧", path: "/users", icon: "👥", keywords: ["user", "ユーザー", "一覧"], roles: ["admin", "supervisor", "cast"] },
+  { id: "audit", label: "監査ログ", path: "/admin/audit", icon: "📋", keywords: ["audit", "監査", "ログ"], roles: ["admin", "supervisor"] },
+  { id: "staff", label: "スタッフ管理", path: "/admin/staff", icon: "👤", keywords: ["staff", "スタッフ"], roles: ["admin"] },
+  { id: "pricing", label: "価格設定", path: "/admin/pricing", icon: "💰", keywords: ["price", "価格", "料金"], roles: ["admin"] },
+  { id: "settlements", label: "精算", path: "/admin/settlements", icon: "💵", keywords: ["settlement", "精算", "支払い"], roles: ["admin"] },
+  { id: "payout-rules", label: "配分ルール", path: "/admin/payout-rules", icon: "📊", keywords: ["payout", "配分", "ルール"], roles: ["admin"] },
+  { id: "plans", label: "プラン管理", path: "/admin/plans", icon: "📝", keywords: ["plan", "プラン"], roles: ["admin"] },
+  { id: "tax-rates", label: "税率管理", path: "/admin/tax-rates", icon: "🧾", keywords: ["tax", "税率"], roles: ["admin"] },
+  { id: "webhooks", label: "Webhook履歴", path: "/admin/webhooks", icon: "🔗", keywords: ["webhook", "ウェブフック"], roles: ["admin", "supervisor"] },
 ];
 
 type CommandPaletteProps = {
+  role: StaffRole;
   additionalCommands?: Command[];
 };
 
-export function CommandPalette({ additionalCommands = [] }: CommandPaletteProps) {
+export function CommandPalette({ role, additionalCommands = [] }: CommandPaletteProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -41,7 +43,9 @@ export function CommandPalette({ additionalCommands = [] }: CommandPaletteProps)
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const commands = [...defaultCommands, ...additionalCommands];
+  const commands = [...defaultCommands, ...additionalCommands].filter(
+    (command) => !command.roles || command.roles.includes(role)
+  );
 
   // フィルタリング
   const filteredCommands = query

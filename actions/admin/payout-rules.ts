@@ -14,9 +14,10 @@ import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 export type PayoutRule = {
   id: string;
   ruleType: string;
-  scopeType: "global" | "cast";
+  scopeType: "global" | "cast" | "cast_plan";
   castId: string | null;
   castName: string | null;
+  planCode: string | null;
   percent: number;
   effectiveFrom: string;
   effectiveTo: string | null;
@@ -46,6 +47,7 @@ export async function getPayoutRules(): Promise<GetPayoutRulesResult> {
       rule_type,
       scope_type,
       cast_id,
+      plan_code,
       percent,
       effective_from,
       effective_to,
@@ -67,9 +69,10 @@ export async function getPayoutRules(): Promise<GetPayoutRulesResult> {
   const items: PayoutRule[] = (data ?? []).map((row) => ({
     id: row.id,
     ruleType: row.rule_type,
-    scopeType: row.scope_type as "global" | "cast",
+    scopeType: row.scope_type as "global" | "cast" | "cast_plan",
     castId: row.cast_id,
     castName: (row.staff_profiles as unknown as { display_name: string } | null)?.display_name ?? null,
+    planCode: row.plan_code,
     percent: row.percent,
     effectiveFrom: row.effective_from,
     effectiveTo: row.effective_to,
@@ -84,9 +87,10 @@ export async function getPayoutRules(): Promise<GetPayoutRulesResult> {
 // =====================================
 
 export type UpsertPayoutRuleInput = {
-  ruleType: "gift_share";
-  scopeType: "global" | "cast";
+  ruleType: "subscription_share" | "gift_share";
+  scopeType: "global" | "cast" | "cast_plan";
   castId?: string;
+  planCode?: "light" | "standard" | "premium";
   percent: number;
   effectiveFrom: string;
   active: boolean;
@@ -118,9 +122,11 @@ export async function upsertPayoutRule(
 
   const supabase = await createServerSupabaseClient();
 
-  // scopeType=globalの場合、cast_idはnull
-  // scopeType=castでもcastIdが未定義の場合はnullを使用
-  const castId = parsed.data.scopeType === "cast" ? (parsed.data.castId ?? null) : null;
+  const castId =
+    parsed.data.scopeType === "cast" || parsed.data.scopeType === "cast_plan"
+      ? (parsed.data.castId ?? null)
+      : null;
+  const planCode = parsed.data.scopeType === "cast_plan" ? (parsed.data.planCode ?? null) : null;
 
   const { data, error } = await supabase
     .from("payout_rules")
@@ -128,6 +134,7 @@ export async function upsertPayoutRule(
       rule_type: parsed.data.ruleType,
       scope_type: parsed.data.scopeType,
       cast_id: castId,
+      plan_code: planCode,
       percent: parsed.data.percent,
       effective_from: parsed.data.effectiveFrom,
       active: parsed.data.active,

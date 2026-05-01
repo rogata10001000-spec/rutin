@@ -83,6 +83,7 @@ export type WebhookStats = {
   totalWeek: number;
   successWeek: number;
   failedWeek: number;
+  needsAttention: number;
 };
 
 export type GetWebhookStatsResult = Result<WebhookStats>;
@@ -102,9 +103,8 @@ export async function getWebhookStats(): Promise<GetWebhookStatsResult> {
   const supabase = await createServerSupabaseClient();
 
   // 今日のJST開始
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayStr = todayStart.toISOString();
+  const todayJst = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+  const todayStr = new Date(`${todayJst}T00:00:00+09:00`).toISOString();
 
   // 一週間前
   const weekAgo = new Date();
@@ -136,6 +136,11 @@ export async function getWebhookStats(): Promise<GetWebhookStatsResult> {
     .gte("received_at", weekAgoStr)
     .eq("success", true);
 
+  const { count: needsAttention } = await supabase
+    .from("webhook_events")
+    .select("id", { count: "exact", head: true })
+    .eq("success", false);
+
   return {
     ok: true,
     data: {
@@ -145,6 +150,7 @@ export async function getWebhookStats(): Promise<GetWebhookStatsResult> {
       totalWeek: totalWeek ?? 0,
       successWeek: successWeek ?? 0,
       failedWeek: (totalWeek ?? 0) - (successWeek ?? 0),
+      needsAttention: needsAttention ?? 0,
     },
   };
 }

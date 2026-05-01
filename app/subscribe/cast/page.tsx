@@ -1,7 +1,9 @@
 import { listAvailableCasts } from "../../../actions/subscriptions";
 import { CastList } from "../../../components/cast/CastList";
+import { getUserFromServerCookies } from "@/lib/auth";
 
 export default async function SubscribeCastPage() {
+  const userToken = await getUserFromServerCookies();
   const result = await listAvailableCasts({});
 
   if (!result.ok) {
@@ -69,6 +71,12 @@ export default async function SubscribeCastPage() {
               </button>
             </div>
           </div>
+
+          {!userToken.ok && (
+            <div className="mx-4 mb-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-medium text-amber-700">
+              LINEの案内リンクからアクセスすると、プラン契約へ進めます。
+            </div>
+          )}
 
           {/* Category Filters */}
           <div className="no-scrollbar flex gap-2.5 overflow-x-auto p-4">

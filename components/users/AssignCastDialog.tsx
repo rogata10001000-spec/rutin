@@ -12,7 +12,6 @@ import { useToast } from "@/components/common/Toast";
 const formSchema = z.object({
   toCastId: z.string().uuid("キャストを選択してください"),
   reason: z.string().min(1, "理由を入力してください").max(200, "200文字以内で入力してください"),
-  shadowUntil: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -40,7 +39,6 @@ export function AssignCastDialog({ open, user, onClose }: AssignCastDialogProps)
     defaultValues: {
       toCastId: "",
       reason: "",
-      shadowUntil: "",
     },
   });
 
@@ -61,7 +59,6 @@ export function AssignCastDialog({ open, user, onClose }: AssignCastDialogProps)
       reset({
         toCastId: "",
         reason: "",
-        shadowUntil: "",
       });
     }
   }, [open, reset]);
@@ -84,7 +81,6 @@ export function AssignCastDialog({ open, user, onClose }: AssignCastDialogProps)
         endUserId: user.id,
         toCastId: data.toCastId,
         reason: data.reason,
-        shadowUntil: data.shadowUntil || undefined,
       });
 
       if (result.ok) {
@@ -211,26 +207,6 @@ export function AssignCastDialog({ open, user, onClose }: AssignCastDialogProps)
                 {errors.reason && (
                   <p className="mt-1.5 text-sm text-red-600 font-medium">{errors.reason.message}</p>
                 )}
-              </div>
-
-              {/* Shadow Until */}
-              <div>
-                <label
-                  htmlFor="shadowUntil"
-                  className="block text-sm font-bold text-stone-700"
-                >
-                  Shadow期間終了日（任意）
-                </label>
-                <input
-                  id="shadowUntil"
-                  type="date"
-                  {...register("shadowUntil")}
-                  className="mt-1.5 block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                  min={new Date().toISOString().split("T")[0]}
-                />
-                <p className="mt-1.5 text-xs text-stone-400">
-                  設定すると、指定日まで前任キャストも閲覧・下書きが可能になります
-                </p>
               </div>
 
               {/* Warning */}

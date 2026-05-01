@@ -9,9 +9,12 @@ import { Result, toZodErrorMessage } from "./types";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { createSubscriptionCheckout as stripeCreateCheckout } from "@/lib/stripe";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
+import { getUserFromServerCookies } from "@/lib/auth";
+import { getServerEnv } from "@/lib/env";
 
-const APP_BASE_URL = process.env.APP_BASE_URL ?? "http://localhost:3000";
-const TRIAL_PERIOD_DAYS = parseInt(process.env.TRIAL_PERIOD_DAYS ?? "7", 10);
+const serverEnv = getServerEnv();
+const APP_BASE_URL = serverEnv.APP_BASE_URL;
+const TRIAL_PERIOD_DAYS = serverEnv.TRIAL_PERIOD_DAYS;
 
 // デフォルト価格（plan_pricesテーブルから取得するべきだが、フォールバック用）
 const DEFAULT_PRICES: Record<string, number> = {
@@ -22,9 +25,9 @@ const DEFAULT_PRICES: Record<string, number> = {
 
 // デフォルトStripe Price ID（環境変数から取得）
 const DEFAULT_STRIPE_PRICE_IDS: Record<string, string> = {
-  light: process.env.STRIPE_PRICE_LIGHT ?? "",
-  standard: process.env.STRIPE_PRICE_STANDARD ?? "",
-  premium: process.env.STRIPE_PRICE_PREMIUM ?? "",
+  light: serverEnv.STRIPE_PRICE_LIGHT ?? "",
+  standard: serverEnv.STRIPE_PRICE_STANDARD ?? "",
+  premium: serverEnv.STRIPE_PRICE_PREMIUM ?? "",
 };
 
 export type PlanCode = (typeof planCodeSchema)["_type"];
@@ -184,6 +187,11 @@ export type CreateSubscriptionCheckoutInput = {
 
 export type CreateSubscriptionCheckoutResult = Result<{ checkoutUrl: string }>;
 
+export type CreateSubscriptionCheckoutForCurrentUserInput = {
+  castId: string;
+  planCode: PlanCode;
+};
+
 /**
  * サブスクリプションCheckout Session作成
  * 権限: 公開（LINE経由）
@@ -319,7 +327,33 @@ export async function createSubscriptionCheckoutSession(
   }
 }
 
-// 互換用エイリアス（既存UIで使用）
+/**
+ * Cookieに保存されたLINEユーザートークンからCheckout Sessionを作成
+ * 権限: LINE導線から入ったユーザー
+ */
+export async function createSubscriptionCheckoutForCurrentUser(
+  input: CreateSubscriptionCheckoutForCurrentUserInput
+): Promise<CreateSubscriptionCheckoutResult> {
+  const user = await getUserFromServerCookies();
+  if (!user.ok) {
+    const isExpired = "error" in user && user.error === "expired";
+    return {
+      ok: false,
+      error: {
+        code: "UNAUTHORIZED",
+        message: isExpired ? "LINE連携の有効期限が切れています" : "LINEの案内リンクからアクセスしてください",
+      },
+    };
+  }
+
+  return createSubscriptionCheckoutSession({
+    lineUserId: user.lineUserId,
+    castId: input.castId,
+    planCode: input.planCode,
+  });
+}
+
+// 互換用エイリアス（既存UI以外の呼び出しで使用）
 export const createSubscriptionCheckout = createSubscriptionCheckoutSession;
 
 // =====================================

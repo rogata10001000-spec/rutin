@@ -50,6 +50,13 @@ export async function generateAiDrafts(
     };
   }
 
+  if (!AI_PROVIDER_KEY) {
+    return {
+      ok: false,
+      error: { code: "CONFIG_ERROR", message: "AI下書き機能の設定が未完了です" },
+    };
+  }
+
   const supabase = await createServerSupabaseClient();
 
   // JSTで今日の日付
@@ -109,10 +116,6 @@ export async function generateAiDrafts(
   let errorMessage: string | null = null;
 
   try {
-    if (!AI_PROVIDER_KEY) {
-      throw new Error("AI_PROVIDER_KEY is not configured");
-    }
-
     // Anthropic API呼び出し
     const response = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
       method: "POST",

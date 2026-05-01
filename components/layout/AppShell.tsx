@@ -51,7 +51,7 @@ export function AppShell({ staffId, staffName, staffRole, children }: AppShellPr
       </div>
 
       {/* グローバルキーボードショートカット */}
-      <CommandPalette />
+      <CommandPalette role={staffRole} />
       <ShortcutHelp />
       <RealtimeNotification staffId={staffId} />
     </div>

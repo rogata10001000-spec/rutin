@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 export const dynamic = "force-static";
 
 export default function HelpPage() {
@@ -39,50 +37,6 @@ export default function HelpPage() {
         </div>
       </section>
 
-      {/* ポイント購入 */}
-      <section className="rounded-lg border bg-white p-6">
-        <h2 className="mb-3 text-lg font-semibold text-gray-900">
-          ポイント購入
-        </h2>
-        <div className="space-y-3 text-sm text-gray-600">
-          <p>
-            担当キャストにギフトを送るには、ポイントが必要です。
-            ポイントはクレジットカードで購入できます。
-          </p>
-          <Link
-            href="/points"
-            className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            ポイントを購入する
-          </Link>
-          <p className="text-xs text-gray-500">
-            ※ポイント購入ページへ移動します。LINEから開いた場合は自動でログインされます。
-          </p>
-        </div>
-      </section>
-
-      {/* ギフト送信 */}
-      <section className="rounded-lg border bg-white p-6">
-        <h2 className="mb-3 text-lg font-semibold text-gray-900">
-          ギフトを送る
-        </h2>
-        <div className="space-y-3 text-sm text-gray-600">
-          <p>
-            いつもサポートしてくれる担当キャストに感謝の気持ちを込めて、
-            ギフトを送ることができます。
-          </p>
-          <Link
-            href="/gift"
-            className="inline-flex items-center justify-center rounded-md bg-pink-600 px-4 py-2 text-sm font-medium text-white hover:bg-pink-700"
-          >
-            ギフトを選ぶ
-          </Link>
-          <p className="text-xs text-gray-500">
-            ※ギフト一覧ページへ移動します。お持ちのポイントで購入できます。
-          </p>
-        </div>
-      </section>
-
       {/* よくある質問 */}
       <section className="rounded-lg border bg-white p-6">
         <h2 className="mb-3 text-lg font-semibold text-gray-900">
@@ -99,12 +53,6 @@ export default function HelpPage() {
             <h3 className="font-medium text-gray-900 text-sm">Q. 解約したい場合は？</h3>
             <p className="mt-1 text-sm text-gray-600">
               A. LINEメッセージで解約希望をお伝えください。現在の契約期間終了時に解約処理を行います。
-            </p>
-          </div>
-          <div>
-            <h3 className="font-medium text-gray-900 text-sm">Q. ポイントの有効期限はありますか？</h3>
-            <p className="mt-1 text-sm text-gray-600">
-              A. ポイントに有効期限はありません。いつでもお好きな時にギフトに交換できます。
             </p>
           </div>
           <div>

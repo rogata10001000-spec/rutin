@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { settlementPeriodSchema } from "@/schemas/settlements";
 import { Result, toZodErrorMessage } from "../types";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createAdminSupabaseClient, createServerSupabaseClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 
@@ -215,101 +215,59 @@ export async function createSettlementBatch(
     };
   }
 
-  const supabase = await createServerSupabaseClient();
+  const supabase = createAdminSupabaseClient();
 
-  // 期間内のpayout_calculationsを集計（settlement_batch_idがnullのもの）
-  const { data: calculations } = await supabase
-    .from("payout_calculations")
-    .select(`
-      id,
-      cast_id,
-      amount_jpy,
-      revenue_events!inner (
-        occurred_on
-      )
-    `)
-    .is("settlement_batch_id", null)
-    .gte("revenue_events.occurred_on", input.periodFrom)
-    .lte("revenue_events.occurred_on", input.periodTo);
+  const { data: batchId, error: batchError } = await (supabase as any).rpc(
+    "create_settlement_batch_atomic",
+    {
+      p_period_from: input.periodFrom,
+      p_period_to: input.periodTo,
+      p_created_by: admin.id,
+    }
+  );
 
-  if (!calculations || calculations.length === 0) {
+  if (batchError?.code === "P0002" || batchError?.message?.includes("NO_SETTLEMENT_TARGETS")) {
     return {
       ok: false,
       error: { code: "CONFLICT", message: "対象期間に精算対象がありません" },
     };
   }
 
-  // キャスト別に集計
-  const castTotals = new Map<string, { amount: number; count: number }>();
-  for (const calc of calculations) {
-    const current = castTotals.get(calc.cast_id) ?? { amount: 0, count: 0 };
-    castTotals.set(calc.cast_id, {
-      amount: current.amount + calc.amount_jpy,
-      count: current.count + 1,
-    });
+  if (batchError?.code === "40001" || batchError?.message?.includes("SETTLEMENT_TARGET_CHANGED")) {
+    return {
+      ok: false,
+      error: { code: "CONFLICT", message: "精算対象が更新されました。再度作成してください" },
+    };
   }
 
-  const totalAmount = Array.from(castTotals.values()).reduce(
-    (sum, t) => sum + t.amount,
-    0
-  );
-
-  // バッチ作成
-  const { data: batch, error: batchError } = await supabase
-    .from("settlement_batches")
-    .insert({
-      period_from: input.periodFrom,
-      period_to: input.periodTo,
-      status: "draft",
-      total_amount_jpy: totalAmount,
-      created_by: admin.id,
-    })
-    .select("id")
-    .single();
-
-  if (batchError || !batch) {
+  if (batchError || !batchId) {
     return {
       ok: false,
       error: { code: "UNKNOWN", message: "バッチの作成に失敗しました" },
     };
   }
 
-  // 明細作成
-  const itemInserts = Array.from(castTotals.entries()).map(([castId, data]) => ({
-    batch_id: batch.id,
-    cast_id: castId,
-    amount_jpy: data.amount,
-    breakdown: { calculation_count: data.count },
-  }));
-
-  const { error: itemError } = await supabase.from("settlement_items").insert(itemInserts);
-  if (itemError) {
-    console.error("settlement_items insert error:", itemError);
-  }
-
-  // payout_calculationsにbatch_idを設定
-  const calcIds = calculations.map((c) => c.id);
-  await supabase
-    .from("payout_calculations")
-    .update({ settlement_batch_id: batch.id })
-    .in("id", calcIds);
+  const { data: batch } = await supabase
+    .from("settlement_batches")
+    .select("total_amount_jpy")
+    .eq("id", batchId as string)
+    .single();
 
   await writeAuditLog({
     action: "SETTLEMENT_BATCH_CREATE",
     targetType: "settlement_batches",
-    targetId: batch.id,
+    targetId: batchId as string,
     success: true,
     metadata: buildAuditMetadata({
       period_from: input.periodFrom,
       period_to: input.periodTo,
-      total_amount_jpy: totalAmount,
-      cast_count: castTotals.size,
+      total_amount_jpy: batch?.total_amount_jpy ?? 0,
     }),
   });
 
   revalidatePath("/admin/settlements");
 
-  return { ok: true, data: { batchId: batch.id } };
+  return { ok: true, data: { batchId: batchId as string } };
 }
 
 // =====================================
@@ -363,6 +321,7 @@ export async function approveSettlementBatch(
     .from("settlement_batches")
     .update({
       status: "approved",
+      approved_by: admin.id,
       approved_at: new Date().toISOString(),
     })
     .eq("id", input.batchId);

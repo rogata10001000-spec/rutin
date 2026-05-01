@@ -49,6 +49,9 @@ export function PayoutRulesTable({ items }: PayoutRulesTableProps) {
             <thead className="bg-stone-50">
               <tr>
                 <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
+                  種別
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
                   範囲
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
@@ -71,6 +74,9 @@ export function PayoutRulesTable({ items }: PayoutRulesTableProps) {
             <tbody className="divide-y divide-stone-200 bg-white">
               {items.map((item) => (
                 <tr key={item.id} className="transition-colors hover:bg-stone-50/50">
+                  <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-stone-700">
+                    {item.ruleType === "subscription_share" ? "サブスク" : "ギフト"}
+                  </td>
                   <td className="whitespace-nowrap px-6 py-4">
                     <span
                       className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ${
@@ -79,11 +85,20 @@ export function PayoutRulesTable({ items }: PayoutRulesTableProps) {
                           : "bg-terracotta/10 text-terracotta"
                       }`}
                     >
-                      {item.scopeType === "global" ? "全体" : "キャスト"}
+                      {item.scopeType === "global"
+                        ? "全体"
+                        : item.scopeType === "cast_plan"
+                          ? "キャスト×プラン"
+                          : "キャスト"}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-900 font-medium">
                     {item.castName ?? "-"}
+                    {item.planCode && (
+                      <span className="ml-2 rounded bg-stone-100 px-2 py-0.5 text-xs text-stone-500">
+                        {item.planCode}
+                      </span>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm font-bold text-stone-900">
                     {item.percent}%

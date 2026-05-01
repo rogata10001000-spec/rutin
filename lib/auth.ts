@@ -103,20 +103,6 @@ export async function canAccessUser(endUserId: string): Promise<{
     return { id: staff.id, role: staff.role, isAssigned: true, isShadow: false };
   }
 
-  // Shadowチェック
-  const { data: shadow } = await supabase
-    .from("cast_assignments")
-    .select("id")
-    .eq("end_user_id", endUserId)
-    .eq("to_cast_id", staff.id)
-    .gt("shadow_until", new Date().toISOString())
-    .limit(1)
-    .single();
-
-  if (shadow) {
-    return { id: staff.id, role: staff.role, isAssigned: false, isShadow: true };
-  }
-
   return null;
 }
 

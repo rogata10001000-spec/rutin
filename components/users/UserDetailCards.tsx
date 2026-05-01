@@ -108,35 +108,6 @@ export function UserDetailCards({ user, onUpdateUser }: UserDetailCardsProps) {
         </dl>
       </div>
 
-      {/* ポイント/ギフトカード */}
-      <div className="rounded-lg border bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">ポイント・ギフト</h2>
-        <div className="mb-4 rounded-lg bg-blue-50 p-4 text-center">
-          <p className="text-sm text-blue-600">残高</p>
-          <p className="text-3xl font-bold text-blue-700">
-            {user.pointBalance.toLocaleString()} pt
-          </p>
-        </div>
-        <h3 className="mb-2 text-sm font-medium text-gray-700">最近のギフト</h3>
-        {user.recentGifts.length > 0 ? (
-          <ul className="space-y-2">
-            {user.recentGifts.slice(0, 5).map((gift, i) => (
-              <li
-                key={i}
-                className="flex items-center justify-between text-sm"
-              >
-                <span className="text-gray-600">{gift.giftName}</span>
-                <span className="text-gray-500">
-                  {format(new Date(gift.sentAt), "MM/dd")} -{gift.costPoints}pt
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-gray-400">ギフト履歴なし</p>
-        )}
-      </div>
-
       {/* チェックインカード */}
       <div className="rounded-lg border bg-white p-6">
         <h2 className="mb-4 text-lg font-semibold text-gray-900">
@@ -233,39 +204,6 @@ export function UserDetailCards({ user, onUpdateUser }: UserDetailCardsProps) {
         </dl>
       </div>
       </div>
-
-      {/* ポイント取引履歴 */}
-      {user.pointTransactions.length > 0 && (
-        <div className="rounded-lg border bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">ポイント取引履歴</h2>
-          <div className="max-h-60 overflow-y-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="sticky top-0 bg-white">
-                <tr>
-                  <th className="px-2 py-2 text-left text-xs font-medium text-gray-500">日時</th>
-                  <th className="px-2 py-2 text-left text-xs font-medium text-gray-500">種別</th>
-                  <th className="px-2 py-2 text-right text-xs font-medium text-gray-500">ポイント</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {user.pointTransactions.map((tx) => (
-                  <tr key={tx.id}>
-                    <td className="whitespace-nowrap px-2 py-2 text-xs text-gray-500">
-                      {format(new Date(tx.createdAt), "MM/dd HH:mm")}
-                    </td>
-                    <td className="px-2 py-2 text-xs text-gray-600">{tx.reason}</td>
-                    <td className={`whitespace-nowrap px-2 py-2 text-right text-xs font-medium ${
-                      tx.deltaPoints > 0 ? "text-green-600" : "text-red-600"
-                    }`}>
-                      {tx.deltaPoints > 0 ? "+" : ""}{tx.deltaPoints.toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* 契約履歴 */}
       {user.subscriptionHistory.length > 0 && (

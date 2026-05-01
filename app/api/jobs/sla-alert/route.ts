@@ -2,12 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { calculateSlaRemaining } from "@/lib/calculations";
 import { logger } from "@/lib/logger";
-
-const planSlaConfig: Record<string, { slaMinutes: number; warningMinutes: number }> = {
-  light: { slaMinutes: 1440, warningMinutes: 240 },
-  standard: { slaMinutes: 720, warningMinutes: 120 },
-  premium: { slaMinutes: 120, warningMinutes: 30 },
-};
+import { getServerEnv } from "@/lib/env";
 
 /**
  * SLAアラートジョブ
@@ -19,8 +14,8 @@ const planSlaConfig: Record<string, { slaMinutes: number; warningMinutes: number
  */
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  const cronSecret = getServerEnv().CRON_SECRET;
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -39,6 +34,19 @@ export async function GET(request: Request) {
     }
 
     const userIds = users.map((u) => u.id);
+
+    const { data: plans } = await supabase
+      .from("plans")
+      .select("plan_code, reply_sla_minutes, sla_warning_minutes");
+    const planSlaConfig = new Map(
+      (plans ?? []).map((plan) => [
+        plan.plan_code,
+        {
+          slaMinutes: plan.reply_sla_minutes,
+          warningMinutes: plan.sla_warning_minutes,
+        },
+      ])
+    );
 
     const { data: allMessages } = await supabase
       .from("messages")
@@ -72,7 +80,8 @@ export async function GET(request: Request) {
       if (lastOutTime && lastOutTime > lastInTime) continue;
 
       const planCode = user.plan_code ?? "standard";
-      const config = planSlaConfig[planCode] ?? planSlaConfig.standard;
+      const config = planSlaConfig.get(planCode) ?? planSlaConfig.get("standard");
+      if (!config) continue;
       const remaining = calculateSlaRemaining(lastInTime, config.slaMinutes, now);
 
       if (remaining === null) continue;

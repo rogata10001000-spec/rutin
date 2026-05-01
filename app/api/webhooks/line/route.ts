@@ -10,6 +10,8 @@ import { withWebhookIdempotency } from "@/lib/webhook";
 import { writeAuditLog } from "@/lib/audit";
 import { checkRateLimit, requestKey } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import { generateUserToken } from "@/lib/auth";
+import { getServerEnv } from "@/lib/env";
 
 // LINE Webhook Event Types
 type LineFollowEvent = {
@@ -44,11 +46,19 @@ type LineWebhookPayload = {
   events: LineWebhookEvent[];
 };
 
-const WELCOME_MESSAGE = `Rutinへようこそ！
+function buildSubscribeUrl(lineUserId: string) {
+  const token = generateUserToken(lineUserId);
+  return `${getServerEnv().APP_BASE_URL}/subscribe/cast?token=${encodeURIComponent(token)}`;
+}
 
-リッチメニューの「プラン契約」からキャストを選んで、7日間の無料トライアルを始めましょう。`;
+function buildWelcomeMessage(lineUserId: string) {
+  return `Rutinへようこそ！
 
-const DEFAULT_PLAN_CODE = process.env.TRIAL_PLAN_CODE ?? "standard";
+以下のリンクからキャストを選んで、7日間の無料トライアルを始めましょう。
+${buildSubscribeUrl(lineUserId)}`;
+}
+
+const DEFAULT_PLAN_CODE = getServerEnv().TRIAL_PLAN_CODE;
 
 export async function POST(request: Request) {
   const allowed = checkRateLimit({
@@ -115,7 +125,7 @@ export async function POST(request: Request) {
         }
 
         // 歓迎メッセージ送信（例外的に自動送信OK）
-        await pushTextMessage(lineUserId, WELCOME_MESSAGE);
+        await pushTextMessage(lineUserId, buildWelcomeMessage(lineUserId));
 
         // 未契約者用リッチメニュー設定
         const richMenuId = process.env.RICH_MENU_ID_UNCONTRACTED;

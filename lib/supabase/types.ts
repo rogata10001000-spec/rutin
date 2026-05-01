@@ -139,6 +139,9 @@ type WebhookEventsRow = {
   processed_at: string | null;
   success: boolean;
   error_message: string | null;
+  status: "processing" | "processed" | "failed";
+  processing_started_at: string | null;
+  attempt_count: number;
 };
 
 type TaxRatesRow = {
@@ -454,13 +457,16 @@ export interface Database {
       };
       webhook_events: {
         Row: WebhookEventsRow;
-        Insert: Omit<WebhookEventsRow, "id" | "received_at" | "success" | "processed_at" | "error_message"> & {
+        Insert: Omit<WebhookEventsRow, "id" | "received_at" | "success" | "processed_at" | "error_message" | "status" | "processing_started_at" | "attempt_count"> & {
           id?: string;
           success?: boolean;
           processed_at?: string | null;
           error_message?: string | null;
+          status?: "processing" | "processed" | "failed";
+          processing_started_at?: string | null;
+          attempt_count?: number;
         };
-        Update: Partial<Pick<WebhookEventsRow, "processed_at" | "success" | "error_message">>;
+        Update: Partial<Pick<WebhookEventsRow, "processed_at" | "success" | "error_message" | "status" | "processing_started_at" | "attempt_count">>;
         Relationships: [];
       };
       tax_rates: {

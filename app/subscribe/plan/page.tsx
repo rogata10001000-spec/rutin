@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import {
-  createSubscriptionCheckout,
+  createSubscriptionCheckoutForCurrentUser,
   listAvailableCasts,
   PlanCode,
 } from "../../../actions/subscriptions";
+import { getUserFromServerCookies } from "@/lib/auth";
 
 const planLabels: Record<PlanCode, string> = {
   light: "ライト",
@@ -20,13 +21,14 @@ const planSla: Record<PlanCode, string> = {
 const formatYen = (amount: number) => `¥${amount.toLocaleString("ja-JP")}`;
 
 type PageProps = {
-  searchParams?: Promise<{ castId?: string; lineUserId?: string }>;
+  searchParams?: Promise<{ castId?: string }>;
 };
 
 export default async function SubscribePlanPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const castId = params?.castId;
-  const lineUserId = params?.lineUserId ?? "";
+  const userToken = await getUserFromServerCookies();
+  const hasLineSession = userToken.ok;
 
   if (!castId) {
     return (
@@ -79,7 +81,6 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
     "use server";
     const selectedPlan = formData.get("planCode");
     const selectedCastId = formData.get("castId");
-    const submittedLineUserId = formData.get("lineUserId");
 
     if (
       typeof selectedPlan !== "string" ||
@@ -87,15 +88,8 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
     ) {
       return;
     }
-    if (
-      typeof submittedLineUserId !== "string" ||
-      submittedLineUserId.length === 0
-    ) {
-      return;
-    }
 
-    const result = await createSubscriptionCheckout({
-      lineUserId: submittedLineUserId,
+    const result = await createSubscriptionCheckoutForCurrentUser({
       castId: selectedCastId,
       planCode: selectedPlan as PlanCode,
     });
@@ -145,7 +139,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
           </div>
         </div>
 
-        {!lineUserId && (
+        {!hasLineSession && (
           <div className="mx-4 mb-4 rounded-2xl bg-amber-50 p-4 text-sm font-medium text-amber-700 border border-amber-100">
             <div className="flex items-center gap-2 mb-1">
               <span className="material-symbols-outlined text-[20px]">warning</span>
@@ -159,7 +153,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
         <div className="flex flex-col gap-4 px-4">
           {(["light", "standard", "premium"] as PlanCode[]).map((planCode) => {
             const hasPriceId = Boolean(cast.stripePriceIds?.[planCode]);
-            const canCheckout = lineUserId.length > 0 && hasPriceId;
+            const canCheckout = hasLineSession && hasPriceId;
 
             return (
               <div
@@ -201,7 +195,6 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                 <form action={startCheckout}>
                   <input type="hidden" name="castId" value={cast.id} />
                   <input type="hidden" name="planCode" value={planCode} />
-                  <input type="hidden" name="lineUserId" value={lineUserId} />
                   <button
                     type="submit"
                     disabled={!canCheckout}

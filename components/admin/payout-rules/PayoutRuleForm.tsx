@@ -13,6 +13,7 @@ type PayoutRuleFormProps = {
 
 type FieldErrors = {
   castId?: string;
+  planCode?: string;
   percent?: string;
   effectiveFrom?: string;
 };
@@ -23,8 +24,9 @@ export function PayoutRuleForm({ casts }: PayoutRuleFormProps) {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
 
-  const [scopeType, setScopeType] = useState<"global" | "cast">("global");
+  const [scopeType, setScopeType] = useState<"global" | "cast" | "cast_plan">("global");
   const [castId, setCastId] = useState("");
+  const [planCode, setPlanCode] = useState<"light" | "standard" | "premium">("standard");
   const [percent, setPercent] = useState("50");
   const [effectiveFrom, setEffectiveFrom] = useState(
     new Date().toISOString().split("T")[0]
@@ -36,9 +38,10 @@ export function PayoutRuleForm({ casts }: PayoutRuleFormProps) {
 
     // クライアント側Zodバリデーション
     const formData = {
-      ruleType: "gift_share" as const,
+      ruleType: "subscription_share" as const,
       scopeType,
-      castId: scopeType === "cast" ? castId : undefined,
+      castId: scopeType === "cast" || scopeType === "cast_plan" ? castId : undefined,
+      planCode: scopeType === "cast_plan" ? planCode : undefined,
       percent: percent ? parseInt(percent, 10) : 0,
       effectiveFrom,
       active: true,
@@ -52,10 +55,6 @@ export function PayoutRuleForm({ casts }: PayoutRuleFormProps) {
         if (field && !fieldErrors[field]) {
           fieldErrors[field] = issue.message;
         }
-      }
-      // castIdのバリデーションエラーをチェック
-      if (scopeType === "cast" && !castId) {
-        fieldErrors.castId = "キャストを選択してください";
       }
       setErrors(fieldErrors);
       showToast("入力内容を確認してください", "error");
@@ -73,6 +72,7 @@ export function PayoutRuleForm({ casts }: PayoutRuleFormProps) {
         // フォームリセット
         setScopeType("global");
         setCastId("");
+        setPlanCode("standard");
         setPercent("50");
       } else {
         showToast(result.error.message, "error");
@@ -93,11 +93,12 @@ export function PayoutRuleForm({ casts }: PayoutRuleFormProps) {
         <div className="relative mt-1.5">
           <select
             value={scopeType}
-            onChange={(e) => setScopeType(e.target.value as "global" | "cast")}
+            onChange={(e) => setScopeType(e.target.value as "global" | "cast" | "cast_plan")}
             className="block w-full appearance-none rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
           >
             <option value="global">全体（デフォルト）</option>
             <option value="cast">キャスト別</option>
+            <option value="cast_plan">キャスト×プラン別</option>
           </select>
           <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -107,7 +108,7 @@ export function PayoutRuleForm({ casts }: PayoutRuleFormProps) {
         </div>
       </div>
 
-      {scopeType === "cast" && (
+      {(scopeType === "cast" || scopeType === "cast_plan") && (
         <div>
           <label className="block text-sm font-bold text-stone-700">
             キャスト
@@ -138,6 +139,32 @@ export function PayoutRuleForm({ casts }: PayoutRuleFormProps) {
           </div>
           {errors.castId && (
             <p className="mt-1.5 text-xs text-red-600 font-medium">{errors.castId}</p>
+          )}
+        </div>
+      )}
+
+      {scopeType === "cast_plan" && (
+        <div>
+          <label className="block text-sm font-bold text-stone-700">
+            プラン
+          </label>
+          <div className="relative mt-1.5">
+            <select
+              value={planCode}
+              onChange={(e) => setPlanCode(e.target.value as "light" | "standard" | "premium")}
+              className={`block w-full appearance-none rounded-xl border bg-stone-50 px-4 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
+                errors.planCode
+                  ? "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500"
+                  : "border-stone-200 text-stone-900 focus:border-terracotta focus:bg-white focus:ring-terracotta"
+              }`}
+            >
+              <option value="light">Light</option>
+              <option value="standard">Standard</option>
+              <option value="premium">Premium</option>
+            </select>
+          </div>
+          {errors.planCode && (
+            <p className="mt-1.5 text-xs text-red-600 font-medium">{errors.planCode}</p>
           )}
         </div>
       )}

@@ -10,6 +10,8 @@ export type IdempotencyResult =
   | { status: "duplicate" }
   | { status: "error"; message: string };
 
+const PROCESSING_TIMEOUT_MS = 15 * 60 * 1000;
+
 /**
  * Webhookイベントの冪等性チェック
  * 同じprovider+event_idの組み合わせは1回のみ処理
@@ -32,6 +34,8 @@ export async function checkWebhookIdempotency(
         provider,
         event_id: eventId,
         event_type: eventType,
+        status: "processing",
+        processing_started_at: new Date().toISOString(),
       })
       .select("id")
       .single();
@@ -39,6 +43,56 @@ export async function checkWebhookIdempotency(
     if (error) {
       // unique_violation (23505) = 重複
       if (error.code === "23505") {
+        const { data: existing, error: selectError } = await supabase
+          .from("webhook_events")
+          .select("id, status, processing_started_at")
+          .eq("provider", provider)
+          .eq("event_id", eventId)
+          .single();
+
+        if (selectError || !existing) {
+          return { status: "error", message: selectError?.message ?? "Duplicate event lookup failed" };
+        }
+
+        if (existing.status === "processed") {
+          return { status: "duplicate" };
+        }
+
+        const now = new Date();
+        const processingStartedAt = existing.processing_started_at
+          ? new Date(existing.processing_started_at)
+          : null;
+        const isStaleProcessing =
+          existing.status === "processing" &&
+          processingStartedAt !== null &&
+          now.getTime() - processingStartedAt.getTime() > PROCESSING_TIMEOUT_MS;
+
+        if (existing.status === "failed" || isStaleProcessing) {
+          let retryQuery = supabase
+            .from("webhook_events")
+            .update({
+              status: "processing",
+              processing_started_at: now.toISOString(),
+              processed_at: null,
+              success: false,
+              error_message: null,
+            })
+            .eq("id", existing.id)
+            .eq("status", existing.status);
+
+          if (isStaleProcessing && existing.processing_started_at) {
+            retryQuery = retryQuery.eq("processing_started_at", existing.processing_started_at);
+          }
+
+          const { data: retry, error: retryError } = await retryQuery.select("id").single();
+
+          if (retryError || !retry) {
+            return { status: "duplicate" };
+          }
+
+          return { status: "new", eventRecordId: retry.id };
+        }
+
         return { status: "duplicate" };
       }
       logger.error("Webhook idempotency check failed", { provider, eventId, error: error.message });
@@ -71,6 +125,7 @@ export async function markWebhookProcessed(
     .update({
       processed_at: new Date().toISOString(),
       success,
+      status: success ? "processed" : "failed",
       error_message: errorMessage ?? null,
     })
     .eq("id", eventRecordId);
