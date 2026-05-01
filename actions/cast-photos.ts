@@ -44,31 +44,39 @@ export async function getCastPhotos(castId: string): Promise<GetCastPhotosResult
     };
   }
 
-  const supabase = createAdminSupabaseClient();
+  try {
+    const supabase = createAdminSupabaseClient();
 
-  const { data: photos, error } = await supabase
-    .from("cast_photos")
-    .select("id, storage_path, caption, display_order")
-    .eq("cast_id", castId)
-    .eq("active", true)
-    .order("display_order");
+    const { data: photos, error } = await supabase
+      .from("cast_photos")
+      .select("id, storage_path, caption, display_order")
+      .eq("cast_id", castId)
+      .eq("active", true)
+      .order("display_order");
 
-  if (error) {
-    console.error("[CastPhotos] Failed to fetch photos:", error);
+    if (error) {
+      console.error("[CastPhotos] Failed to fetch photos:", error);
+      return {
+        ok: false,
+        error: { code: "UNKNOWN", message: "写真の取得に失敗しました" },
+      };
+    }
+
+    const photosWithUrls: CastPhoto[] = (photos ?? []).map((p) => ({
+      id: p.id,
+      url: supabase.storage.from(BUCKET_NAME).getPublicUrl(p.storage_path).data.publicUrl,
+      caption: p.caption,
+      displayOrder: p.display_order,
+    }));
+
+    return { ok: true, data: { photos: photosWithUrls } };
+  } catch (error) {
+    console.error("[CastPhotos] Unexpected error fetching photos:", error);
     return {
       ok: false,
       error: { code: "UNKNOWN", message: "写真の取得に失敗しました" },
     };
   }
-
-  const photosWithUrls: CastPhoto[] = (photos ?? []).map((p) => ({
-    id: p.id,
-    url: supabase.storage.from(BUCKET_NAME).getPublicUrl(p.storage_path).data.publicUrl,
-    caption: p.caption,
-    displayOrder: p.display_order,
-  }));
-
-  return { ok: true, data: { photos: photosWithUrls } };
 }
 
 // =====================================
