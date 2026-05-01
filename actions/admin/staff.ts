@@ -1,11 +1,56 @@
 "use server";
 
+import { randomInt } from "crypto";
 import { revalidatePath } from "next/cache";
-import { setCastAcceptingSchema, upsertStaffProfileSchema, inviteStaffSchema } from "@/schemas/staff";
+import { createStaffAccountSchema, resetStaffPasswordSchema, setCastAcceptingSchema, upsertStaffProfileSchema } from "@/schemas/staff";
 import { Result, toZodErrorMessage } from "../types";
 import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
+
+const TEMPORARY_PASSWORD_LENGTH = 16;
+const PASSWORD_GROUPS = [
+  "ABCDEFGHJKLMNPQRSTUVWXYZ",
+  "abcdefghijkmnopqrstuvwxyz",
+  "23456789",
+  "!@#$%*-_?",
+] as const;
+const PASSWORD_ALPHABET = PASSWORD_GROUPS.join("");
+
+function pickRandomChar(chars: string) {
+  return chars[randomInt(0, chars.length)];
+}
+
+function shuffleString(value: string) {
+  const chars = value.split("");
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = randomInt(0, i + 1);
+    const current = chars[i];
+    chars[i] = chars[j];
+    chars[j] = current;
+  }
+  return chars.join("");
+}
+
+function generateTemporaryPassword() {
+  const requiredChars = PASSWORD_GROUPS.map((group) => pickRandomChar(group));
+  const remainingChars = Array.from(
+    { length: TEMPORARY_PASSWORD_LENGTH - requiredChars.length },
+    () => pickRandomChar(PASSWORD_ALPHABET)
+  );
+
+  return shuffleString([...requiredChars, ...remainingChars].join(""));
+}
+
+function isEmailConflict(message?: string) {
+  const normalized = message?.toLowerCase() ?? "";
+  return (
+    normalized.includes("already been registered") ||
+    normalized.includes("already registered") ||
+    normalized.includes("already exists") ||
+    normalized.includes("duplicate")
+  );
+}
 
 // =====================================
 // スタッフ一覧取得
@@ -280,27 +325,31 @@ export async function setCastAcceptingStatus(
 }
 
 // =====================================
-// スタッフ招待
+// スタッフアカウント作成
 // =====================================
 
-export type InviteStaffInput = {
+export type CreateStaffAccountInput = {
   email: string;
   displayName: string;
-  role: "admin" | "supervisor" | "cast";
+  role: "cast";
   capacityLimit?: number | null;
 };
 
-export type InviteStaffResult = Result<{ id: string; email: string }>;
+export type CreateStaffAccountResult = Result<{
+  id: string;
+  email: string;
+  temporaryPassword: string;
+}>;
 
 /**
- * 新しいスタッフを招待
- * Supabase Authで招待メールを送信し、staff_profilesにレコードを作成
+ * 新しいキャストアカウントを作成
+ * Supabase Authで即時ログイン可能なユーザーを作成し、staff_profilesにレコードを作成
  */
-export async function inviteStaff(
-  input: InviteStaffInput
-): Promise<InviteStaffResult> {
+export async function createStaffAccount(
+  input: CreateStaffAccountInput
+): Promise<CreateStaffAccountResult> {
   // Zodバリデーション
-  const parsed = inviteStaffSchema.safeParse(input);
+  const parsed = createStaffAccountSchema.safeParse(input);
   if (!parsed.success) {
     return {
       ok: false,
@@ -319,33 +368,27 @@ export async function inviteStaff(
 
   // Admin用Supabaseクライアント（service_role）を使用
   const adminSupabase = createAdminSupabaseClient();
+  const temporaryPassword = generateTemporaryPassword();
 
-  // 既存ユーザーチェック
-  const { data: existingUsers } = await adminSupabase
-    .from("staff_profiles")
-    .select("id")
-    .limit(1);
-
-  // Supabase Authで招待メール送信
-  const { data: authData, error: authError } = await adminSupabase.auth.admin.inviteUserByEmail(
-    parsed.data.email,
-    {
-      redirectTo: `${process.env.APP_BASE_URL}/login`,
-    }
-  );
+  // Supabase Authでユーザー作成
+  const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
+    email: parsed.data.email,
+    password: temporaryPassword,
+    email_confirm: true,
+  });
 
   if (authError) {
     // メールが既に使用されている場合
-    if (authError.message?.includes("already been registered")) {
+    if (isEmailConflict(authError.message)) {
       return {
         ok: false,
         error: { code: "CONFLICT", message: "このメールアドレスは既に登録されています" },
       };
     }
-    console.error("Auth invite error:", authError);
+    console.error("Auth create user error:", authError);
     return {
       ok: false,
-      error: { code: "EXTERNAL_API_ERROR", message: "招待メールの送信に失敗しました" },
+      error: { code: "EXTERNAL_API_ERROR", message: "アカウントの作成に失敗しました" },
     };
   }
 
@@ -365,7 +408,7 @@ export async function inviteStaff(
       role: parsed.data.role,
       capacity_limit: parsed.data.capacityLimit ?? null,
       active: true,
-      accepting_new_users: parsed.data.role === "cast" ? true : false,
+      accepting_new_users: true,
     });
 
   if (profileError) {
@@ -381,7 +424,7 @@ export async function inviteStaff(
 
   // 監査ログ記録
   await writeAuditLog({
-    action: "STAFF_INVITE",
+    action: "STAFF_CREATED",
     targetType: "staff_profiles",
     targetId: authData.user.id,
     success: true,
@@ -390,6 +433,7 @@ export async function inviteStaff(
       display_name: parsed.data.displayName,
       role: parsed.data.role,
       capacity_limit: parsed.data.capacityLimit,
+      password_generated: true,
     }),
   });
 
@@ -400,6 +444,93 @@ export async function inviteStaff(
     data: {
       id: authData.user.id,
       email: parsed.data.email,
+      temporaryPassword,
+    },
+  };
+}
+
+// =====================================
+// スタッフパスワード再設定
+// =====================================
+
+export type ResetStaffPasswordInput = {
+  staffId: string;
+};
+
+export type ResetStaffPasswordResult = Result<{
+  staffId: string;
+  temporaryPassword: string;
+}>;
+
+/**
+ * 既存キャストのパスワードを再設定
+ * 新しいパスワードは平文保存せず、レスポンスで一度だけ返す
+ */
+export async function resetStaffPassword(
+  input: ResetStaffPasswordInput
+): Promise<ResetStaffPasswordResult> {
+  const parsed = resetStaffPasswordSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: { code: "ZOD_ERROR", message: toZodErrorMessage(parsed.error.issues[0]?.message) },
+    };
+  }
+
+  const admin = await requireAdmin();
+  if (!admin) {
+    return {
+      ok: false,
+      error: { code: "FORBIDDEN", message: "管理者権限が必要です" },
+    };
+  }
+
+  const adminSupabase = createAdminSupabaseClient();
+
+  const { data: staff, error: staffError } = await adminSupabase
+    .from("staff_profiles")
+    .select("id, display_name, role")
+    .eq("id", parsed.data.staffId)
+    .single();
+
+  if (staffError || !staff || staff.role !== "cast") {
+    return {
+      ok: false,
+      error: { code: "NOT_FOUND", message: "キャストが見つかりません" },
+    };
+  }
+
+  const temporaryPassword = generateTemporaryPassword();
+  const { error: authError } = await adminSupabase.auth.admin.updateUserById(
+    parsed.data.staffId,
+    { password: temporaryPassword }
+  );
+
+  if (authError) {
+    console.error("Auth password reset error:", authError);
+    return {
+      ok: false,
+      error: { code: "EXTERNAL_API_ERROR", message: "パスワードの再設定に失敗しました" },
+    };
+  }
+
+  await writeAuditLog({
+    action: "STAFF_PASSWORD_RESET",
+    targetType: "staff_profiles",
+    targetId: parsed.data.staffId,
+    success: true,
+    metadata: buildAuditMetadata({
+      display_name: staff.display_name,
+      role: staff.role,
+      password_generated: true,
+    }),
+  });
+
+  return {
+    ok: true,
+    data: {
+      staffId: parsed.data.staffId,
+      temporaryPassword,
     },
   };
 }

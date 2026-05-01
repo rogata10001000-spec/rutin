@@ -14,9 +14,13 @@ export const setCastAcceptingSchema = z.object({
   acceptingNewUsers: z.boolean(),
 });
 
-export const inviteStaffSchema = z.object({
+export const createStaffAccountSchema = z.object({
   email: z.string().email("有効なメールアドレスを入力してください"),
   displayName: z.string().min(1, "表示名を入力してください").max(50, "表示名は50文字以内で入力してください"),
-  role: z.enum(["admin", "supervisor", "cast"]),
+  role: z.literal("cast"),
   capacityLimit: z.number().int().positive("上限は正の整数で入力してください").nullable().optional(),
+});
+
+export const resetStaffPasswordSchema = z.object({
+  staffId: z.string().uuid(),
 });
