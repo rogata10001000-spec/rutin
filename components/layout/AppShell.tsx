@@ -6,6 +6,7 @@ import { TopBar } from "./TopBar";
 import { CommandPalette } from "@/components/common/CommandPalette";
 import { ShortcutHelp } from "@/components/common/ShortcutHelp";
 import { RealtimeNotification } from "@/components/common/RealtimeNotification";
+import { PushNotificationManager } from "@/components/common/PushNotificationManager";
 import type { StaffRole } from "@/lib/supabase/types";
 
 type AppShellProps = {
@@ -54,6 +55,7 @@ export function AppShell({ staffId, staffName, staffRole, children }: AppShellPr
       <CommandPalette role={staffRole} />
       <ShortcutHelp />
       <RealtimeNotification staffId={staffId} />
+      {staffRole === "cast" && <PushNotificationManager />}
     </div>
   );
 }

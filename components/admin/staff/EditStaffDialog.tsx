@@ -14,6 +14,7 @@ const formSchema = z.object({
   capacityLimit: z.string().optional(),
   active: z.boolean(),
   acceptingNewUsers: z.boolean(),
+  gender: z.enum(["female", "male", "other", ""]).optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -28,6 +29,13 @@ const roleOptions = [
   { value: "cast", label: "キャスト" },
   { value: "supervisor", label: "スーパーバイザー" },
   { value: "admin", label: "管理者" },
+] as const;
+
+const genderOptions = [
+  { value: "", label: "未設定" },
+  { value: "female", label: "女性" },
+  { value: "male", label: "男性" },
+  { value: "other", label: "その他" },
 ] as const;
 
 export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) {
@@ -49,6 +57,7 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
       capacityLimit: "",
       active: true,
       acceptingNewUsers: true,
+      gender: "",
     },
   });
 
@@ -73,6 +82,7 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
         capacityLimit: staff.capacityLimit?.toString() ?? "",
         active: staff.active,
         acceptingNewUsers: staff.acceptingNewUsers,
+        gender: staff.gender ?? "",
       });
     }
   }, [open, staff, reset]);
@@ -89,6 +99,7 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
         capacityLimit: data.capacityLimit ? parseInt(data.capacityLimit, 10) : null,
         active: data.active,
         acceptingNewUsers: data.acceptingNewUsers,
+        gender: data.gender ? data.gender : null,
       });
 
       if (result.ok) {
@@ -197,6 +208,39 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
                   />
                   <p className="mt-1.5 text-xs text-stone-400">
                     空欄の場合は上限なし（現在の担当: {staff.assignedUserCount}人）
+                  </p>
+                </div>
+              )}
+
+              {/* Gender (Cast only) */}
+              {selectedRole === "cast" && (
+                <div>
+                  <label
+                    htmlFor="gender"
+                    className="block text-sm font-bold text-stone-700"
+                  >
+                    性別
+                  </label>
+                  <div className="relative mt-1.5">
+                    <select
+                      id="gender"
+                      {...register("gender")}
+                      className="block w-full appearance-none rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
+                    >
+                      {genderOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                  <p className="mt-1.5 text-xs text-stone-400">
+                    ユーザーの伴走メイト選択画面で絞り込みに使われます
                   </p>
                 </div>
               )}

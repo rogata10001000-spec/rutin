@@ -3,6 +3,7 @@
 // 開発初期は手動で定義
 
 export type StaffRole = "admin" | "supervisor" | "cast";
+export type StaffGender = "female" | "male" | "other";
 export type PlanCode = "light" | "standard" | "premium";
 export type SubscriptionStatus = "trial" | "active" | "past_due" | "paused" | "canceled" | "incomplete";
 export type CheckinStatus = "circle" | "triangle" | "cross";
@@ -26,7 +27,22 @@ type StaffProfileRow = {
   style_summary: string | null;
   style_updated_at: string | null;
   accepting_new_users: boolean;
+  gender: StaffGender | null;
   created_at: string;
+};
+
+type StaffPushSubscriptionsRow = {
+  id: string;
+  staff_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  user_agent: string | null;
+  platform: string | null;
+  enabled: boolean;
+  last_seen_at: string;
+  created_at: string;
+  updated_at: string;
 };
 
 type PlansRow = {
@@ -371,11 +387,24 @@ export interface Database {
     Tables: {
       staff_profiles: {
         Row: StaffProfileRow;
-        Insert: Omit<StaffProfileRow, "created_at" | "style_summary" | "style_updated_at"> & {
+        Insert: Omit<StaffProfileRow, "created_at" | "style_summary" | "style_updated_at" | "gender"> & {
           style_summary?: string | null;
           style_updated_at?: string | null;
+          gender?: StaffGender | null;
         };
         Update: Partial<Omit<StaffProfileRow, "created_at">>;
+        Relationships: [];
+      };
+      staff_push_subscriptions: {
+        Row: StaffPushSubscriptionsRow;
+        Insert: Omit<StaffPushSubscriptionsRow, "id" | "created_at" | "updated_at" | "enabled" | "last_seen_at" | "user_agent" | "platform"> & {
+          id?: string;
+          enabled?: boolean;
+          last_seen_at?: string;
+          user_agent?: string | null;
+          platform?: string | null;
+        };
+        Update: Partial<Omit<StaffPushSubscriptionsRow, "id" | "created_at" | "staff_id">>;
         Relationships: [];
       };
       plans: {

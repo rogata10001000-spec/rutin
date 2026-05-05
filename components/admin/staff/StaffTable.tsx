@@ -19,6 +19,12 @@ const roleConfig = {
   cast: { label: "キャスト", className: "bg-terracotta text-white" },
 };
 
+const genderLabel: Record<"female" | "male" | "other", string> = {
+  female: "女性",
+  male: "男性",
+  other: "その他",
+};
+
 export function StaffTable({ items }: StaffTableProps) {
   const router = useRouter();
   const { showToast, ToastContainer } = useToast();
@@ -149,6 +155,9 @@ export function StaffTable({ items }: StaffTableProps) {
                     状態
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
+                    性別
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
                     担当ユーザー
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
@@ -187,6 +196,13 @@ export function StaffTable({ items }: StaffTableProps) {
                         >
                           {item.active ? "有効" : "無効"}
                         </span>
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">
+                        {item.role === "cast"
+                          ? item.gender
+                            ? genderLabel[item.gender]
+                            : "未設定"
+                          : "-"}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">
                         {item.role === "cast" ? `${item.assignedUserCount}人` : "-"}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { unregisterPushSubscription } from "@/actions/push-notifications";
 import { createClient } from "@/lib/supabase/client";
 import type { StaffRole } from "@/lib/supabase/types";
 
@@ -26,6 +27,17 @@ export function TopBar({ staffName, staffRole, onMenuClick }: TopBarProps) {
   const router = useRouter();
 
   const handleLogout = async () => {
+    try {
+      const registration = await navigator.serviceWorker?.getRegistration();
+      const subscription = await registration?.pushManager.getSubscription();
+      if (subscription) {
+        await unregisterPushSubscription({ endpoint: subscription.endpoint });
+        await subscription.unsubscribe();
+      }
+    } catch {
+      // ログアウト自体は通知解除に失敗しても継続する
+    }
+
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/login");

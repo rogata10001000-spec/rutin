@@ -40,22 +40,27 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
 
   return (
     <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-12 text-center">
-      <div className="mb-6 rounded-full bg-indigo-100 p-4">
-        <span className="text-4xl">🎉</span>
+      <div className="mb-6 rounded-full bg-primary/10 p-4">
+        <span className="material-symbols-outlined text-primary" style={{ fontSize: "40px" }}>
+          check_circle
+        </span>
       </div>
-      <h1 className="text-2xl font-bold text-gray-900">契約ありがとうございます！</h1>
+      <h1 className="text-2xl font-bold text-gray-900">契約ありがとうございます</h1>
       <p className="mt-3 text-sm text-gray-600">
-        担当キャストからのメッセージをお待ちください。
+        担当の伴走メイトからのメッセージをお待ちください。
       </p>
       <p className="mt-1 text-sm text-gray-600">
-        LINEアプリに戻って、トークの確認をお願いします。
+        スマホの方はLINEアプリに戻って、トークの確認をお願いします。
       </p>
       <a
         href="line://"
-        className="mt-6 inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        className="mt-6 inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-dark"
       >
         LINEに戻る
       </a>
+      <p className="mt-3 text-xs text-gray-500">
+        ※ PCでお手続きされた方は、お使いのスマホでLINEを開いてください。
+      </p>
     </main>
   );
 }

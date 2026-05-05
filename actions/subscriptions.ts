@@ -11,6 +11,7 @@ import { createSubscriptionCheckout as stripeCreateCheckout } from "@/lib/stripe
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { getUserFromServerCookies } from "@/lib/auth";
 import { getServerEnv } from "@/lib/env";
+import type { StaffGender } from "@/lib/supabase/types";
 
 const serverEnv = getServerEnv();
 const APP_BASE_URL = serverEnv.APP_BASE_URL;
@@ -50,6 +51,7 @@ export type AvailableCast = {
   id: string;
   displayName: string;
   bio: string | null;
+  gender: StaffGender | null;
   prices: CastPlanPrices;
   stripePriceIds: Record<string, string>;
   acceptingNewUsers: boolean;
@@ -60,6 +62,7 @@ export type AvailableCast = {
 
 export type ListAvailableCastsInput = {
   planCode?: PlanCode;
+  gender?: StaffGender;
 };
 
 export type ListAvailableCastsResult = Result<{ casts: AvailableCast[] }>;
@@ -83,13 +86,19 @@ export async function listAvailableCasts(
   const supabase = createAdminSupabaseClient();
 
   // アクティブで新規受付中のキャストを取得
-  const { data: casts, error: castsError } = await supabase
+  let castsQuery = supabase
     .from("staff_profiles")
-    .select("id, display_name, style_summary, capacity_limit, accepting_new_users")
+    .select("id, display_name, style_summary, capacity_limit, accepting_new_users, gender")
     .eq("role", "cast")
     .eq("active", true)
     .eq("accepting_new_users", true)
     .order("display_name");
+
+  if (parsed.data.gender) {
+    castsQuery = castsQuery.eq("gender", parsed.data.gender);
+  }
+
+  const { data: casts, error: castsError } = await castsQuery;
 
   if (castsError) {
     return {
@@ -98,85 +107,114 @@ export async function listAvailableCasts(
     };
   }
 
-  // 各キャストの担当ユーザー数と価格オーバーライドを取得
-  const result: AvailableCast[] = await Promise.all(
-    (casts ?? []).map(async (cast) => {
-      // 担当ユーザー数
-      const { count: assignedCount } = await supabase
-        .from("end_users")
-        .select("*", { count: "exact", head: true })
-        .eq("assigned_cast_id", cast.id)
-        .neq("status", "incomplete");
+  const castIds = (casts ?? []).map((c) => c.id);
+  if (castIds.length === 0) {
+    return { ok: true, data: { casts: [] } };
+  }
 
-      // キャパシティチェック
-      if (cast.capacity_limit !== null && (assignedCount ?? 0) >= cast.capacity_limit) {
-        return null; // キャパオーバーのキャストは除外
+  // バッチ取得: 担当ユーザー、価格オーバーライド、写真を1クエリずつまとめる
+  const [assignedRowsRes, priceOverridesRes, castPhotosRes] = await Promise.all([
+    supabase
+      .from("end_users")
+      .select("assigned_cast_id")
+      .in("assigned_cast_id", castIds)
+      .neq("status", "incomplete"),
+    supabase
+      .from("cast_plan_price_overrides")
+      .select("cast_id, plan_code, amount_monthly, stripe_price_id")
+      .in("cast_id", castIds)
+      .eq("active", true),
+    supabase
+      .from("cast_photos")
+      .select("id, cast_id, storage_path, caption")
+      .in("cast_id", castIds)
+      .eq("active", true)
+      .order("display_order"),
+  ]);
+
+  const assignedCountByCast = new Map<string, number>();
+  for (const row of assignedRowsRes.data ?? []) {
+    if (!row.assigned_cast_id) continue;
+    assignedCountByCast.set(
+      row.assigned_cast_id,
+      (assignedCountByCast.get(row.assigned_cast_id) ?? 0) + 1
+    );
+  }
+
+  const overridesByCast = new Map<
+    string,
+    Array<{ plan_code: string; amount_monthly: number; stripe_price_id: string }>
+  >();
+  for (const ov of priceOverridesRes.data ?? []) {
+    const list = overridesByCast.get(ov.cast_id) ?? [];
+    list.push({
+      plan_code: ov.plan_code,
+      amount_monthly: ov.amount_monthly,
+      stripe_price_id: ov.stripe_price_id,
+    });
+    overridesByCast.set(ov.cast_id, list);
+  }
+
+  const photosByCast = new Map<string, CastPhotoSummary[]>();
+  for (const photo of castPhotosRes.data ?? []) {
+    const list = photosByCast.get(photo.cast_id) ?? [];
+    list.push({
+      id: photo.id,
+      url: supabase.storage.from("cast-photos").getPublicUrl(photo.storage_path).data.publicUrl,
+      caption: photo.caption,
+    });
+    photosByCast.set(photo.cast_id, list);
+  }
+
+  const result: AvailableCast[] = [];
+  for (const cast of casts ?? []) {
+    const assignedCount = assignedCountByCast.get(cast.id) ?? 0;
+
+    // キャパシティチェック
+    if (cast.capacity_limit !== null && assignedCount >= cast.capacity_limit) {
+      continue;
+    }
+
+    // 価格解決（オーバーライド > デフォルト）
+    const prices: CastPlanPrices = {
+      light: DEFAULT_PRICES.light,
+      standard: DEFAULT_PRICES.standard,
+      premium: DEFAULT_PRICES.premium,
+    };
+
+    const stripePriceIds: Record<string, string> = {
+      light: DEFAULT_STRIPE_PRICE_IDS.light,
+      standard: DEFAULT_STRIPE_PRICE_IDS.standard,
+      premium: DEFAULT_STRIPE_PRICE_IDS.premium,
+    };
+
+    for (const override of overridesByCast.get(cast.id) ?? []) {
+      const plan = override.plan_code as keyof CastPlanPrices;
+      if (plan in prices) {
+        prices[plan] = override.amount_monthly;
+        stripePriceIds[plan] = override.stripe_price_id;
       }
+    }
 
-      // 価格オーバーライド取得
-      const { data: priceOverrides } = await supabase
-        .from("cast_plan_price_overrides")
-        .select("plan_code, amount_monthly, stripe_price_id")
-        .eq("cast_id", cast.id)
-        .eq("active", true);
+    if (parsed.data.planCode && !stripePriceIds[parsed.data.planCode]) {
+      continue;
+    }
 
-      // 価格解決（オーバーライド > デフォルト）
-      const prices: CastPlanPrices = {
-        light: DEFAULT_PRICES.light,
-        standard: DEFAULT_PRICES.standard,
-        premium: DEFAULT_PRICES.premium,
-      };
+    result.push({
+      id: cast.id,
+      displayName: cast.display_name,
+      bio: cast.style_summary,
+      gender: (cast.gender as StaffGender | null) ?? null,
+      prices,
+      stripePriceIds,
+      acceptingNewUsers: cast.accepting_new_users,
+      capacityLimit: cast.capacity_limit,
+      assignedCount,
+      photos: photosByCast.get(cast.id) ?? [],
+    });
+  }
 
-      const stripePriceIds: Record<string, string> = {
-        light: DEFAULT_STRIPE_PRICE_IDS.light,
-        standard: DEFAULT_STRIPE_PRICE_IDS.standard,
-        premium: DEFAULT_STRIPE_PRICE_IDS.premium,
-      };
-
-      for (const override of priceOverrides ?? []) {
-        const plan = override.plan_code as keyof CastPlanPrices;
-        if (plan in prices) {
-          prices[plan] = override.amount_monthly;
-          stripePriceIds[plan] = override.stripe_price_id;
-        }
-      }
-
-      if (parsed.data.planCode && !stripePriceIds[parsed.data.planCode]) {
-        return null; // 指定プランの価格がないキャストは除外
-      }
-
-      // 写真取得
-      const { data: castPhotos } = await supabase
-        .from("cast_photos")
-        .select("id, storage_path, caption")
-        .eq("cast_id", cast.id)
-        .eq("active", true)
-        .order("display_order");
-
-      const photos: CastPhotoSummary[] = (castPhotos ?? []).map((p) => ({
-        id: p.id,
-        url: supabase.storage.from("cast-photos").getPublicUrl(p.storage_path).data.publicUrl,
-        caption: p.caption,
-      }));
-
-      return {
-        id: cast.id,
-        displayName: cast.display_name,
-        bio: cast.style_summary,
-        prices,
-        stripePriceIds,
-        acceptingNewUsers: cast.accepting_new_users,
-        capacityLimit: cast.capacity_limit,
-        assignedCount: assignedCount ?? 0,
-        photos,
-      };
-    })
-  );
-
-  // nullを除外（キャパオーバーのキャスト）
-  const filteredCasts = result.filter((c): c is AvailableCast => c !== null);
-
-  return { ok: true, data: { casts: filteredCasts } };
+  return { ok: true, data: { casts: result } };
 }
 
 export type CreateSubscriptionCheckoutInput = {

@@ -5,7 +5,7 @@ test.describe("Cast Photos - Public View", () => {
     await page.goto("/subscribe/cast");
 
     await expect(
-      page.getByText("相談員を選ぶ").or(page.getByText("現在、新規受付中のキャストがいません。"))
+      page.getByText("伴走メイトを選ぶ").or(page.getByText("現在、新規受付中の伴走メイトがいません。"))
     ).toBeVisible();
   });
 

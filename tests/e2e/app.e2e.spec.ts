@@ -332,14 +332,14 @@ test.describe("サブスクリプション導線", () => {
     await page.goto("/subscribe");
     await page.waitForURL(/\/subscribe\/cast/);
     await expect(
-      page.getByText("相談員を選ぶ").or(page.getByText("現在、新規受付中のキャストがいません。"))
+      page.getByText("伴走メイトを選ぶ").or(page.getByText("現在、新規受付中の伴走メイトがいません。"))
     ).toBeVisible();
   });
 
   test("E2E-120-cast キャスト選択ページ表示", async ({ page }) => {
     await page.goto("/subscribe/cast");
     await expect(
-      page.getByText("相談員を選ぶ").or(page.getByText("現在、新規受付中のキャストがいません。"))
+      page.getByText("伴走メイトを選ぶ").or(page.getByText("現在、新規受付中の伴走メイトがいません。"))
     ).toBeVisible();
   });
 
@@ -367,7 +367,7 @@ test.describe("サブスクリプション導線", () => {
   test("E2E-124 キャスト選択: 一覧表示", async ({ page }) => {
     await page.goto("/subscribe/cast");
     await expect(
-      page.getByText("相談員を選ぶ").or(page.getByText("現在、新規受付中のキャストがいません。"))
+      page.getByText("伴走メイトを選ぶ").or(page.getByText("現在、新規受付中の伴走メイトがいません。"))
     ).toBeVisible();
   });
 

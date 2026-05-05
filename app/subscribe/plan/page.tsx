@@ -18,6 +18,12 @@ const planSla: Record<PlanCode, string> = {
   premium: "2時間以内",
 };
 
+const planDescription: Record<PlanCode, string> = {
+  light: "気軽にメッセージで相談したい方向け",
+  standard: "毎日のチェックインで継続的にサポート",
+  premium: "優先返信と週次レビューで集中サポート",
+};
+
 const formatYen = (amount: number) => `¥${amount.toLocaleString("ja-JP")}`;
 
 type PageProps = {
@@ -35,13 +41,13 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
       <main className="mx-auto min-h-screen max-w-[480px] bg-background-light px-4 py-8">
         <h1 className="text-xl font-bold text-[#2D241E]">プラン選択</h1>
         <p className="mt-3 text-sm text-[#6B5A51]">
-          キャストが指定されていません。キャスト選択からやり直してください。
+          伴走メイトが指定されていません。伴走メイト選択からやり直してください。
         </p>
         <a
           href="/subscribe/cast"
           className="mt-4 inline-flex text-sm font-medium text-primary hover:text-primary-dark"
         >
-          キャスト選択へ戻る
+          伴走メイト選択へ戻る
         </a>
       </main>
     );
@@ -53,7 +59,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
       <main className="mx-auto min-h-screen max-w-[480px] bg-background-light px-4 py-8">
         <h1 className="text-xl font-bold text-[#2D241E]">プラン選択</h1>
         <p className="mt-3 text-sm text-[#6B5A51]">
-          キャスト情報を取得できません。時間をおいて再度お試しください。
+          伴走メイト情報を取得できません。時間をおいて再度お試しください。
         </p>
       </main>
     );
@@ -65,13 +71,13 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
       <main className="mx-auto min-h-screen max-w-[480px] bg-background-light px-4 py-8">
         <h1 className="text-xl font-bold text-[#2D241E]">プラン選択</h1>
         <p className="mt-3 text-sm text-[#6B5A51]">
-          指定されたキャストが見つかりません。
+          指定された伴走メイトが見つかりません。
         </p>
         <a
           href="/subscribe/cast"
           className="mt-4 inline-flex text-sm font-medium text-primary hover:text-primary-dark"
         >
-          キャスト選択へ戻る
+          伴走メイト選択へ戻る
         </a>
       </main>
     );
@@ -101,12 +107,13 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
 
   return (
     <div className="min-h-screen bg-background-light">
-      <main className="mx-auto flex max-w-[480px] flex-col border-x border-orange-50 bg-background-light pb-24 shadow-sm">
+      <main className="mx-auto flex max-w-[480px] flex-col border-x border-orange-50 bg-background-light pb-12 shadow-sm">
         {/* Navigation */}
         <nav className="sticky top-0 z-50 flex items-center bg-background-light/90 p-4 pb-2 backdrop-blur-md">
           <a
             href="/subscribe/cast"
             className="flex size-10 cursor-pointer items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10"
+            aria-label="伴走メイト選択に戻る"
           >
             <span className="material-symbols-outlined" style={{ fontSize: "24px" }}>
               arrow_back_ios_new
@@ -117,35 +124,31 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
           </h2>
         </nav>
 
-        {/* Promotional Banner */}
+        {/* 伴走メイト情報＋トライアル案内 */}
         <div className="px-4 py-4">
-          <div className="flex flex-col gap-4 rounded-2xl border border-primary/20 bg-primary/10 p-6">
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2 text-sm font-bold tracking-wide text-primary">
-                <span className="material-symbols-outlined fill-current text-[20px]">
-                  verified_user
-                </span>
-                担当: {cast.displayName}
-              </div>
-              <h1 className="text-xl font-black leading-tight text-[#2D241E]">
-                7日間無料トライアルで
-                <br />
-                プレミアム体験を
-              </h1>
-              <p className="text-sm font-medium text-[#6B5A51]">
-                Standard相当の機能を7日間無料でお試しいただけます。
-              </p>
+          <div className="flex flex-col gap-3 rounded-2xl border border-primary/20 bg-primary/10 p-5">
+            <div className="flex items-center gap-2 text-sm font-bold tracking-wide text-primary">
+              <span className="material-symbols-outlined fill-current text-[20px]">
+                verified_user
+              </span>
+              担当: {cast.displayName}
             </div>
+            <p className="text-sm leading-relaxed text-[#2D241E]">
+              選んだプランで7日間の無料トライアルを開始します。
+              トライアル期間中はいつでも解約でき、料金は発生しません。
+            </p>
           </div>
         </div>
 
         {!hasLineSession && (
-          <div className="mx-4 mb-4 rounded-2xl bg-amber-50 p-4 text-sm font-medium text-amber-700 border border-amber-100">
-            <div className="flex items-center gap-2 mb-1">
+          <div className="mx-4 mb-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-medium text-amber-700">
+            <div className="mb-1 flex items-center gap-2 font-bold">
               <span className="material-symbols-outlined text-[20px]">warning</span>
-              <span>LINE連携が必要です</span>
+              LINE連携が必要です
             </div>
-            LINEの案内リンクからアクセスしてください。
+            <p className="text-xs leading-relaxed">
+              ご契約には、LINE公式アカウントから届く案内リンクからのアクセスが必要です。
+            </p>
           </div>
         )}
 
@@ -174,7 +177,10 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                     <h3 className="text-lg font-bold text-[#2D241E]">
                       {planLabels[planCode]}
                     </h3>
-                    <p className="text-xs text-[#6B5A51]">
+                    <p className="mt-1 text-xs leading-relaxed text-[#6B5A51]">
+                      {planDescription[planCode]}
+                    </p>
+                    <p className="mt-1 text-xs text-[#6B5A51]">
                       返信目安: {planSla[planCode]}
                     </p>
                   </div>
@@ -204,33 +210,13 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                         : "cursor-not-allowed bg-zinc-100 text-zinc-400 shadow-none"
                     }`}
                   >
-                    {canCheckout ? "このプランで始める" : "選択できません"}
+                    {canCheckout ? "このプランで7日間無料トライアル" : "選択できません"}
                   </button>
                 </form>
               </div>
             );
           })}
         </div>
-
-        {/* Bottom Navigation */}
-        <nav className="fixed bottom-0 z-[60] flex w-full max-w-[480px] items-center justify-between border-t border-warm-border/50 bg-white/95 px-6 py-3 backdrop-blur-xl">
-          <div className="flex flex-col items-center gap-1 text-[#6B5A51]">
-            <span className="material-symbols-outlined">home</span>
-            <span className="text-[10px] font-bold">ホーム</span>
-          </div>
-          <div className="flex flex-col items-center gap-1 text-primary">
-            <span className="material-symbols-outlined fill-current">groups</span>
-            <span className="text-[10px] font-bold">相談員</span>
-          </div>
-          <div className="flex flex-col items-center gap-1 text-[#6B5A51]">
-            <span className="material-symbols-outlined">chat_bubble</span>
-            <span className="text-[10px] font-bold">メッセージ</span>
-          </div>
-          <div className="flex flex-col items-center gap-1 text-[#6B5A51]">
-            <span className="material-symbols-outlined">account_circle</span>
-            <span className="text-[10px] font-bold">マイページ</span>
-          </div>
-        </nav>
       </main>
     </div>
   );

@@ -12,6 +12,16 @@ const notoSansJP = Noto_Sans_JP({
 export const metadata: Metadata = {
   title: "Rutin - 習慣化サポート",
   description: "継続できない人のための、人による伴走型・習慣化サポートサービス",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Rutin",
+    statusBarStyle: "default",
+  },
 };
 
 export default function RootLayout({
@@ -22,6 +32,7 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <head>
+        <meta name="theme-color" content="#c76f55" />
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"

@@ -6,6 +6,7 @@ import { Result, toZodErrorMessage } from "../types";
 import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
+import type { StaffGender } from "@/lib/supabase/types";
 
 const TEMPORARY_PASSWORD_LENGTH = 16;
 const PASSWORD_GROUPS = [
@@ -78,6 +79,7 @@ export type StaffMember = {
   active: boolean;
   capacityLimit: number | null;
   acceptingNewUsers: boolean;
+  gender: StaffGender | null;
   assignedUserCount: number;
 };
 
@@ -99,7 +101,7 @@ export async function getStaffList(): Promise<GetStaffListResult> {
 
   const { data, error } = await supabase
     .from("staff_profiles")
-    .select("id, display_name, role, active, capacity_limit, accepting_new_users")
+    .select("id, display_name, role, active, capacity_limit, accepting_new_users, gender")
     .order("role")
     .order("display_name");
 
@@ -130,6 +132,7 @@ export async function getStaffList(): Promise<GetStaffListResult> {
         active: row.active,
         capacityLimit: row.capacity_limit,
         acceptingNewUsers: row.accepting_new_users,
+        gender: (row.gender as StaffGender | null) ?? null,
         assignedUserCount,
       };
     })
@@ -149,6 +152,7 @@ export type StaffDetail = {
   active: boolean;
   capacityLimit: number | null;
   acceptingNewUsers: boolean;
+  gender: StaffGender | null;
   styleSummary: string | null;
 };
 
@@ -170,7 +174,7 @@ export async function getStaffDetail(staffId: string): Promise<GetStaffDetailRes
 
   const { data, error } = await supabase
     .from("staff_profiles")
-    .select("id, display_name, role, active, capacity_limit, accepting_new_users, style_summary")
+    .select("id, display_name, role, active, capacity_limit, accepting_new_users, gender, style_summary")
     .eq("id", staffId)
     .single();
 
@@ -191,6 +195,7 @@ export async function getStaffDetail(staffId: string): Promise<GetStaffDetailRes
         active: data.active,
         capacityLimit: data.capacity_limit,
         acceptingNewUsers: data.accepting_new_users,
+        gender: (data.gender as StaffGender | null) ?? null,
         styleSummary: data.style_summary,
       },
     },
@@ -208,6 +213,7 @@ export type UpsertStaffProfileInput = {
   capacityLimit?: number | null;
   active: boolean;
   acceptingNewUsers?: boolean;
+  gender?: StaffGender | null;
 };
 
 export type UpsertStaffProfileResult = Result<{ id: string }>;
@@ -244,6 +250,7 @@ export async function upsertStaffProfile(
       capacity_limit: parsed.data.capacityLimit ?? null,
       active: parsed.data.active,
       accepting_new_users: parsed.data.acceptingNewUsers ?? true,
+      gender: parsed.data.gender ?? null,
     })
     .eq("id", parsed.data.staffId);
 
@@ -263,6 +270,7 @@ export async function upsertStaffProfile(
   });
 
   revalidatePath("/admin/staff");
+  revalidatePath("/subscribe/cast");
 
   return { ok: true, data: { id: parsed.data.staffId } };
 }
@@ -348,6 +356,7 @@ export type CreateStaffAccountInput = {
   displayName: string;
   role: "cast";
   capacityLimit?: number | null;
+  gender?: StaffGender | null;
 };
 
 export type CreateStaffAccountResult = Result<{
@@ -425,6 +434,7 @@ export async function createStaffAccount(
         capacity_limit: parsed.data.capacityLimit ?? null,
         active: true,
         accepting_new_users: true,
+        gender: parsed.data.gender ?? null,
       });
 
     if (profileError) {

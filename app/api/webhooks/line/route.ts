@@ -12,6 +12,7 @@ import { checkRateLimit, requestKey } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { generateUserToken } from "@/lib/auth";
 import { getServerEnv } from "@/lib/env";
+import { notifyAssignedCastOfInboundMessage } from "@/lib/push-notifications";
 
 // LINE Webhook Event Types
 type LineFollowEvent = {
@@ -174,12 +175,16 @@ export async function POST(request: Request) {
           }
 
           // messages(in) insert
-          const { error: msgError } = await supabase.from("messages").insert({
-            end_user_id: newUser.id,
-            direction: "in",
-            body: messageText,
-            line_message_id: messageId,
-          });
+          const { data: savedMsg, error: msgError } = await supabase
+            .from("messages")
+            .insert({
+              end_user_id: newUser.id,
+              direction: "in",
+              body: messageText,
+              line_message_id: messageId,
+            })
+            .select("id")
+            .single();
 
           if (msgError) {
             throw new Error(`Failed to save message: ${msgError.message}`);
@@ -195,7 +200,7 @@ export async function POST(request: Request) {
             actorStaffId: null,
           });
 
-          return { userId: newUser.id, isNew: true };
+          return { userId: newUser.id, messageId: savedMsg.id, isNew: true };
         }
 
         // messages(in) insert
@@ -228,11 +233,23 @@ export async function POST(request: Request) {
           actorStaffId: null,
         });
 
-        return { userId: user.id };
+        return { userId: user.id, messageId: savedMsg.id };
       });
 
       if (result.status === "error") {
         logger.error("LINE webhook message error", { message: result.message, eventId });
+      }
+
+      if (result.status === "processed") {
+        const isDuplicate = "duplicate" in result.data && result.data.duplicate;
+        const messageIdForPush = "messageId" in result.data ? result.data.messageId : null;
+
+        if (!isDuplicate && messageIdForPush) {
+          await notifyAssignedCastOfInboundMessage({
+            endUserId: result.data.userId,
+            messageId: messageIdForPush,
+          });
+        }
       }
     }
 
