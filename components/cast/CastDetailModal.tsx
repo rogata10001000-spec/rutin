@@ -82,8 +82,8 @@ export function CastDetailModal({ cast, isOpen, onClose }: CastDetailModalProps)
       />
 
       <div className="relative z-10 flex max-h-[92vh] w-full max-w-[480px] flex-col overflow-hidden rounded-t-3xl bg-background-light shadow-2xl sm:max-h-[90vh] sm:rounded-3xl">
-        {/* 写真エリア */}
-        <div className="relative aspect-[3/4] w-full bg-warm-border/40">
+        {/* 写真エリア（縦長固定比率だと画面を占有しすぎるため、vh上限で高さを抑える） */}
+        <div className="relative h-[min(34vh,17.5rem)] w-full shrink-0 overflow-hidden bg-warm-border/40 sm:h-[min(38vh,22rem)]">
           {hasPhotos ? (
             <Swiper
               modules={[Navigation, Pagination, Keyboard]}
@@ -173,8 +173,8 @@ export function CastDetailModal({ cast, isOpen, onClose }: CastDetailModalProps)
         </div>
 
         {/* 情報エリア */}
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 pb-6 pt-5">
-          <header className="flex flex-col gap-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pb-4 pt-4 sm:gap-4 sm:pb-6 sm:pt-5">
+          <header className="flex shrink-0 flex-col gap-2">
             <div className="flex items-center gap-2">
               {genderText && (
                 <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-bold text-primary">
@@ -211,7 +211,7 @@ export function CastDetailModal({ cast, isOpen, onClose }: CastDetailModalProps)
         </div>
 
         {/* CTA固定フッター */}
-        <div className="border-t border-warm-border/50 bg-white px-5 py-4">
+        <div className="shrink-0 border-t border-warm-border/50 bg-white px-5 py-4">
           <a
             href={`/subscribe/plan?castId=${cast.id}`}
             className="flex h-12 w-full items-center justify-center rounded-full bg-primary text-base font-bold text-white shadow-lg shadow-primary/30 transition-transform active:scale-95"
