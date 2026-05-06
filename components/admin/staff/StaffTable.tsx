@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { StaffMember } from "@/actions/admin/staff";
 import { resetStaffPassword, setCastAcceptingStatus } from "@/actions/admin/staff";
 import { useToast } from "@/components/common/Toast";
+import { calculateAge } from "@/lib/age";
 import { InviteStaffDialog } from "./InviteStaffDialog";
 import { EditStaffDialog } from "./EditStaffDialog";
 
@@ -158,6 +159,9 @@ export function StaffTable({ items }: StaffTableProps) {
                     性別
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
+                    年齢
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
                     担当ユーザー
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
@@ -202,6 +206,14 @@ export function StaffTable({ items }: StaffTableProps) {
                           ? item.gender
                             ? genderLabel[item.gender]
                             : "未設定"
+                          : "-"}
+                      </td>
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">
+                        {item.role === "cast"
+                          ? (() => {
+                              const age = calculateAge(item.birthDate);
+                              return age !== null ? `${age}歳` : "未設定";
+                            })()
                           : "-"}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">

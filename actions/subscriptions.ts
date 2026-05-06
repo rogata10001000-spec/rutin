@@ -11,6 +11,7 @@ import { createSubscriptionCheckout as stripeCreateCheckout } from "@/lib/stripe
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { getUserFromServerCookies } from "@/lib/auth";
 import { getServerEnv } from "@/lib/env";
+import { calculateAge } from "@/lib/age";
 import type { StaffGender } from "@/lib/supabase/types";
 
 const serverEnv = getServerEnv();
@@ -51,6 +52,8 @@ export type AvailableCast = {
   id: string;
   displayName: string;
   bio: string | null;
+  publicProfile: string | null;
+  age: number | null;
   gender: StaffGender | null;
   prices: CastPlanPrices;
   stripePriceIds: Record<string, string>;
@@ -88,7 +91,9 @@ export async function listAvailableCasts(
   // アクティブで新規受付中のキャストを取得
   let castsQuery = supabase
     .from("staff_profiles")
-    .select("id, display_name, style_summary, capacity_limit, accepting_new_users, gender")
+    .select(
+      "id, display_name, style_summary, public_profile, birth_date, capacity_limit, accepting_new_users, gender"
+    )
     .eq("role", "cast")
     .eq("active", true)
     .eq("accepting_new_users", true)
@@ -204,6 +209,8 @@ export async function listAvailableCasts(
       id: cast.id,
       displayName: cast.display_name,
       bio: cast.style_summary,
+      publicProfile: cast.public_profile ?? null,
+      age: calculateAge(cast.birth_date),
       gender: (cast.gender as StaffGender | null) ?? null,
       prices,
       stripePriceIds,

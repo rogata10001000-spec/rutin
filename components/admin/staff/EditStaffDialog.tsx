@@ -15,6 +15,8 @@ const formSchema = z.object({
   active: z.boolean(),
   acceptingNewUsers: z.boolean(),
   gender: z.enum(["female", "male", "other", ""]).optional(),
+  birthDate: z.string().optional(),
+  publicProfile: z.string().max(1000, "1000文字以内で入力してください").optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -58,6 +60,8 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
       active: true,
       acceptingNewUsers: true,
       gender: "",
+      birthDate: "",
+      publicProfile: "",
     },
   });
 
@@ -83,6 +87,8 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
         active: staff.active,
         acceptingNewUsers: staff.acceptingNewUsers,
         gender: staff.gender ?? "",
+        birthDate: staff.birthDate ?? "",
+        publicProfile: staff.publicProfile ?? "",
       });
     }
   }, [open, staff, reset]);
@@ -100,6 +106,8 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
         active: data.active,
         acceptingNewUsers: data.acceptingNewUsers,
         gender: data.gender ? data.gender : null,
+        birthDate: data.birthDate ? data.birthDate : null,
+        publicProfile: data.publicProfile?.trim() ? data.publicProfile.trim() : null,
       });
 
       if (result.ok) {
@@ -241,6 +249,52 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
                   </div>
                   <p className="mt-1.5 text-xs text-stone-400">
                     ユーザーの伴走メイト選択画面で絞り込みに使われます
+                  </p>
+                </div>
+              )}
+
+              {/* Birth Date (Cast only) */}
+              {selectedRole === "cast" && (
+                <div>
+                  <label
+                    htmlFor="birthDate"
+                    className="block text-sm font-bold text-stone-700"
+                  >
+                    生年月日
+                  </label>
+                  <input
+                    id="birthDate"
+                    type="date"
+                    {...register("birthDate")}
+                    className="mt-1.5 block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
+                  />
+                  <p className="mt-1.5 text-xs text-stone-400">
+                    年齢のみがユーザー画面に表示されます。生年月日そのものは公開されません。
+                  </p>
+                </div>
+              )}
+
+              {/* Public Profile (Cast only) */}
+              {selectedRole === "cast" && (
+                <div>
+                  <label
+                    htmlFor="publicProfile"
+                    className="block text-sm font-bold text-stone-700"
+                  >
+                    ユーザー向けプロフィール
+                  </label>
+                  <textarea
+                    id="publicProfile"
+                    rows={4}
+                    {...register("publicProfile")}
+                    className="mt-1.5 block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
+                    placeholder="自己紹介、得意な相談ジャンルなど（1000文字以内）"
+                  />
+                  {errors.publicProfile && (
+                    <p className="mt-1.5 text-sm text-red-600 font-medium">{errors.publicProfile.message}</p>
+                  )}
+                  <p className="mt-1.5 text-xs text-stone-400">
+                    伴走メイト選択画面の詳細モーダルで表示されます。AI返信用のスタイルメモとは別管理です。
                   </p>
                 </div>
               )}

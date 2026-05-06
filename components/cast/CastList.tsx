@@ -1,11 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { CastPhotoModal, type CastPhotoModalPhoto } from "./CastPhotoModal";
+import { CastDetailModal } from "./CastDetailModal";
 import type { AvailableCast } from "@/actions/subscriptions";
 import type { StaffGender } from "@/lib/supabase/types";
-
-const formatYen = (amount: number) => `¥${amount.toLocaleString("ja-JP")}`;
 
 const GENDER_LABEL: Record<StaffGender, string> = {
   female: "女性",
@@ -18,123 +16,76 @@ type CastListProps = {
 };
 
 export function CastList({ casts }: CastListProps) {
-  const [modalOpen, setModalOpen] = useState(false);
   const [selectedCast, setSelectedCast] = useState<AvailableCast | null>(null);
-  const [initialPhotoIndex, setInitialPhotoIndex] = useState(0);
-
-  const handlePhotoClick = (cast: AvailableCast, photoIndex: number = 0) => {
-    if (cast.photos.length === 0) return;
-    setSelectedCast(cast);
-    setInitialPhotoIndex(photoIndex);
-    setModalOpen(true);
-  };
-
-  const handleCloseModal = () => {
-    setModalOpen(false);
-    setSelectedCast(null);
-  };
 
   return (
     <>
-      <div className="flex flex-col gap-4 px-4">
+      <div className="grid grid-cols-1 gap-4 px-4 sm:grid-cols-2">
         {casts.map((cast) => {
           const mainPhoto = cast.photos[0]?.url;
-          const hasMultiplePhotos = cast.photos.length > 1;
+          const photoCount = cast.photos.length;
           const genderText = cast.gender ? GENDER_LABEL[cast.gender] : null;
 
           return (
-            <div
+            <button
               key={cast.id}
-              className="ios-shadow flex gap-4 rounded-2xl border border-warm-border/40 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+              type="button"
+              onClick={() => setSelectedCast(cast)}
+              className="group relative flex aspect-[3/4] w-full overflow-hidden rounded-3xl bg-warm-border/40 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 sm:aspect-[3/4]"
+              aria-label={`${cast.displayName}の詳細を見る`}
             >
-              {/* 写真エリア */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => handlePhotoClick(cast)}
-                  className="group relative size-24 shrink-0 overflow-hidden rounded-2xl bg-warm-border/40 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
-                  disabled={cast.photos.length === 0}
-                  aria-label={
-                    cast.photos.length === 0
-                      ? `${cast.displayName}の写真は未登録`
-                      : `${cast.displayName}の写真を見る`
-                  }
-                >
-                  {mainPhoto ? (
-                    <div
-                      className="size-full bg-cover bg-center transition-transform group-hover:scale-105"
-                      style={{ backgroundImage: `url(${mainPhoto})` }}
-                    />
-                  ) : (
-                    <div className="flex size-full items-center justify-center text-[10px] font-medium text-[#6B5A51]">
-                      No Photo
-                    </div>
-                  )}
+              {mainPhoto ? (
+                <div
+                  className="absolute inset-0 bg-cover bg-center transition-transform duration-300 group-hover:scale-[1.03]"
+                  style={{ backgroundImage: `url(${mainPhoto})` }}
+                />
+              ) : (
+                <div className="flex size-full items-center justify-center text-sm font-medium text-[#6B5A51]">
+                  No Photo
+                </div>
+              )}
 
-                  {hasMultiplePhotos && (
-                    <div className="absolute bottom-1 right-1 flex size-6 items-center justify-center rounded-full bg-black/60 text-[10px] font-bold text-white">
-                      +{cast.photos.length - 1}
-                    </div>
-                  )}
-
-                  {cast.photos.length > 0 && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/20">
-                      <span className="material-symbols-outlined text-white opacity-0 transition-opacity group-hover:opacity-100">
-                        photo_library
-                      </span>
-                    </div>
-                  )}
-                </button>
+              {/* 上部: バッジ群 */}
+              <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-1.5">
+                {genderText && (
+                  <span className="rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-bold text-primary backdrop-blur-sm">
+                    {genderText}
+                  </span>
+                )}
+                {photoCount > 1 && (
+                  <span className="flex items-center gap-1 rounded-full bg-black/55 px-2 py-1 text-[11px] font-bold text-white backdrop-blur-sm">
+                    <span className="material-symbols-outlined text-[14px]">photo_library</span>
+                    {photoCount}
+                  </span>
+                )}
               </div>
 
-              {/* 情報エリア */}
-              <div className="flex flex-1 flex-col gap-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex flex-col">
-                    {genderText && (
-                      <span className="mb-1 w-fit rounded bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
-                        {genderText}
+              {/* 下部: 名前と年齢（グラデーション付き） */}
+              <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/70 via-black/40 to-transparent px-4 pb-4 pt-10">
+                <div className="flex items-end justify-between gap-2 text-white">
+                  <h3 className="text-base font-bold leading-tight drop-shadow-sm">
+                    {cast.displayName}
+                    {cast.age !== null && (
+                      <span className="ml-1 text-sm font-medium opacity-90">
+                        {cast.age}歳
                       </span>
                     )}
-                    <h3 className="text-base font-bold text-[#2D241E] dark:text-white">
-                      {cast.displayName}
-                    </h3>
-                  </div>
-                </div>
-
-                {cast.bio && (
-                  <p className="line-clamp-2 text-xs leading-relaxed text-[#6B5A51] dark:text-zinc-400">
-                    {cast.bio}
-                  </p>
-                )}
-
-                <div className="mt-1 flex items-center justify-between">
-                  <span className="text-sm font-bold text-primary">
-                    {formatYen(cast.prices.light)}
-                    <span className="ml-0.5 text-[10px] text-[#6B5A51]">/月〜</span>
+                  </h3>
+                  <span className="material-symbols-outlined text-white/90">
+                    chevron_right
                   </span>
-                  <a
-                    href={`/subscribe/plan?castId=${cast.id}`}
-                    className="rounded-full bg-primary px-4 py-1.5 text-[12px] font-bold text-white transition-colors hover:bg-primary-dark active:scale-95"
-                  >
-                    プランを見る
-                  </a>
                 </div>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
 
-      {selectedCast && (
-        <CastPhotoModal
-          isOpen={modalOpen}
-          onClose={handleCloseModal}
-          photos={selectedCast.photos as CastPhotoModalPhoto[]}
-          castName={selectedCast.displayName}
-          initialIndex={initialPhotoIndex}
-        />
-      )}
+      <CastDetailModal
+        cast={selectedCast}
+        isOpen={selectedCast !== null}
+        onClose={() => setSelectedCast(null)}
+      />
     </>
   );
 }

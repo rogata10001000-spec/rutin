@@ -80,6 +80,8 @@ export type StaffMember = {
   capacityLimit: number | null;
   acceptingNewUsers: boolean;
   gender: StaffGender | null;
+  birthDate: string | null;
+  publicProfile: string | null;
   assignedUserCount: number;
 };
 
@@ -101,7 +103,9 @@ export async function getStaffList(): Promise<GetStaffListResult> {
 
   const { data, error } = await supabase
     .from("staff_profiles")
-    .select("id, display_name, role, active, capacity_limit, accepting_new_users, gender")
+    .select(
+      "id, display_name, role, active, capacity_limit, accepting_new_users, gender, birth_date, public_profile"
+    )
     .order("role")
     .order("display_name");
 
@@ -133,6 +137,8 @@ export async function getStaffList(): Promise<GetStaffListResult> {
         capacityLimit: row.capacity_limit,
         acceptingNewUsers: row.accepting_new_users,
         gender: (row.gender as StaffGender | null) ?? null,
+        birthDate: row.birth_date ?? null,
+        publicProfile: row.public_profile ?? null,
         assignedUserCount,
       };
     })
@@ -153,6 +159,8 @@ export type StaffDetail = {
   capacityLimit: number | null;
   acceptingNewUsers: boolean;
   gender: StaffGender | null;
+  birthDate: string | null;
+  publicProfile: string | null;
   styleSummary: string | null;
 };
 
@@ -174,7 +182,9 @@ export async function getStaffDetail(staffId: string): Promise<GetStaffDetailRes
 
   const { data, error } = await supabase
     .from("staff_profiles")
-    .select("id, display_name, role, active, capacity_limit, accepting_new_users, gender, style_summary")
+    .select(
+      "id, display_name, role, active, capacity_limit, accepting_new_users, gender, birth_date, public_profile, style_summary"
+    )
     .eq("id", staffId)
     .single();
 
@@ -196,6 +206,8 @@ export async function getStaffDetail(staffId: string): Promise<GetStaffDetailRes
         capacityLimit: data.capacity_limit,
         acceptingNewUsers: data.accepting_new_users,
         gender: (data.gender as StaffGender | null) ?? null,
+        birthDate: data.birth_date ?? null,
+        publicProfile: data.public_profile ?? null,
         styleSummary: data.style_summary,
       },
     },
@@ -214,6 +226,8 @@ export type UpsertStaffProfileInput = {
   active: boolean;
   acceptingNewUsers?: boolean;
   gender?: StaffGender | null;
+  birthDate?: string | null;
+  publicProfile?: string | null;
 };
 
 export type UpsertStaffProfileResult = Result<{ id: string }>;
@@ -251,6 +265,8 @@ export async function upsertStaffProfile(
       active: parsed.data.active,
       accepting_new_users: parsed.data.acceptingNewUsers ?? true,
       gender: parsed.data.gender ?? null,
+      birth_date: parsed.data.birthDate ?? null,
+      public_profile: parsed.data.publicProfile ?? null,
     })
     .eq("id", parsed.data.staffId);
 
@@ -357,6 +373,8 @@ export type CreateStaffAccountInput = {
   role: "cast";
   capacityLimit?: number | null;
   gender?: StaffGender | null;
+  birthDate?: string | null;
+  publicProfile?: string | null;
 };
 
 export type CreateStaffAccountResult = Result<{
@@ -435,6 +453,8 @@ export async function createStaffAccount(
         active: true,
         accepting_new_users: true,
         gender: parsed.data.gender ?? null,
+        birth_date: parsed.data.birthDate ?? null,
+        public_profile: parsed.data.publicProfile ?? null,
       });
 
     if (profileError) {

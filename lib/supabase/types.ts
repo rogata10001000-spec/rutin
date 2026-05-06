@@ -28,6 +28,8 @@ type StaffProfileRow = {
   style_updated_at: string | null;
   accepting_new_users: boolean;
   gender: StaffGender | null;
+  birth_date: string | null;
+  public_profile: string | null;
   created_at: string;
 };
 
@@ -387,10 +389,15 @@ export interface Database {
     Tables: {
       staff_profiles: {
         Row: StaffProfileRow;
-        Insert: Omit<StaffProfileRow, "created_at" | "style_summary" | "style_updated_at" | "gender"> & {
+        Insert: Omit<
+          StaffProfileRow,
+          "created_at" | "style_summary" | "style_updated_at" | "gender" | "birth_date" | "public_profile"
+        > & {
           style_summary?: string | null;
           style_updated_at?: string | null;
           gender?: StaffGender | null;
+          birth_date?: string | null;
+          public_profile?: string | null;
         };
         Update: Partial<Omit<StaffProfileRow, "created_at">>;
         Relationships: [];
