@@ -8,6 +8,12 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Next.js 16 では serverActions は experimental 配下（FormData+5MB と揃えないと大きい画像で Server Action が落ちる）
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "6mb",
+    },
+  },
   async headers() {
     return [
       {
