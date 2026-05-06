@@ -26,14 +26,15 @@ export default function LoginPage() {
 
       if (error) {
         setError("メールアドレスまたはパスワードが正しくありません");
+        setLoading(false);
         return;
       }
 
       router.push("/inbox");
       router.refresh();
+      // 遷移完了までローディング表示を維持（ページがアンマウントされるまで）
     } catch {
       setError("ログインに失敗しました");
-    } finally {
       setLoading(false);
     }
   };
@@ -54,7 +55,11 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-6"
+            aria-busy={loading}
+          >
             <div className="space-y-2">
               <label
                 htmlFor="email"
@@ -70,7 +75,8 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-3 text-stone-900 placeholder-stone-400 shadow-sm transition-all focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta sm:text-sm"
+                disabled={loading}
+                className="block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-3 text-stone-900 placeholder-stone-400 shadow-sm transition-all focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta enabled:hover:border-stone-300 sm:text-sm disabled:cursor-not-allowed disabled:opacity-60"
                 placeholder="staff@rutin.jp"
               />
             </div>
@@ -91,13 +97,15 @@ export default function LoginPage() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-3 pr-20 text-stone-900 placeholder-stone-400 shadow-sm transition-all focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta sm:text-sm"
+                  disabled={loading}
+                  className="block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-3 pr-20 text-stone-900 placeholder-stone-400 shadow-sm transition-all focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta enabled:hover:border-stone-300 sm:text-sm disabled:cursor-not-allowed disabled:opacity-60"
                   placeholder="••••••••"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs font-medium text-stone-500 hover:bg-stone-200 hover:text-stone-700 transition-colors"
+                  disabled={loading}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs font-medium text-stone-500 transition-colors hover:bg-stone-200 hover:text-stone-700 disabled:pointer-events-none disabled:opacity-40"
                   aria-pressed={showPassword}
                 >
                   {showPassword ? "隠す" : "表示"}
@@ -123,9 +131,21 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full transform rounded-xl bg-terracotta px-4 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-[#d0694e] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-terracotta focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 disabled:shadow-none"
+              className="flex w-full transform items-center justify-center gap-2 rounded-xl bg-terracotta px-4 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-[#d0694e] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-terracotta focus:ring-offset-2 disabled:cursor-wait disabled:opacity-90 disabled:shadow-md"
             >
-              {loading ? "ログイン中..." : "ログインして始める"}
+              {loading ? (
+                <>
+                  <span
+                    className="material-symbols-outlined shrink-0 animate-spin text-[20px]"
+                    aria-hidden
+                  >
+                    progress_activity
+                  </span>
+                  <span>ログインしています</span>
+                </>
+              ) : (
+                "ログインして始める"
+              )}
             </button>
           </form>
           
