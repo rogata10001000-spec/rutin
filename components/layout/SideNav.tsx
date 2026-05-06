@@ -100,7 +100,7 @@ const navItems: NavItem[] = [
     name: "メイト管理",
     href: "/admin/staff",
     icon: <StaffIcon />,
-    roles: ["admin"],
+    roles: ["admin", "supervisor"],
   },
   {
     name: "メイト写真管理",

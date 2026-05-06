@@ -112,14 +112,14 @@ export function CastDetailModal({ cast, isOpen, onClose }: CastDetailModalProps)
             >
               {photos.map((photo, index) => (
                 <SwiperSlide key={photo.id}>
-                  <div className="relative size-full">
+                  <div className="relative size-full bg-[#1f1814]">
                     <Image
                       src={photo.url}
                       alt={photo.caption || `${cast.displayName}の写真 ${index + 1}`}
                       fill
                       unoptimized
                       sizes="(max-width: 480px) 100vw, 480px"
-                      className="object-cover"
+                      className="object-contain object-center"
                       priority={index === 0}
                     />
                   </div>
@@ -196,11 +196,11 @@ export function CastDetailModal({ cast, isOpen, onClose }: CastDetailModalProps)
             </p>
           </header>
 
-          {cast.publicProfile ? (
+          {cast.publicProfile?.trim() ? (
             <section className="rounded-2xl bg-white p-4 ring-1 ring-warm-border/40">
               <h3 className="text-xs font-bold tracking-wide text-[#6B5A51]">プロフィール</h3>
               <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#2D241E]">
-                {cast.publicProfile}
+                {cast.publicProfile.trim()}
               </p>
             </section>
           ) : (

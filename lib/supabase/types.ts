@@ -30,6 +30,8 @@ type StaffProfileRow = {
   gender: StaffGender | null;
   birth_date: string | null;
   public_profile: string | null;
+  /** 伴走メイトの担当スーパーバイザー（role=supervisor の staff id） */
+  supervisor_id: string | null;
   created_at: string;
 };
 
@@ -398,6 +400,7 @@ export interface Database {
           gender?: StaffGender | null;
           birth_date?: string | null;
           public_profile?: string | null;
+          supervisor_id?: string | null;
         };
         Update: Partial<Omit<StaffProfileRow, "created_at">>;
         Relationships: [];

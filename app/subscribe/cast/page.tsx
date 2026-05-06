@@ -4,6 +4,9 @@ import { CastGenderFilter, type CastGenderFilterValue } from "../../../component
 import { getUserFromServerCookies } from "@/lib/auth";
 import type { StaffGender } from "@/lib/supabase/types";
 
+/** メイト一覧・公開プロフィールは常に最新を読む（保存直後の反映と整合） */
+export const dynamic = "force-dynamic";
+
 const GENDER_VALUES: ReadonlySet<StaffGender> = new Set(["female", "male", "other"]);
 
 function parseGender(value: string | undefined): StaffGender | undefined {

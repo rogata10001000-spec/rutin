@@ -12,6 +12,7 @@ import { EditStaffDialog } from "./EditStaffDialog";
 
 type StaffTableProps = {
   items: StaffMember[];
+  viewerRole: "admin" | "supervisor";
 };
 
 const roleConfig = {
@@ -26,7 +27,7 @@ const genderLabel: Record<"female" | "male" | "other", string> = {
   other: "その他",
 };
 
-export function StaffTable({ items }: StaffTableProps) {
+export function StaffTable({ items, viewerRole }: StaffTableProps) {
   const router = useRouter();
   const { showToast, ToastContainer } = useToast();
   const [toggling, setToggling] = useState<string | null>(null);
@@ -112,33 +113,39 @@ export function StaffTable({ items }: StaffTableProps) {
       {/* Header with Add Button */}
       <div className="flex items-center justify-between border-b border-stone-200 px-6 py-4 bg-white rounded-t-2xl">
         <div>
-          <h2 className="text-lg font-bold text-stone-800">メイト一覧</h2>
+          <h2 className="text-lg font-bold text-stone-800">
+            {viewerRole === "supervisor" ? "管轄メイト一覧" : "メイト一覧"}
+          </h2>
           <p className="text-sm text-stone-500">{items.length}人</p>
         </div>
-        <button
-          onClick={() => setInviteOpen(true)}
-          className="inline-flex items-center gap-2 rounded-xl bg-terracotta px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#d0694e] focus:outline-none focus:ring-2 focus:ring-terracotta focus:ring-offset-2"
-        >
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        {viewerRole === "admin" && (
+          <button
+            onClick={() => setInviteOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-terracotta px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#d0694e] focus:outline-none focus:ring-2 focus:ring-terracotta focus:ring-offset-2"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-          メイトを作成
-        </button>
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            メイトを作成
+          </button>
+        )}
       </div>
 
       {items.length === 0 ? (
         <div className="p-12 text-center text-stone-500 bg-white rounded-b-2xl border-x border-b border-stone-200">
-          メイトが登録されていません
+          {viewerRole === "supervisor"
+            ? "管轄のメイトがいません。管理者がメイトに担当スーパーバイザーを割り当てると、ここに表示されます。"
+            : "メイトが登録されていません"}
         </div>
       ) : (
         <div className="overflow-hidden rounded-b-2xl border-x border-b border-stone-200 bg-white shadow-soft">
@@ -167,9 +174,11 @@ export function StaffTable({ items }: StaffTableProps) {
                   <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
                     上限
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
-                    新規受付
-                  </th>
+                  {viewerRole === "admin" && (
+                    <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
+                      新規受付
+                    </th>
+                  )}
                   <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
                     操作
                   </th>
@@ -225,7 +234,7 @@ export function StaffTable({ items }: StaffTableProps) {
                           : "-"}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4">
-                        {item.role === "cast" && (
+                        {viewerRole === "admin" && item.role === "cast" && (
                           <button
                             onClick={() =>
                               handleToggleAccepting(item.id, item.acceptingNewUsers)
@@ -251,13 +260,15 @@ export function StaffTable({ items }: StaffTableProps) {
                           </button>
                           {item.role === "cast" && (
                             <>
-                              <button
-                                onClick={() => handleResetPassword(item)}
-                                disabled={resettingPassword === item.id}
-                                className="rounded-lg px-3 py-1 text-xs font-bold text-stone-600 hover:bg-stone-100 disabled:opacity-50"
-                              >
-                                {resettingPassword === item.id ? "再設定中..." : "パスワード再設定"}
-                              </button>
+                              {viewerRole === "admin" && (
+                                <button
+                                  onClick={() => handleResetPassword(item)}
+                                  disabled={resettingPassword === item.id}
+                                  className="rounded-lg px-3 py-1 text-xs font-bold text-stone-600 hover:bg-stone-100 disabled:opacity-50"
+                                >
+                                  {resettingPassword === item.id ? "再設定中..." : "パスワード再設定"}
+                                </button>
+                              )}
                               <Link
                                 href={`/admin/staff/${item.id}/photos`}
                                 className="inline-flex items-center gap-1 rounded-lg bg-primary/10 px-3 py-1 text-xs font-bold text-primary hover:bg-primary/20 transition-colors"
@@ -284,12 +295,13 @@ export function StaffTable({ items }: StaffTableProps) {
 
       {/* Dialogs */}
       <InviteStaffDialog
-        open={inviteOpen}
+        open={inviteOpen && viewerRole === "admin"}
         onClose={() => setInviteOpen(false)}
       />
       <EditStaffDialog
         open={editOpen}
         staff={selectedStaff}
+        viewerRole={viewerRole}
         onClose={() => {
           setEditOpen(false);
           setSelectedStaff(null);

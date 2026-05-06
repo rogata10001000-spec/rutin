@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { upsertStaffProfile, type StaffMember } from "@/actions/admin/staff";
+import {
+  upsertStaffProfile,
+  listSupervisorOptions,
+  type StaffMember,
+  type SupervisorOption,
+} from "@/actions/admin/staff";
 import { useToast } from "@/components/common/Toast";
 
 const formSchema = z.object({
@@ -17,6 +22,7 @@ const formSchema = z.object({
   gender: z.enum(["female", "male", "other", ""]).optional(),
   birthDate: z.string().optional(),
   publicProfile: z.string().max(1000, "1000文字以内で入力してください").optional(),
+  supervisorId: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -25,6 +31,7 @@ type EditStaffDialogProps = {
   open: boolean;
   staff: StaffMember | null;
   onClose: () => void;
+  viewerRole: "admin" | "supervisor";
 };
 
 const roleOptions = [
@@ -40,10 +47,11 @@ const genderOptions = [
   { value: "other", label: "その他" },
 ] as const;
 
-export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) {
+export function EditStaffDialog({ open, staff, onClose, viewerRole }: EditStaffDialogProps) {
   const router = useRouter();
   const { showToast, ToastContainer } = useToast();
   const [submitting, setSubmitting] = useState(false);
+  const [supervisorChoices, setSupervisorChoices] = useState<SupervisorOption[]>([]);
 
   const {
     register,
@@ -62,10 +70,12 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
       gender: "",
       birthDate: "",
       publicProfile: "",
+      supervisorId: "",
     },
   });
 
   const selectedRole = watch("role");
+  const isSupervisorViewer = viewerRole === "supervisor";
 
   useEffect(() => {
     if (open) {
@@ -79,6 +89,19 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
   }, [open]);
 
   useEffect(() => {
+    if (!open || viewerRole !== "admin") return;
+    let cancelled = false;
+    void listSupervisorOptions().then((res) => {
+      if (!cancelled && res.ok) {
+        setSupervisorChoices(res.data.supervisors);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, viewerRole]);
+
+  useEffect(() => {
     if (open && staff) {
       reset({
         displayName: staff.displayName,
@@ -89,6 +112,7 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
         gender: staff.gender ?? "",
         birthDate: staff.birthDate ?? "",
         publicProfile: staff.publicProfile ?? "",
+        supervisorId: staff.supervisorId ?? "",
       });
     }
   }, [open, staff, reset]);
@@ -108,10 +132,17 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
         gender: data.gender ? data.gender : null,
         birthDate: data.birthDate ? data.birthDate : null,
         publicProfile: data.publicProfile?.trim() ? data.publicProfile.trim() : null,
+        supervisorId:
+          viewerRole === "admin" && data.role === "cast"
+            ? data.supervisorId?.trim() || null
+            : undefined,
       });
 
       if (result.ok) {
-        showToast("メイト情報を更新しました", "success");
+        showToast(
+          isSupervisorViewer ? "プロフィール文を保存しました" : "メイト情報を更新しました",
+          "success"
+        );
         onClose();
         router.refresh();
       } else {
@@ -141,7 +172,7 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
         >
           <div className="flex-shrink-0 border-b border-stone-100 bg-stone-50/50 px-6 py-4">
             <h3 className="text-lg font-bold text-stone-800">
-              メイト情報を編集
+              {isSupervisorViewer ? "ユーザー向けプロフィール" : "メイト情報を編集"}
             </h3>
             <p className="mt-1 text-sm text-stone-500">
               {staff.displayName}さんの情報
@@ -156,125 +187,164 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
                   htmlFor="displayName"
                   className="block text-sm font-bold text-stone-700"
                 >
-                  表示名 <span className="text-terracotta">*</span>
+                  表示名 {!isSupervisorViewer && <span className="text-terracotta">*</span>}
                 </label>
                 <input
                   id="displayName"
                   type="text"
+                  disabled={isSupervisorViewer}
                   {...register("displayName")}
-                  className="mt-1.5 block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
+                  className="mt-1.5 block w-full rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta disabled:cursor-not-allowed disabled:opacity-70"
                 />
                 {errors.displayName && (
-                  <p className="mt-1.5 text-sm text-red-600 font-medium">{errors.displayName.message}</p>
+                  <p className="mt-1.5 text-sm font-medium text-red-600">{errors.displayName.message}</p>
                 )}
               </div>
 
-              {/* Role */}
-              <div>
-                <label
-                  htmlFor="role"
-                  className="block text-sm font-bold text-stone-700"
-                >
-                  ロール <span className="text-terracotta">*</span>
-                </label>
-                <div className="relative mt-1.5">
-                  <select
-                    id="role"
-                    {...register("role")}
-                    className="block w-full appearance-none rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                  >
-                    {roleOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
-              {/* Capacity Limit (Cast only) */}
-              {selectedRole === "cast" && (
-                <div>
-                  <label
-                    htmlFor="capacityLimit"
-                    className="block text-sm font-bold text-stone-700"
-                  >
-                    担当上限
-                  </label>
-                  <input
-                    id="capacityLimit"
-                    type="number"
-                    {...register("capacityLimit")}
-                    className="mt-1.5 block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                    placeholder="例: 30"
-                    min="1"
-                  />
-                  <p className="mt-1.5 text-xs text-stone-400">
-                    空欄の場合は上限なし（現在の担当: {staff.assignedUserCount}人）
-                  </p>
-                </div>
-              )}
-
-              {/* Gender (Cast only) */}
-              {selectedRole === "cast" && (
-                <div>
-                  <label
-                    htmlFor="gender"
-                    className="block text-sm font-bold text-stone-700"
-                  >
-                    性別
-                  </label>
-                  <div className="relative mt-1.5">
-                    <select
-                      id="gender"
-                      {...register("gender")}
-                      className="block w-full appearance-none rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
+              {!isSupervisorViewer && (
+                <>
+                  {/* Role */}
+                  <div>
+                    <label
+                      htmlFor="role"
+                      className="block text-sm font-bold text-stone-700"
                     >
-                      {genderOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
+                      ロール <span className="text-terracotta">*</span>
+                    </label>
+                    <div className="relative mt-1.5">
+                      <select
+                        id="role"
+                        {...register("role")}
+                        className="block w-full appearance-none rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
+                      >
+                        {roleOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
                     </div>
                   </div>
-                  <p className="mt-1.5 text-xs text-stone-400">
-                    ユーザーの伴走メイト選択画面で絞り込みに使われます
-                  </p>
-                </div>
+
+                  {/* Capacity Limit (Cast only) */}
+                  {selectedRole === "cast" && (
+                    <div>
+                      <label
+                        htmlFor="capacityLimit"
+                        className="block text-sm font-bold text-stone-700"
+                      >
+                        担当上限
+                      </label>
+                      <input
+                        id="capacityLimit"
+                        type="number"
+                        {...register("capacityLimit")}
+                        className="mt-1.5 block w-full rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
+                        placeholder="例: 30"
+                        min="1"
+                      />
+                      <p className="mt-1.5 text-xs text-stone-400">
+                        空欄の場合は上限なし（現在の担当: {staff.assignedUserCount}人）
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Gender (Cast only) */}
+                  {selectedRole === "cast" && (
+                    <div>
+                      <label
+                        htmlFor="gender"
+                        className="block text-sm font-bold text-stone-700"
+                      >
+                        性別
+                      </label>
+                      <div className="relative mt-1.5">
+                        <select
+                          id="gender"
+                          {...register("gender")}
+                          className="block w-full appearance-none rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
+                        >
+                          {genderOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+                      <p className="mt-1.5 text-xs text-stone-400">
+                        ユーザーの伴走メイト選択画面で絞り込みに使われます
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Birth Date (Cast only) */}
+                  {selectedRole === "cast" && (
+                    <div>
+                      <label
+                        htmlFor="birthDate"
+                        className="block text-sm font-bold text-stone-700"
+                      >
+                        生年月日
+                      </label>
+                      <input
+                        id="birthDate"
+                        type="date"
+                        {...register("birthDate")}
+                        className="mt-1.5 block w-full rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
+                      />
+                      <p className="mt-1.5 text-xs text-stone-400">
+                        年齢のみがユーザー画面に表示されます。生年月日そのものは公開されません。
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 担当スーパーバイザー（管理者・メイトのみ） */}
+                  {selectedRole === "cast" && (
+                    <div>
+                      <label
+                        htmlFor="supervisorId"
+                        className="block text-sm font-bold text-stone-700"
+                      >
+                        担当スーパーバイザー
+                      </label>
+                      <div className="relative mt-1.5">
+                        <select
+                          id="supervisorId"
+                          {...register("supervisorId")}
+                          className="block w-full appearance-none rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
+                        >
+                          <option value="">未割当</option>
+                          {supervisorChoices.map((sv) => (
+                            <option key={sv.id} value={sv.id}>
+                              {sv.displayName}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+                      <p className="mt-1.5 text-xs text-stone-400">
+                        割り当てたスーパーバイザーは、このメイトのユーザー向けプロフィール文のみ編集できます。
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
 
-              {/* Birth Date (Cast only) */}
-              {selectedRole === "cast" && (
-                <div>
-                  <label
-                    htmlFor="birthDate"
-                    className="block text-sm font-bold text-stone-700"
-                  >
-                    生年月日
-                  </label>
-                  <input
-                    id="birthDate"
-                    type="date"
-                    {...register("birthDate")}
-                    className="mt-1.5 block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                  />
-                  <p className="mt-1.5 text-xs text-stone-400">
-                    年齢のみがユーザー画面に表示されます。生年月日そのものは公開されません。
-                  </p>
-                </div>
-              )}
-
-              {/* Public Profile (Cast only) */}
+              {/* Public Profile (Cast only) — SV はここが主 */}
               {selectedRole === "cast" && (
                 <div>
                   <label
@@ -285,13 +355,13 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
                   </label>
                   <textarea
                     id="publicProfile"
-                    rows={4}
+                    rows={isSupervisorViewer ? 8 : 4}
                     {...register("publicProfile")}
-                    className="mt-1.5 block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
+                    className="mt-1.5 block w-full rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
                     placeholder="自己紹介、得意な相談ジャンルなど（1000文字以内）"
                   />
                   {errors.publicProfile && (
-                    <p className="mt-1.5 text-sm text-red-600 font-medium">{errors.publicProfile.message}</p>
+                    <p className="mt-1.5 text-sm font-medium text-red-600">{errors.publicProfile.message}</p>
                   )}
                   <p className="mt-1.5 text-xs text-stone-400">
                     伴走メイト選択画面の詳細モーダルで表示されます。AI返信用のスタイルメモとは別管理です。
@@ -299,54 +369,58 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
                 </div>
               )}
 
-              {/* Active */}
-              <div className="flex items-center justify-between rounded-xl border border-stone-200 p-4 bg-stone-50/50">
-                <div>
-                  <label
-                    htmlFor="active"
-                    className="block text-sm font-bold text-stone-700"
-                  >
-                    アカウント状態
-                  </label>
-                  <p className="text-xs text-stone-500 mt-0.5">
-                    無効にするとログインできなくなります
-                  </p>
-                </div>
-                <label className="relative inline-flex cursor-pointer items-center">
-                  <input
-                    id="active"
-                    type="checkbox"
-                    {...register("active")}
-                    className="peer sr-only"
-                  />
-                  <div className="peer h-6 w-11 rounded-full bg-stone-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-stone-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-sage peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:ring-2 peer-focus:ring-sage/30 transition-colors"></div>
-                </label>
-              </div>
-
-              {/* Accepting New Users (Cast only) */}
-              {selectedRole === "cast" && (
-                <div className="flex items-center justify-between rounded-xl border border-stone-200 p-4 bg-stone-50/50">
-                  <div>
-                    <label
-                      htmlFor="acceptingNewUsers"
-                      className="block text-sm font-bold text-stone-700"
-                    >
-                      新規受付
+              {!isSupervisorViewer && (
+                <>
+                  {/* Active */}
+                  <div className="flex items-center justify-between rounded-xl border border-stone-200 bg-stone-50/50 p-4">
+                    <div>
+                      <label
+                        htmlFor="active"
+                        className="block text-sm font-bold text-stone-700"
+                      >
+                        アカウント状態
+                      </label>
+                      <p className="mt-0.5 text-xs text-stone-500">
+                        無効にするとログインできなくなります
+                      </p>
+                    </div>
+                    <label className="relative inline-flex cursor-pointer items-center">
+                      <input
+                        id="active"
+                        type="checkbox"
+                        {...register("active")}
+                        className="peer sr-only"
+                      />
+                      <div className="peer h-6 w-11 rounded-full bg-stone-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-stone-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-sage peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:ring-2 peer-focus:ring-sage/30 transition-colors"></div>
                     </label>
-                    <p className="text-xs text-stone-500 mt-0.5">
-                      停止中は新規ユーザーに表示されません
-                    </p>
                   </div>
-                  <label className="relative inline-flex cursor-pointer items-center">
-                    <input
-                      id="acceptingNewUsers"
-                      type="checkbox"
-                      {...register("acceptingNewUsers")}
-                      className="peer sr-only"
-                    />
-                    <div className="peer h-6 w-11 rounded-full bg-stone-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-stone-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-sage peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:ring-2 peer-focus:ring-sage/30 transition-colors"></div>
-                  </label>
-                </div>
+
+                  {/* Accepting New Users (Cast only) */}
+                  {selectedRole === "cast" && (
+                    <div className="flex items-center justify-between rounded-xl border border-stone-200 bg-stone-50/50 p-4">
+                      <div>
+                        <label
+                          htmlFor="acceptingNewUsers"
+                          className="block text-sm font-bold text-stone-700"
+                        >
+                          新規受付
+                        </label>
+                        <p className="mt-0.5 text-xs text-stone-500">
+                          停止中は新規ユーザーに表示されません
+                        </p>
+                      </div>
+                      <label className="relative inline-flex cursor-pointer items-center">
+                        <input
+                          id="acceptingNewUsers"
+                          type="checkbox"
+                          {...register("acceptingNewUsers")}
+                          className="peer sr-only"
+                        />
+                        <div className="peer h-6 w-11 rounded-full bg-stone-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-stone-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-sage peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:ring-2 peer-focus:ring-sage/30 transition-colors"></div>
+                      </label>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

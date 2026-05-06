@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createStaffAccountSchema, resetStaffPasswordSchema, setCastAcceptingSchema, upsertStaffProfileSchema } from "@/schemas/staff";
 import { Result, toZodErrorMessage } from "../types";
 import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, getCurrentStaff } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import type { StaffGender } from "@/lib/supabase/types";
 
@@ -82,32 +82,38 @@ export type StaffMember = {
   gender: StaffGender | null;
   birthDate: string | null;
   publicProfile: string | null;
+  /** メイトの担当スーパーバイザー（管理者が割当） */
+  supervisorId: string | null;
   assignedUserCount: number;
 };
 
 export type GetStaffListResult = Result<{ items: StaffMember[] }>;
 
 /**
- * スタッフ一覧取得
+ * スタッフ一覧取得（管理者: 全件、スーパーバイザー: 管轄のメイトのみ）
  */
 export async function getStaffList(): Promise<GetStaffListResult> {
-  const admin = await requireAdmin();
-  if (!admin) {
+  const actor = await getCurrentStaff();
+  if (!actor || (actor.role !== "admin" && actor.role !== "supervisor")) {
     return {
       ok: false,
-      error: { code: "FORBIDDEN", message: "管理者権限が必要です" },
+      error: { code: "FORBIDDEN", message: "アクセス権限がありません" },
     };
   }
 
   const supabase = await createServerSupabaseClient();
 
-  const { data, error } = await supabase
+  let listQuery = supabase
     .from("staff_profiles")
     .select(
-      "id, display_name, role, active, capacity_limit, accepting_new_users, gender, birth_date, public_profile"
-    )
-    .order("role")
-    .order("display_name");
+      "id, display_name, role, active, capacity_limit, accepting_new_users, gender, birth_date, public_profile, supervisor_id"
+    );
+
+  if (actor.role === "supervisor") {
+    listQuery = listQuery.eq("role", "cast").eq("supervisor_id", actor.id);
+  }
+
+  const { data, error } = await listQuery.order("role").order("display_name");
 
   if (error) {
     return {
@@ -139,12 +145,58 @@ export async function getStaffList(): Promise<GetStaffListResult> {
         gender: (row.gender as StaffGender | null) ?? null,
         birthDate: row.birth_date ?? null,
         publicProfile: row.public_profile ?? null,
+        supervisorId: row.supervisor_id ?? null,
         assignedUserCount,
       };
     })
   );
 
   return { ok: true, data: { items } };
+}
+
+export type SupervisorOption = {
+  id: string;
+  displayName: string;
+};
+
+export type ListSupervisorOptionsResult = Result<{ supervisors: SupervisorOption[] }>;
+
+/**
+ * 担当スーパーバイザー割当用の選択肢（管理者のみ）
+ */
+export async function listSupervisorOptions(): Promise<ListSupervisorOptionsResult> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return {
+      ok: false,
+      error: { code: "FORBIDDEN", message: "管理者権限が必要です" },
+    };
+  }
+
+  const supabase = createAdminSupabaseClient();
+  const { data, error } = await supabase
+    .from("staff_profiles")
+    .select("id, display_name")
+    .eq("role", "supervisor")
+    .eq("active", true)
+    .order("display_name");
+
+  if (error) {
+    return {
+      ok: false,
+      error: { code: "UNKNOWN", message: "スーパーバイザー一覧の取得に失敗しました" },
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      supervisors: (data ?? []).map((row) => ({
+        id: row.id,
+        displayName: row.display_name,
+      })),
+    },
+  };
 }
 
 // =====================================
@@ -167,14 +219,14 @@ export type StaffDetail = {
 export type GetStaffDetailResult = Result<{ staff: StaffDetail }>;
 
 /**
- * スタッフ詳細取得
+ * スタッフ詳細取得（管理画面用。管理者は全件、スーパーバイザーは管轄メイトのみ）
  */
 export async function getStaffDetail(staffId: string): Promise<GetStaffDetailResult> {
-  const admin = await requireAdmin();
-  if (!admin) {
+  const actor = await getCurrentStaff();
+  if (!actor || (actor.role !== "admin" && actor.role !== "supervisor")) {
     return {
       ok: false,
-      error: { code: "FORBIDDEN", message: "管理者権限が必要です" },
+      error: { code: "FORBIDDEN", message: "アクセス権限がありません" },
     };
   }
 
@@ -183,7 +235,7 @@ export async function getStaffDetail(staffId: string): Promise<GetStaffDetailRes
   const { data, error } = await supabase
     .from("staff_profiles")
     .select(
-      "id, display_name, role, active, capacity_limit, accepting_new_users, gender, birth_date, public_profile, style_summary"
+      "id, display_name, role, active, capacity_limit, accepting_new_users, gender, birth_date, public_profile, style_summary, supervisor_id"
     )
     .eq("id", staffId)
     .single();
@@ -193,6 +245,15 @@ export async function getStaffDetail(staffId: string): Promise<GetStaffDetailRes
       ok: false,
       error: { code: "NOT_FOUND", message: "スタッフが見つかりません" },
     };
+  }
+
+  if (actor.role === "supervisor") {
+    if (data.role !== "cast" || data.supervisor_id !== actor.id) {
+      return {
+        ok: false,
+        error: { code: "FORBIDDEN", message: "このメイト情報にアクセスできません" },
+      };
+    }
   }
 
   return {
@@ -228,12 +289,14 @@ export type UpsertStaffProfileInput = {
   gender?: StaffGender | null;
   birthDate?: string | null;
   publicProfile?: string | null;
+  /** 管理者のみ（メイトの担当SV割当） */
+  supervisorId?: string | null;
 };
 
 export type UpsertStaffProfileResult = Result<{ id: string }>;
 
 /**
- * スタッフプロフィール更新
+ * スタッフプロフィール更新（管理者: 全項目、スーパーバイザー: 管轄メイトのユーザー向けプロフィール文のみ）
  */
 export async function upsertStaffProfile(
   input: UpsertStaffProfileInput
@@ -246,6 +309,56 @@ export async function upsertStaffProfile(
     };
   }
 
+  const actor = await getCurrentStaff();
+  if (!actor) {
+    return {
+      ok: false,
+      error: { code: "FORBIDDEN", message: "ログインが必要です" },
+    };
+  }
+
+  const supabase = createAdminSupabaseClient();
+
+  if (actor.role === "supervisor") {
+    const publicProfile = parsed.data.publicProfile?.trim() || null;
+    const { data: updatedRow, error } = await supabase
+      .from("staff_profiles")
+      .update({ public_profile: publicProfile })
+      .eq("id", parsed.data.staffId)
+      .eq("role", "cast")
+      .eq("supervisor_id", actor.id)
+      .select("id")
+      .maybeSingle();
+
+    if (error || !updatedRow) {
+      return {
+        ok: false,
+        error: {
+          code: "FORBIDDEN",
+          message:
+            "管轄外のメイトは編集できません。管理者に担当スーパーバイザーの割当を確認してください。",
+        },
+      };
+    }
+
+    await writeAuditLog({
+      action: "STAFF_PROFILE_UPDATE",
+      targetType: "staff_profiles",
+      targetId: parsed.data.staffId,
+      success: true,
+      metadata: buildAuditMetadata({
+        public_profile_only: true,
+        edited_by_supervisor_id: actor.id,
+      }),
+      actorStaffId: actor.id,
+    });
+
+    revalidatePath("/admin/staff");
+    revalidatePath("/subscribe/cast");
+
+    return { ok: true, data: { id: parsed.data.staffId } };
+  }
+
   const admin = await requireAdmin();
   if (!admin) {
     return {
@@ -254,9 +367,29 @@ export async function upsertStaffProfile(
     };
   }
 
-  const supabase = await createServerSupabaseClient();
+  let resolvedSupervisorId: string | null = null;
+  if (parsed.data.role === "cast") {
+    const requested = parsed.data.supervisorId ?? null;
+    if (requested) {
+      const { data: svRow } = await supabase
+        .from("staff_profiles")
+        .select("id, role, active")
+        .eq("id", requested)
+        .maybeSingle();
+      if (!svRow || svRow.role !== "supervisor" || !svRow.active) {
+        return {
+          ok: false,
+          error: {
+            code: "FORBIDDEN",
+            message: "担当スーパーバイザーの指定が不正です（有効なスーパーバイザーを選んでください）",
+          },
+        };
+      }
+      resolvedSupervisorId = requested;
+    }
+  }
 
-  const { error } = await supabase
+  const { data: updatedRow, error } = await supabase
     .from("staff_profiles")
     .update({
       display_name: parsed.data.displayName,
@@ -267,13 +400,21 @@ export async function upsertStaffProfile(
       gender: parsed.data.gender ?? null,
       birth_date: parsed.data.birthDate ?? null,
       public_profile: parsed.data.publicProfile ?? null,
+      supervisor_id: parsed.data.role === "cast" ? resolvedSupervisorId : null,
     })
-    .eq("id", parsed.data.staffId);
+    .eq("id", parsed.data.staffId)
+    .select("id")
+    .maybeSingle();
 
-  if (error) {
+  if (error || !updatedRow) {
     return {
       ok: false,
-      error: { code: "UNKNOWN", message: "更新に失敗しました" },
+      error: {
+        code: "UNKNOWN",
+        message: error?.message?.includes("violates")
+          ? "更新に失敗しました（データが不正です）"
+          : "更新に失敗しました（対象スタッフが見つからないか、保存できませんでした）",
+      },
     };
   }
 
@@ -455,6 +596,7 @@ export async function createStaffAccount(
         gender: parsed.data.gender ?? null,
         birth_date: parsed.data.birthDate ?? null,
         public_profile: parsed.data.publicProfile ?? null,
+        supervisor_id: null,
       });
 
     if (profileError) {
@@ -484,6 +626,7 @@ export async function createStaffAccount(
     });
 
     revalidatePath("/admin/staff");
+    revalidatePath("/subscribe/cast");
 
     return {
       ok: true,

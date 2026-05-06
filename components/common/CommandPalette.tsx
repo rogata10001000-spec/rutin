@@ -21,7 +21,7 @@ const defaultCommands: Command[] = [
   { id: "inbox", label: "インボックス", path: "/inbox", icon: "📥", keywords: ["inbox", "未返信", "対応"], roles: ["admin", "supervisor", "cast"] },
   { id: "users", label: "ユーザー一覧", path: "/users", icon: "👥", keywords: ["user", "ユーザー", "一覧"], roles: ["admin", "supervisor", "cast"] },
   { id: "audit", label: "監査ログ", path: "/admin/audit", icon: "📋", keywords: ["audit", "監査", "ログ"], roles: ["admin", "supervisor"] },
-  { id: "staff", label: "スタッフ管理", path: "/admin/staff", icon: "👤", keywords: ["staff", "スタッフ"], roles: ["admin"] },
+  { id: "staff", label: "メイト管理", path: "/admin/staff", icon: "👤", keywords: ["staff", "スタッフ", "メイト"], roles: ["admin", "supervisor"] },
   { id: "pricing", label: "価格設定", path: "/admin/pricing", icon: "💰", keywords: ["price", "価格", "料金"], roles: ["admin"] },
   { id: "settlements", label: "精算", path: "/admin/settlements", icon: "💵", keywords: ["settlement", "精算", "支払い"], roles: ["admin"] },
   { id: "payout-rules", label: "配分ルール", path: "/admin/payout-rules", icon: "📊", keywords: ["payout", "配分", "ルール"], roles: ["admin"] },

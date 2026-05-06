@@ -28,6 +28,8 @@ export const upsertStaffProfileSchema = z.object({
   gender: staffGenderSchema.nullable().optional(),
   birthDate: birthDateSchema,
   publicProfile: publicProfileSchema,
+  /** メイトの担当SV（管理者のみ変更可、スーパーバイザー更新時はサーバー側で無視） */
+  supervisorId: z.string().uuid().nullable().optional(),
 });
 
 export const setCastAcceptingSchema = z.object({
