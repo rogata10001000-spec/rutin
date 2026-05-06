@@ -80,11 +80,21 @@ module.exports = {
       },
       animation: {
         shimmer: "shimmer 2s infinite linear",
+        "fade-in": "fadeIn 200ms ease-out both",
+        "slide-out": "slideOut 250ms ease-in forwards",
       },
       keyframes: {
         shimmer: {
           "0%": { backgroundPosition: "-1000px 0" },
           "100%": { backgroundPosition: "1000px 0" },
+        },
+        fadeIn: {
+          "0%": { opacity: "0", transform: "translateY(-4px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        slideOut: {
+          "0%": { opacity: "1", maxHeight: "200px", transform: "scaleY(1)" },
+          "100%": { opacity: "0", maxHeight: "0", transform: "scaleY(0)", padding: "0" },
         },
       },
     },

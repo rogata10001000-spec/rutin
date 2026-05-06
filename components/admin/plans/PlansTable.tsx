@@ -74,13 +74,17 @@ export function PlansTable({ items }: PlansTableProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-200 bg-white">
-              {items.map((item) => {
+              {items.map((item, index) => {
                 const config = planNameConfig[item.planCode] ?? {
                   label: item.name,
                   className: "bg-stone-100 text-stone-600",
                 };
                 return (
-                  <tr key={item.planCode} className="transition-colors hover:bg-stone-50/50">
+                  <tr
+                    key={item.planCode}
+                    className="animate-fade-in transition-colors hover:bg-stone-50/50"
+                    style={{ animationDelay: `${index * 30}ms` }}
+                  >
                     <td className="whitespace-nowrap px-6 py-4">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ${config.className}`}

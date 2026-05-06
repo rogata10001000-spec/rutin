@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import type { PlanPrice } from "@/actions/admin/plan-prices";
@@ -17,7 +17,12 @@ export function PlanPricesTable({ items }: PlanPricesTableProps) {
   const { showToast, ToastContainer } = useToast();
   const [editItem, setEditItem] = useState<PlanPrice | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const [optimisticItems, setOptimisticItems] = useOptimistic(
+    items,
+    (state, id: string) =>
+      state.map((i) => (i.id === id ? { ...i, active: !i.active } : i))
+  );
 
   const openNew = () => {
     setEditItem(null);
@@ -29,16 +34,17 @@ export function PlanPricesTable({ items }: PlanPricesTableProps) {
     setDialogOpen(true);
   };
 
-  const handleToggle = async (id: string) => {
-    setTogglingId(id);
-    const result = await togglePlanPriceActive(id);
-    if (result.ok) {
-      showToast("状態を切り替えました", "success");
-      router.refresh();
-    } else {
-      showToast(result.error.message, "error");
-    }
-    setTogglingId(null);
+  const handleToggle = (id: string) => {
+    startTransition(async () => {
+      setOptimisticItems(id);
+      const result = await togglePlanPriceActive(id);
+      if (result.ok) {
+        showToast("状態を切り替えました", "success");
+        router.refresh();
+      } else {
+        showToast(result.error.message, "error");
+      }
+    });
   };
 
   return (
@@ -79,8 +85,12 @@ export function PlanPricesTable({ items }: PlanPricesTableProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-200 bg-white">
-                {items.map((item) => (
-                  <tr key={item.id} className={`transition-colors hover:bg-stone-50/50 ${!item.active ? "bg-stone-50/30" : ""}`}>
+                {optimisticItems.map((item, index) => (
+                  <tr
+                    key={item.id}
+                    className={`animate-fade-in transition-colors hover:bg-stone-50/50 ${!item.active ? "bg-stone-50/30" : ""}`}
+                    style={{ animationDelay: `${index * 30}ms` }}
+                  >
                     <td className="whitespace-nowrap px-6 py-4 text-sm font-bold text-stone-900">
                       {item.planName}
                     </td>
@@ -114,14 +124,10 @@ export function PlanPricesTable({ items }: PlanPricesTableProps) {
                         </button>
                         <button
                           onClick={() => handleToggle(item.id)}
-                          disabled={togglingId === item.id}
+                          disabled={isPending}
                           className="font-medium text-stone-400 hover:text-stone-600 disabled:opacity-50"
                         >
-                          {togglingId === item.id
-                            ? "..."
-                            : item.active
-                            ? "無効化"
-                            : "有効化"}
+                          {item.active ? "無効化" : "有効化"}
                         </button>
                       </div>
                     </td>

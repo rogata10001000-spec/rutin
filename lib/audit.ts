@@ -36,6 +36,7 @@ export type AuditAction =
   | "GIFT_SEND"
   | "GIFT_CATALOG_CREATE"
   | "GIFT_CATALOG_UPDATE"
+  | "GIFT_CATALOG_DELETE"
   | "POINT_PRODUCT_CREATE"
   | "POINT_PRODUCT_UPDATE"
   // 配分/精算

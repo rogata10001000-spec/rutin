@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useCallback } from "react";
 import { updateMyCastProfile } from "@/actions/cast-profile";
+import { useAutoSave } from "@/hooks/useAutoSave";
+import { SaveStatus } from "@/components/common/SaveStatus";
 
 type CastProfileEditorProps = {
   initialPublicProfile: string | null;
@@ -9,30 +11,27 @@ type CastProfileEditorProps = {
 
 export function CastProfileEditor({ initialPublicProfile }: CastProfileEditorProps) {
   const [publicProfile, setPublicProfile] = useState(initialPublicProfile ?? "");
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+
+  const saveFn = useCallback(
+    async (value: string) =>
+      updateMyCastProfile({ publicProfile: value.trim() || null }),
+    []
+  );
+
+  const { status, markAsChanged, saveNow } = useAutoSave(publicProfile, saveFn, {
+    delay: 1500,
+  });
 
   const remaining = 1000 - publicProfile.length;
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setPublicProfile(event.target.value);
+    markAsChanged();
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setMessage(null);
-    setError(null);
-
-    startTransition(async () => {
-      const result = await updateMyCastProfile({
-        publicProfile: publicProfile.trim() || null,
-      });
-
-      if (result.ok) {
-        setPublicProfile(result.data.publicProfile ?? "");
-        setMessage("プロフィール文を保存しました");
-        return;
-      }
-
-      setError(result.error.message);
-    });
+    await saveNow();
   };
 
   return (
@@ -47,7 +46,7 @@ export function CastProfileEditor({ initialPublicProfile }: CastProfileEditorPro
         <textarea
           id="publicProfile"
           value={publicProfile}
-          onChange={(event) => setPublicProfile(event.target.value)}
+          onChange={handleChange}
           maxLength={1000}
           rows={6}
           className="mt-3 block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
@@ -61,24 +60,14 @@ export function CastProfileEditor({ initialPublicProfile }: CastProfileEditorPro
         </div>
       </div>
 
-      {message && (
-        <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
-          {message}
-        </div>
-      )}
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
-          {error}
-        </div>
-      )}
-
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <SaveStatus status={status} />
         <button
           type="submit"
-          disabled={isPending || publicProfile.length > 1000}
+          disabled={status === "saving" || publicProfile.length > 1000}
           className="rounded-xl bg-terracotta px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-[#d0694e] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isPending ? "保存中..." : "プロフィール文を保存"}
+          {status === "saving" ? "保存中..." : "今すぐ保存"}
         </button>
       </div>
     </form>

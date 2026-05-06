@@ -177,6 +177,51 @@ export async function upsertGiftCatalog(
 }
 
 // =====================================
+// ギフトカタログ削除
+// =====================================
+
+export type DeleteGiftCatalogResult = Result<{ id: string }>;
+
+/**
+ * ギフトカタログ削除
+ */
+export async function deleteGiftCatalog(id: string): Promise<DeleteGiftCatalogResult> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return {
+      ok: false,
+      error: { code: "FORBIDDEN", message: "管理者権限が必要です" },
+    };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  const { error } = await supabase
+    .from("gift_catalog")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    return {
+      ok: false,
+      error: { code: "UNKNOWN", message: "削除に失敗しました" },
+    };
+  }
+
+  await writeAuditLog({
+    action: "GIFT_CATALOG_DELETE",
+    targetType: "gift_catalog",
+    targetId: id,
+    success: true,
+    metadata: { id },
+  });
+
+  revalidatePath("/admin/gifts");
+
+  return { ok: true, data: { id } };
+}
+
+// =====================================
 // ポイント商品一覧取得
 // =====================================
 

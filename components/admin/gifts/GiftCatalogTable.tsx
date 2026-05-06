@@ -1,16 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import type { GiftCatalogAdmin } from "@/actions/admin/gifts";
+import { deleteGiftCatalog } from "@/actions/admin/gifts";
 import { UpsertGiftDialog } from "./UpsertGiftDialog";
+import { useToast } from "@/components/common/Toast";
+
+const DELETE_UNDO_MS = 5000;
 
 type GiftCatalogTableProps = {
   items: GiftCatalogAdmin[];
 };
 
-export function GiftCatalogTable({ items }: GiftCatalogTableProps) {
+export function GiftCatalogTable({ items: initialItems }: GiftCatalogTableProps) {
+  const [localItems, setLocalItems] = useState(initialItems);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedGift, setSelectedGift] = useState<GiftCatalogAdmin | null>(null);
+  const { showToast, ToastContainer } = useToast();
+  const deleteTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const handleAddClick = () => {
     setSelectedGift(null);
@@ -22,13 +29,53 @@ export function GiftCatalogTable({ items }: GiftCatalogTableProps) {
     setDialogOpen(true);
   };
 
+  const handleDialogClose = () => {
+    setDialogOpen(false);
+    setSelectedGift(null);
+  };
+
+  const handleDelete = useCallback((item: GiftCatalogAdmin) => {
+    // 即座にリストから除外（楽観的削除）
+    setLocalItems((prev) => prev.filter((i) => i.id !== item.id));
+
+    // Undoタイマーを設定（5秒後に実際に削除）
+    const timer = setTimeout(async () => {
+      deleteTimers.current.delete(item.id);
+      const result = await deleteGiftCatalog(item.id);
+      if (!result.ok) {
+        // 削除失敗時は元に戻す
+        setLocalItems((prev) =>
+          [...prev, item].sort((a, b) => a.sortOrder - b.sortOrder)
+        );
+        showToast(result.error.message, "error");
+      }
+    }, DELETE_UNDO_MS);
+
+    deleteTimers.current.set(item.id, timer);
+
+    showToast(`「${item.name}」を削除しました`, "success", {
+      duration: DELETE_UNDO_MS,
+      onUndo: () => {
+        // タイマーをキャンセルして元に戻す
+        const existingTimer = deleteTimers.current.get(item.id);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          deleteTimers.current.delete(item.id);
+        }
+        setLocalItems((prev) =>
+          [...prev, item].sort((a, b) => a.sortOrder - b.sortOrder)
+        );
+      },
+    });
+  }, [showToast]);
+
   return (
     <>
       {/* Header with Add Button */}
       <div className="flex items-center justify-between border-b border-stone-200 px-6 py-4 bg-white rounded-t-2xl">
         <div>
           <h3 className="text-base font-bold text-stone-800">一覧</h3>
-          <p className="text-sm text-stone-500">{items.length}件</p>
+          <p className="text-sm text-stone-500">{localItems.length}件</p>
         </div>
         <button
           onClick={handleAddClick}
@@ -51,7 +98,7 @@ export function GiftCatalogTable({ items }: GiftCatalogTableProps) {
         </button>
       </div>
 
-      {items.length === 0 ? (
+      {localItems.length === 0 ? (
         <div className="p-12 text-center text-stone-500 bg-white rounded-b-2xl border-x border-b border-stone-200">
           ギフトが登録されていません
         </div>
@@ -82,8 +129,12 @@ export function GiftCatalogTable({ items }: GiftCatalogTableProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-200 bg-white">
-                {items.map((item) => (
-                  <tr key={item.id} className="transition-colors hover:bg-stone-50/50">
+                {localItems.map((item, index) => (
+                  <tr
+                    key={item.id}
+                    className="animate-fade-in transition-colors hover:bg-stone-50/50"
+                    style={{ animationDelay: `${index * 30}ms` }}
+                  >
                     <td className="whitespace-nowrap px-6 py-4">
                       <div className="flex items-center gap-3">
                         <span className="text-2xl">{item.icon ?? "🎁"}</span>
@@ -113,12 +164,20 @@ export function GiftCatalogTable({ items }: GiftCatalogTableProps) {
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
-                      <button
-                        onClick={() => handleEditClick(item)}
-                        className="rounded-lg px-3 py-1 text-xs font-bold text-terracotta hover:bg-terracotta/10"
-                      >
-                        編集
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => handleEditClick(item)}
+                          className="rounded-lg px-3 py-1 text-xs font-bold text-terracotta hover:bg-terracotta/10"
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item)}
+                          className="rounded-lg px-3 py-1 text-xs font-bold text-stone-400 hover:bg-red-50 hover:text-red-600"
+                        >
+                          削除
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -132,11 +191,10 @@ export function GiftCatalogTable({ items }: GiftCatalogTableProps) {
       <UpsertGiftDialog
         open={dialogOpen}
         gift={selectedGift}
-        onClose={() => {
-          setDialogOpen(false);
-          setSelectedGift(null);
-        }}
+        onClose={handleDialogClose}
       />
+
+      <ToastContainer />
     </>
   );
 }
