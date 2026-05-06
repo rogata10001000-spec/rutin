@@ -91,7 +91,7 @@ const navItems: NavItem[] = [
     roles: ["admin", "supervisor", "cast"],
   },
   {
-    name: "マイ写真",
+    name: "プロフィール管理",
     href: "/my-photos",
     icon: <PhotoIcon />,
     roles: ["cast"],
