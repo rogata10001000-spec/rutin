@@ -201,7 +201,7 @@ export async function sendGift(input: SendGiftInput): Promise<SendGiftResult> {
     if (message.includes("USER_OR_CAST_NOT_FOUND")) {
       return {
         ok: false,
-        error: { code: "NOT_FOUND", message: "ユーザーまたは担当キャストが見つかりません" },
+        error: { code: "NOT_FOUND", message: "ユーザーまたは担当メイトが見つかりません" },
       };
     }
     return {

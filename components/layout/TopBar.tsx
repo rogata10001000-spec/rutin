@@ -14,7 +14,7 @@ type TopBarProps = {
 const roleLabels: Record<StaffRole, string> = {
   admin: "管理者",
   supervisor: "SV",
-  cast: "キャスト",
+  cast: "メイト",
 };
 
 const roleColors: Record<StaffRole, string> = {

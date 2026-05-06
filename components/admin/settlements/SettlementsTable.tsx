@@ -83,7 +83,7 @@ export function SettlementsTable({ items }: SettlementsTableProps) {
                   合計金額
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
-                  キャスト数
+                  メイト数
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
                   操作

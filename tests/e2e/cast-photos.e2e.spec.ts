@@ -12,7 +12,7 @@ test.describe("Cast Photos - Public View", () => {
   test("should show promotional banner", async ({ page }) => {
     await page.goto("/subscribe/cast");
 
-    const hasEmptyState = await page.getByText("現在、新規受付中のキャストがいません。").isVisible();
+    const hasEmptyState = await page.getByText("現在、新規受付中のメイトがいません。").isVisible();
     if (!hasEmptyState) {
       await expect(page.getByText("7日間無料トライアル")).toBeVisible();
     }
@@ -21,7 +21,7 @@ test.describe("Cast Photos - Public View", () => {
   test("should show category filters", async ({ page }) => {
     await page.goto("/subscribe/cast");
 
-    const hasEmptyState = await page.getByText("現在、新規受付中のキャストがいません。").isVisible();
+    const hasEmptyState = await page.getByText("現在、新規受付中のメイトがいません。").isVisible();
     if (!hasEmptyState) {
       await expect(page.getByText("すべて")).toBeVisible();
       await expect(page.getByText("結婚相談")).toBeVisible();
@@ -111,7 +111,7 @@ test.describe("Cast Photos - Admin Management", () => {
   test("should have photos link for cast members", async ({ page }) => {
     await page.goto("/admin/staff");
     
-    // キャストに「写真」リンクがあることを確認
+    // メイトに「写真」リンクがあることを確認
     const photosLink = page.getByRole("link", { name: "写真" }).first();
     
     if (await photosLink.isVisible()) {
@@ -128,7 +128,7 @@ test.describe("Cast Photos - Photo Editor", () => {
   });
 
   test("should display photo editor with upload button", async ({ page }) => {
-    // テスト用のキャストIDでアクセス
+    // テスト用のメイトIDでアクセス
     const testCastId = "test-cast-id";
     await page.goto(`/admin/staff/${testCastId}/photos`);
 

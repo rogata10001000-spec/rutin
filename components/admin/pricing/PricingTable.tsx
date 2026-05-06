@@ -29,7 +29,7 @@ export function PricingTable({ items }: PricingTableProps) {
           <thead className="bg-stone-50">
             <tr>
               <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
-                キャスト
+                メイト
               </th>
               <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
                 プラン

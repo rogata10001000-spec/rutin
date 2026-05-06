@@ -138,7 +138,7 @@ export function InviteStaffDialog({ open, onClose }: InviteStaffDialogProps) {
         >
           <div className="flex-shrink-0 border-b border-stone-100 bg-stone-50/50 px-6 py-4">
             <h3 className="text-lg font-bold text-stone-800">
-              {createdAccount ? "初期パスワードを確認" : "キャストアカウントを作成"}
+              {createdAccount ? "初期パスワードを確認" : "メイトアカウントを作成"}
             </h3>
             <p className="mt-1 text-sm text-stone-500">
               {createdAccount
@@ -152,7 +152,7 @@ export function InviteStaffDialog({ open, onClose }: InviteStaffDialogProps) {
               <div className="flex-1 space-y-5 overflow-y-auto px-6 py-6">
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                   <p className="text-sm font-bold text-amber-900">
-                    初期パスワードをキャスト本人へ安全に共有してください
+                    初期パスワードをメイト本人へ安全に共有してください
                   </p>
                   <p className="mt-1 text-xs text-amber-800">
                     システム上では平文パスワードを保存していないため、閉じた後は再表示できません。

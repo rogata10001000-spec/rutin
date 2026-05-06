@@ -73,7 +73,7 @@ export function SettlementActions({ batch }: SettlementActionsProps) {
         title={action === "approve" ? "バッチの承認" : "支払完了の確認"}
         description={
           action === "approve"
-            ? `合計 ¥${batch.totalAmount.toLocaleString()} を ${batch.castCount}人のキャストに支払うことを承認しますか？`
+            ? `合計 ¥${batch.totalAmount.toLocaleString()} を ${batch.castCount}人のメイトに支払うことを承認しますか？`
             : `合計 ¥${batch.totalAmount.toLocaleString()} の支払いが完了しましたか？この操作は取り消せません。`
         }
         confirmLabel={action === "approve" ? "承認" : "支払完了"}

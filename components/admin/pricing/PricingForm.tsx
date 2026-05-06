@@ -85,7 +85,7 @@ export function PricingForm({ casts }: PricingFormProps) {
     <form onSubmit={handleSubmit} className="space-y-5">
       <div>
         <label className="block text-sm font-bold text-stone-700">
-          キャスト
+          メイト
         </label>
         <div className="relative mt-1.5">
           <select

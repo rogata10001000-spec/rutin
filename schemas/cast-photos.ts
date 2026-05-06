@@ -2,12 +2,12 @@ import { z } from "zod";
 
 // 写真取得
 export const getCastPhotosSchema = z.object({
-  castId: z.string().uuid("キャストIDが無効です"),
+  castId: z.string().uuid("メイトIDが無効です"),
 });
 
 // 写真アップロード
 export const uploadCastPhotoSchema = z.object({
-  castId: z.string().uuid("キャストIDが無効です"),
+  castId: z.string().uuid("メイトIDが無効です"),
   caption: z.string().max(200, "キャプションは200文字以内で入力してください").optional(),
   displayOrder: z.number().int().min(0).max(4).optional(),
 });
@@ -19,7 +19,7 @@ export const deleteCastPhotoSchema = z.object({
 
 // 並び順変更
 export const reorderCastPhotosSchema = z.object({
-  castId: z.string().uuid("キャストIDが無効です"),
+  castId: z.string().uuid("メイトIDが無効です"),
   photoIds: z.array(z.string().uuid()).min(1).max(5),
 });
 

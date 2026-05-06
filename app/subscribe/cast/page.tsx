@@ -82,7 +82,7 @@ export default async function SubscribeCastPage({ searchParams }: PageProps) {
           {/* 性別フィルター */}
           <CastGenderFilter current={filterValue} />
 
-          {/* キャスト一覧 */}
+          {/* メイト一覧 */}
           {casts.length === 0 ? (
             <div className="mx-4 mt-2 rounded-2xl border border-warm-border/50 bg-white p-6 text-center text-sm text-[#6B5A51]">
               {genderFilter

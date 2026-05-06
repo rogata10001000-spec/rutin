@@ -17,7 +17,7 @@ export const payoutRuleSchema = z.object({
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["castId"],
-      message: "キャストを選択してください",
+      message: "メイトを選択してください",
     });
   }
   if (value.scopeType === "cast_plan" && !value.planCode) {

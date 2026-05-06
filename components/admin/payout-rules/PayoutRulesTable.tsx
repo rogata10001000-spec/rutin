@@ -88,8 +88,8 @@ export function PayoutRulesTable({ items }: PayoutRulesTableProps) {
                       {item.scopeType === "global"
                         ? "全体"
                         : item.scopeType === "cast_plan"
-                          ? "キャスト×プラン"
-                          : "キャスト"}
+                          ? "メイト×プラン"
+                          : "メイト"}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-900 font-medium">

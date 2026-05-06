@@ -139,7 +139,7 @@ export function InboxTable({ items }: InboxTableProps) {
               状態
             </th>
             <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-              担当キャスト
+              担当メイト
             </th>
             <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
               最終受信

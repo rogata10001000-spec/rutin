@@ -168,7 +168,7 @@ export function UserDetailCards({ user, onUpdateUser }: UserDetailCardsProps) {
             </dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-sm text-gray-500">担当キャスト</dt>
+            <dt className="text-sm text-gray-500">担当メイト</dt>
             <dd className="text-sm font-medium text-gray-900">
               {user.assignedCastName ?? "未割当"}
             </dd>

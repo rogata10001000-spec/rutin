@@ -305,7 +305,7 @@ export async function POST(request: Request) {
           throw new Error(`Failed to create subscription: ${subError.message}`);
         }
 
-        // 担当キャスト割当履歴
+        // 担当メイト割当履歴
         await supabase.from("cast_assignments").insert({
           end_user_id: user.id,
           from_cast_id: null,

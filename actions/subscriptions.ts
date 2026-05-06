@@ -71,7 +71,7 @@ export type ListAvailableCastsInput = {
 export type ListAvailableCastsResult = Result<{ casts: AvailableCast[] }>;
 
 /**
- * 新規受付可能なキャスト一覧取得
+ * 新規受付可能なメイト一覧取得
  * 権限: 公開（サブスク導線用）
  */
 export async function listAvailableCasts(
@@ -88,7 +88,7 @@ export async function listAvailableCasts(
   // service_roleで取得（公開API）
   const supabase = createAdminSupabaseClient();
 
-  // アクティブで新規受付中のキャストを取得
+  // アクティブで新規受付中のメイトを取得
   let castsQuery = supabase
     .from("staff_profiles")
     .select(
@@ -108,7 +108,7 @@ export async function listAvailableCasts(
   if (castsError) {
     return {
       ok: false,
-      error: { code: "UNKNOWN", message: "キャスト情報の取得に失敗しました" },
+      error: { code: "UNKNOWN", message: "メイト情報の取得に失敗しました" },
     };
   }
 
@@ -254,7 +254,7 @@ export async function createSubscriptionCheckoutSession(
 
   const supabase = createAdminSupabaseClient();
 
-  // キャスト存在確認
+  // メイト存在確認
   const { data: cast } = await supabase
     .from("staff_profiles")
     .select("id, display_name, accepting_new_users, capacity_limit")
@@ -266,14 +266,14 @@ export async function createSubscriptionCheckoutSession(
   if (!cast) {
     return {
       ok: false,
-      error: { code: "NOT_FOUND", message: "キャストが見つかりません" },
+      error: { code: "NOT_FOUND", message: "メイトが見つかりません" },
     };
   }
 
   if (!cast.accepting_new_users) {
     return {
       ok: false,
-      error: { code: "CONFLICT", message: "このキャストは現在新規受付を停止しています" },
+      error: { code: "CONFLICT", message: "このメイトは現在新規受付を停止しています" },
     };
   }
 
@@ -288,7 +288,7 @@ export async function createSubscriptionCheckoutSession(
     if ((assignedCount ?? 0) >= cast.capacity_limit) {
       return {
         ok: false,
-        error: { code: "CONFLICT", message: "このキャストの受付枠が満員です" },
+        error: { code: "CONFLICT", message: "このメイトの受付枠が満員です" },
       };
     }
   }

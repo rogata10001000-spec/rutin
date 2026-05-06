@@ -87,7 +87,7 @@ export function CastPhotoModal({
         </span>
       </button>
 
-      {/* キャスト名 */}
+      {/* メイト名 */}
       <div className="absolute left-4 top-4 z-10 rounded-lg bg-black/50 px-3 py-1.5 text-sm font-medium text-white backdrop-blur-sm">
         {castName}
       </div>

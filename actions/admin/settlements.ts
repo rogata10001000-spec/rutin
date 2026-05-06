@@ -60,7 +60,7 @@ export async function getSettlementBatches(): Promise<GetSettlementBatchesResult
     };
   }
 
-  // 各バッチのキャスト数を取得
+  // 各バッチのメイト数を取得
   const items: SettlementBatch[] = await Promise.all(
     (data ?? []).map(async (row) => {
       const { count } = await supabase

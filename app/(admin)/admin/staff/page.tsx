@@ -15,9 +15,9 @@ export default async function StaffPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">キャスト管理</h1>
+        <h1 className="text-2xl font-bold text-gray-900">メイト管理</h1>
         <p className="mt-1 text-sm text-gray-500">
-          キャストの招待・情報編集を行います
+          メイトの招待・情報編集を行います
         </p>
       </div>
 

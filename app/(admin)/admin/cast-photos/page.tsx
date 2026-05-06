@@ -25,10 +25,10 @@ export default async function CastPhotosPage() {
     );
   }
 
-  // キャストのみフィルタ
+  // メイトのみフィルタ
   const casts = staffResult.data.items.filter((s) => s.role === "cast");
 
-  // 各キャストの写真情報を取得
+  // 各メイトの写真情報を取得
   const castsWithPhotos: CastWithPhotos[] = await Promise.all(
     casts.map(async (cast) => {
       const photosResult = await getCastPhotos(cast.id);
@@ -45,7 +45,7 @@ export default async function CastPhotosPage() {
     })
   );
 
-  // 写真が少ないキャストを先に表示
+  // 写真が少ないメイトを先に表示
   const sortedCasts = [...castsWithPhotos].sort((a, b) => {
     if (a.photoCount === b.photoCount) {
       return a.displayName.localeCompare(b.displayName, "ja");
@@ -60,9 +60,9 @@ export default async function CastPhotosPage() {
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">キャスト写真管理</h1>
+          <h1 className="text-2xl font-bold text-gray-900">メイト写真管理</h1>
           <p className="mt-1 text-sm text-gray-500">
-            全キャストの写真登録状況を確認・管理できます
+            全メイトの写真登録状況を確認・管理できます
           </p>
         </div>
       </div>
@@ -74,10 +74,10 @@ export default async function CastPhotosPage() {
             <span className="text-amber-600 text-xl">⚠️</span>
             <div>
               <h3 className="font-bold text-amber-800">
-                写真が不足しているキャスト
+                写真が不足しているメイト
               </h3>
               <p className="mt-1 text-sm text-amber-700">
-                {castsNeedingPhotos.length}人のキャストが3枚未満の写真しか登録していません。
+                {castsNeedingPhotos.length}人のメイトが3枚未満の写真しか登録していません。
                 プロフィールを充実させるために、最低3枚の写真登録を推奨します。
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -105,7 +105,7 @@ export default async function CastPhotosPage() {
       {/* 統計サマリー */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">総キャスト数</p>
+          <p className="text-sm font-medium text-gray-500">総メイト数</p>
           <p className="mt-1 text-2xl font-bold text-gray-900">
             {castsWithPhotos.length}人
           </p>
@@ -130,15 +130,15 @@ export default async function CastPhotosPage() {
         </div>
       </div>
 
-      {/* キャスト一覧 */}
+      {/* メイト一覧 */}
       <div className="rounded-xl border bg-white shadow-sm">
         <div className="border-b border-gray-200 px-6 py-4">
-          <h2 className="text-lg font-bold text-gray-900">キャスト一覧</h2>
+          <h2 className="text-lg font-bold text-gray-900">メイト一覧</h2>
         </div>
 
         {sortedCasts.length === 0 ? (
           <div className="p-12 text-center text-gray-500">
-            キャストが登録されていません
+            メイトが登録されていません
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 lg:grid-cols-3">

@@ -17,7 +17,7 @@ type StaffTableProps = {
 const roleConfig = {
   admin: { label: "管理者", className: "bg-stone-800 text-stone-50" },
   supervisor: { label: "SV", className: "bg-sage text-white" },
-  cast: { label: "キャスト", className: "bg-terracotta text-white" },
+  cast: { label: "メイト", className: "bg-terracotta text-white" },
 };
 
 const genderLabel: Record<"female" | "male" | "other", string> = {
@@ -112,7 +112,7 @@ export function StaffTable({ items }: StaffTableProps) {
       {/* Header with Add Button */}
       <div className="flex items-center justify-between border-b border-stone-200 px-6 py-4 bg-white rounded-t-2xl">
         <div>
-          <h2 className="text-lg font-bold text-stone-800">キャスト一覧</h2>
+          <h2 className="text-lg font-bold text-stone-800">メイト一覧</h2>
           <p className="text-sm text-stone-500">{items.length}人</p>
         </div>
         <button
@@ -132,13 +132,13 @@ export function StaffTable({ items }: StaffTableProps) {
               d="M12 4v16m8-8H4"
             />
           </svg>
-          キャストを作成
+          メイトを作成
         </button>
       </div>
 
       {items.length === 0 ? (
         <div className="p-12 text-center text-stone-500 bg-white rounded-b-2xl border-x border-b border-stone-200">
-          キャストが登録されていません
+          メイトが登録されていません
         </div>
       ) : (
         <div className="overflow-hidden rounded-b-2xl border-x border-b border-stone-200 bg-white shadow-soft">

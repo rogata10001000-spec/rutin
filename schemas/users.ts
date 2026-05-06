@@ -19,7 +19,7 @@ export const createEndUserSchema = z.object({
   lineUserId: z.string().min(1, "LINE User IDを入力してください"),
   nickname: z.string().min(1, "ニックネームを入力してください").max(50, "ニックネームは50文字以内で入力してください"),
   planCode: z.enum(["light", "standard", "premium"]),
-  assignedCastId: z.string().uuid("無効なキャストIDです").optional(),
+  assignedCastId: z.string().uuid("無効なメイトIDです").optional(),
 });
 
 export type CreateEndUserInput = z.infer<typeof createEndUserSchema>;

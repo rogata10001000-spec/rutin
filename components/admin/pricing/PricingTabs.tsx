@@ -31,7 +31,7 @@ export function PricingTabs({ overrides, casts, planPrices }: PricingTabsProps) 
                 : "border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-700"
             }`}
           >
-            キャスト別価格
+            メイト別価格
           </button>
           <button
             onClick={() => setActiveTab("defaults")}
@@ -64,7 +64,7 @@ export function PricingTabs({ overrides, casts, planPrices }: PricingTabsProps) 
                   設定済み価格オーバーライド
                 </h2>
                 <p className="mt-1 text-sm text-stone-500">
-                  キャストごとに個別の価格を設定できます
+                  メイトごとに個別の価格を設定できます
                 </p>
               </div>
               <PricingTable items={overrides} />
@@ -80,7 +80,7 @@ export function PricingTabs({ overrides, casts, planPrices }: PricingTabsProps) 
               デフォルトプラン価格
             </h2>
             <p className="mt-1 text-sm text-stone-500">
-              キャスト別の上書きがない場合に使用される標準価格です
+              メイト別の上書きがない場合に使用される標準価格です
             </p>
           </div>
           <PlanPricesTable items={planPrices} />

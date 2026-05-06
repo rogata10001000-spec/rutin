@@ -23,18 +23,18 @@ export default async function StaffPhotosPage({ params }: PageProps) {
 
   const staff = staffResult.data.staff;
 
-  // キャスト以外は写真管理不要
+  // メイト以外は写真管理不要
   if (staff.role !== "cast") {
     return (
       <div className="p-4 text-center">
         <p className="text-gray-600">
-          キャストのみ写真管理が可能です。
+          メイトのみ写真管理が可能です。
         </p>
         <Link
           href="/admin/staff"
           className="mt-4 inline-flex text-sm font-medium text-primary hover:text-primary-dark"
         >
-          キャスト一覧に戻る
+          メイト一覧に戻る
         </Link>
       </div>
     );
@@ -54,7 +54,7 @@ export default async function StaffPhotosPage({ params }: PageProps) {
           <span className="material-symbols-outlined text-[18px]">
             arrow_back
           </span>
-          キャスト一覧
+          メイト一覧
         </Link>
         <span className="text-gray-300">/</span>
         <span className="text-sm text-gray-700">{staff.displayName}</span>

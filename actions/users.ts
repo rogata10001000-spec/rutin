@@ -445,7 +445,7 @@ export async function createEndUser(
     };
   }
 
-  // キャストが存在するか確認
+  // メイトが存在するか確認
   if (assignedCastId) {
     const { data: cast } = await supabase
       .from("staff_profiles")
@@ -457,7 +457,7 @@ export async function createEndUser(
     if (!cast) {
       return {
         ok: false,
-        error: { code: "NOT_FOUND", message: "指定されたキャストが見つかりません" },
+        error: { code: "NOT_FOUND", message: "指定されたメイトが見つかりません" },
       };
     }
   }

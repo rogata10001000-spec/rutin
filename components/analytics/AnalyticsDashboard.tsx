@@ -157,10 +157,10 @@ export function AnalyticsDashboard({ data }: Props) {
         </div>
       </div>
 
-      {/* キャスト別ワークロード */}
+      {/* メイト別ワークロード */}
       <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-soft">
         <h2 className="mb-4 text-lg font-bold text-stone-800">
-          キャスト別ワークロード
+          メイト別ワークロード
         </h2>
         {data.castWorkloads.length > 0 ? (
           <div className="overflow-x-auto">
@@ -168,7 +168,7 @@ export function AnalyticsDashboard({ data }: Props) {
               <thead className="bg-stone-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-stone-500">
-                    キャスト
+                    メイト
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-stone-500">
                     担当数
@@ -267,7 +267,7 @@ export function AnalyticsDashboard({ data }: Props) {
           </div>
         ) : (
           <p className="text-center text-sm text-stone-400 py-8">
-            キャストデータがありません
+            メイトデータがありません
           </p>
         )}
       </div>

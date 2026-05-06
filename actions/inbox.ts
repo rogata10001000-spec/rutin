@@ -170,14 +170,14 @@ export async function getInboxItems(
 
   // ===== 一括クエリで関連データを取得 =====
   
-  // 全メッセージを一括取得（ユーザーメッセージとキャスト返信両方）
+  // 全メッセージを一括取得（ユーザーメッセージとメイト返信両方）
   const { data: allMessages } = await supabase
     .from("messages")
     .select("end_user_id, direction, created_at")
     .in("end_user_id", userIds)
     .order("created_at", { ascending: false });
 
-  // 今日のキャスト送信メッセージを一括取得
+  // 今日のメイト送信メッセージを一括取得
   const { data: todayMessages } = await supabase
     .from("messages")
     .select("end_user_id")
@@ -236,7 +236,7 @@ export async function getInboxItems(
 
     // 最後のユーザーメッセージを取得
     const lastUserMsg = userMessages.find((m) => m.direction === "in");
-    // 最後のキャスト返信を取得
+    // 最後のメイト返信を取得
     const lastCastMsg = userMessages.find((m) => m.direction === "out");
     // 最後のチェックイン
     const lastCheckin = userCheckins[0];

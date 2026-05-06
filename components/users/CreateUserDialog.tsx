@@ -191,7 +191,7 @@ export function CreateUserDialog({ open, onClose }: CreateUserDialogProps) {
               {/* Assigned Cast */}
               <div>
                 <label className="block text-sm font-bold text-stone-700">
-                  担当キャスト（任意）
+                  担当メイト（任意）
                 </label>
                 {loadingCasts ? (
                   <div className="mt-1.5 animate-pulse">

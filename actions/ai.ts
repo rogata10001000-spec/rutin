@@ -216,7 +216,7 @@ function buildAiPrompt(context: {
 }): string {
   const messageHistory = context.messages
     .reverse()
-    .map((m) => `${m.direction === "in" ? "ユーザー" : "キャスト"}: ${m.body}`)
+    .map((m) => `${m.direction === "in" ? "ユーザー" : "メイト"}: ${m.body}`)
     .join("\n");
 
   const memos = context.pinnedMemos
@@ -227,9 +227,9 @@ function buildAiPrompt(context: {
     .map((c) => `${c.date}: ${c.status}`)
     .join(", ");
 
-  return `あなたは習慣化サポートサービスのキャストとして、ユーザーへの返信案を3つ作成してください。
+  return `あなたは習慣化サポートサービスのメイトとして、ユーザーへの返信案を3つ作成してください。
 
-## キャストのスタイル
+## メイトのスタイル
 ${context.castStyle ?? "特に指定なし（自然で親しみやすい口調で）"}
 
 ## 会話履歴（直近）

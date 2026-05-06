@@ -105,7 +105,7 @@ export async function getAnalytics(
   ).length;
   const todayTotalUnreplied = nonPausedUsers.length - todayTotalReplied;
 
-  // キャスト情報取得
+  // メイト情報取得
   const { data: casts } = await supabase
     .from("staff_profiles")
     .select("id, display_name")
@@ -143,7 +143,7 @@ export async function getAnalytics(
     }
   }
 
-  // キャスト別ワークロード
+  // メイト別ワークロード
   const castWorkloads: CastWorkload[] = (casts ?? []).map((cast) => {
     const assigned = allUsers.filter((u) => u.assigned_cast_id === cast.id);
     const activePlusTrialAssigned = assigned.filter(

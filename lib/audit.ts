@@ -61,7 +61,7 @@ export type AuditAction =
   | "STAFF_CREATED"
   | "STAFF_INVITE"
   | "STAFF_PASSWORD_RESET"
-  // キャスト写真
+  // メイト写真
   | "CAST_PHOTO_UPLOAD"
   | "CAST_PHOTO_DELETE"
   | "CAST_PHOTO_REORDER"

@@ -84,7 +84,7 @@ export async function GET(request: Request) {
       (u) => !recentCheckinIds.has(u.id) && !recentMessageIds.has(u.id)
     );
 
-    // キャスト別集計
+    // メイト別集計
     const { data: casts } = await supabase
       .from("staff_profiles")
       .select("id, display_name")

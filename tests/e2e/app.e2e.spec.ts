@@ -100,12 +100,12 @@ test.describe("Inbox", () => {
     // 3. 「全 XX人」「未返信 XX人」「今日未送信 XX人」「対応済み XX人」が表示されることを確認
   });
 
-  test.skip("E2E-027 Inbox担当キャストフィルタ: 担当キャスト別フィルタ", async ({ page }) => {
-    // 担当キャスト別フィルタ
+  test.skip("E2E-027 Inbox担当メイトフィルタ: 担当メイト別フィルタ", async ({ page }) => {
+    // 担当メイト別フィルタ
     // 1. ログイン（Admin権限）
     // 2. /inbox へ遷移
-    // 3. 担当キャストドロップダウンで特定キャストを選択
-    // 4. 表示されるアイテムの担当キャストが選択したキャストのみであることを確認
+    // 3. 担当メイトドロップダウンで特定メイトを選択
+    // 4. 表示されるアイテムの担当メイトが選択したメイトのみであることを確認
   });
 
   test.skip("E2E-028 Inbox複合フィルタ: プラン×返信状態フィルタ", async ({ page }) => {
@@ -205,7 +205,7 @@ test.describe("配分ルール管理", () => {
   });
 
   test.skip("E2E-084 配分ルール作成: castルール追加", async ({ page }) => {
-    // キャスト別ルール作成
+    // メイト別ルール作成
   });
 });
 
@@ -273,17 +273,17 @@ test.describe("精算", () => {
   });
 });
 
-test.describe("キャスト管理", () => {
-  test("E2E-104 キャスト管理ページ表示", async ({ page }) => {
+test.describe("メイト管理", () => {
+  test("E2E-104 メイト管理ページ表示", async ({ page }) => {
     await page.goto("/admin/staff");
     await expect(page).toHaveURL(/\/login/);
   });
 
-  test.skip("E2E-105 新規受付トグル: キャストの受付状態変更", async ({ page }) => {
+  test.skip("E2E-105 新規受付トグル: メイトの受付状態変更", async ({ page }) => {
     // accepting_new_users トグル
   });
 
-  test("E2E-106 キャスト写真管理ガード: 未ログインで管理画面アクセス拒否", async ({ page }) => {
+  test("E2E-106 メイト写真管理ガード: 未ログインで管理画面アクセス拒否", async ({ page }) => {
     await page.goto("/admin/staff/test-id/photos");
     await expect(page).toHaveURL(/\/login/);
   });
@@ -336,7 +336,7 @@ test.describe("サブスクリプション導線", () => {
     ).toBeVisible();
   });
 
-  test("E2E-120-cast キャスト選択ページ表示", async ({ page }) => {
+  test("E2E-120-cast メイト選択ページ表示", async ({ page }) => {
     await page.goto("/subscribe/cast");
     await expect(
       page.getByText("伴走メイトを選ぶ").or(page.getByText("現在、新規受付中の伴走メイトがいません。"))
@@ -346,7 +346,7 @@ test.describe("サブスクリプション導線", () => {
   test("E2E-121 プラン選択: castIdなしでエラーメッセージ", async ({ page }) => {
     await page.goto("/subscribe/plan");
     await expect(page.locator("h1")).toContainText("プラン選択");
-    await expect(page.locator("text=キャストが指定されていません")).toBeVisible();
+    await expect(page.locator("text=メイトが指定されていません")).toBeVisible();
   });
 
   test("E2E-122 プラン選択: 不正castIdでエラー", async ({ page }) => {
@@ -354,8 +354,8 @@ test.describe("サブスクリプション導線", () => {
     await expect(page.locator("h1")).toContainText("プラン選択");
     const mainText = await page.locator("main").innerText();
     expect(
-      mainText.includes("指定されたキャストが見つかりません") ||
-        mainText.includes("キャスト情報を取得できません")
+      mainText.includes("指定されたメイトが見つかりません") ||
+        mainText.includes("メイト情報を取得できません")
     ).toBeTruthy();
   });
 
@@ -364,7 +364,7 @@ test.describe("サブスクリプション導線", () => {
     await expect(page.locator("h1")).toContainText("契約確認ができません");
   });
 
-  test("E2E-124 キャスト選択: 一覧表示", async ({ page }) => {
+  test("E2E-124 メイト選択: 一覧表示", async ({ page }) => {
     await page.goto("/subscribe/cast");
     await expect(
       page.getByText("伴走メイトを選ぶ").or(page.getByText("現在、新規受付中の伴走メイトがいません。"))
@@ -373,7 +373,7 @@ test.describe("サブスクリプション導線", () => {
 
   test("E2E-125 プラン選択: castIdなしはエラー表示", async ({ page }) => {
     await page.goto("/subscribe/plan");
-    await expect(page.locator("text=キャストが指定されていません")).toBeVisible();
+    await expect(page.locator("text=メイトが指定されていません")).toBeVisible();
   });
 
   test.skip("E2E-126 Checkout遷移", async ({ page }) => {

@@ -18,7 +18,7 @@ export default async function SettlementsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">精算</h1>
         <p className="mt-1 text-sm text-gray-500">
-          キャストへの配分を精算します
+          メイトへの配分を精算します
         </p>
       </div>
 

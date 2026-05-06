@@ -19,7 +19,7 @@ export default function HelpPage() {
         </h2>
         <div className="space-y-3 text-sm text-gray-600">
           <p>
-            毎日、担当キャストからチェックインのメッセージが届きます。
+            毎日、担当メイトからチェックインのメッセージが届きます。
             今日の調子を「◯」「△」「×」で回答してください。
           </p>
           <div className="rounded-lg bg-gray-50 p-3">
@@ -31,7 +31,7 @@ export default function HelpPage() {
             </ul>
           </div>
           <p>
-            回答に応じて、担当キャストがメッセージを送ってくれます。
+            回答に応じて、担当メイトがメッセージを送ってくれます。
             どんな小さなことでも気軽に相談してください。
           </p>
         </div>
@@ -44,7 +44,7 @@ export default function HelpPage() {
         </h2>
         <div className="space-y-4">
           <div>
-            <h3 className="font-medium text-gray-900 text-sm">Q. 担当キャストを変更できますか？</h3>
+            <h3 className="font-medium text-gray-900 text-sm">Q. 担当メイトを変更できますか？</h3>
             <p className="mt-1 text-sm text-gray-600">
               A. はい、担当変更のご希望はLINEメッセージでお知らせください。運営チームが対応いたします。
             </p>
@@ -56,10 +56,10 @@ export default function HelpPage() {
             </p>
           </div>
           <div>
-            <h3 className="font-medium text-gray-900 text-sm">Q. 複数のキャストと話せますか？</h3>
+            <h3 className="font-medium text-gray-900 text-sm">Q. 複数のメイトと話せますか？</h3>
             <p className="mt-1 text-sm text-gray-600">
-              A. 基本的にはお一人の担当キャストがサポートしますが、
-              プランによっては複数のキャストとお話しいただける場合もあります。
+              A. 基本的にはお一人の担当メイトがサポートしますが、
+              プランによっては複数のメイトとお話しいただける場合もあります。
             </p>
           </div>
         </div>
@@ -72,7 +72,7 @@ export default function HelpPage() {
         </h2>
         <p className="text-sm text-gray-600 mb-4">
           ご不明な点がありましたら、LINEのトーク画面でお気軽にメッセージをお送りください。
-          担当キャストまたは運営チームがお答えします。
+          担当メイトまたは運営チームがお答えします。
         </p>
         <a
           href="https://line.me/R/"

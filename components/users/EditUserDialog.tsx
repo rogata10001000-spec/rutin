@@ -241,12 +241,12 @@ export function EditUserDialog({ open, user, onClose }: EditUserDialogProps) {
                     <dd className="text-stone-700 font-medium">{user.planCode}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-stone-500">担当キャスト</dt>
+                    <dt className="text-stone-500">担当メイト</dt>
                     <dd className="text-stone-700 font-medium">{user.assignedCastName ?? "未割当"}</dd>
                   </div>
                 </dl>
                 <p className="mt-3 text-xs text-stone-400">
-                  プラン・担当キャストは別の画面から変更してください
+                  プラン・担当メイトは別の画面から変更してください
                 </p>
               </div>
             </div>

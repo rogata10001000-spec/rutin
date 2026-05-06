@@ -18,7 +18,7 @@ export type CastOption = {
 export type GetCastOptionsResult = Result<{ casts: CastOption[] }>;
 
 /**
- * 担当変更用のキャスト選択肢を取得
+ * 担当変更用のメイト選択肢を取得
  */
 export async function getCastOptions(): Promise<GetCastOptionsResult> {
   const staff = await getCurrentStaff();
@@ -41,11 +41,11 @@ export async function getCastOptions(): Promise<GetCastOptionsResult> {
   if (error) {
     return {
       ok: false,
-      error: { code: "UNKNOWN", message: "キャスト一覧の取得に失敗しました" },
+      error: { code: "UNKNOWN", message: "メイト一覧の取得に失敗しました" },
     };
   }
 
-  // 各キャストの担当数を取得
+  // 各メイトの担当数を取得
   const castIds = (casts ?? []).map((c) => c.id);
   const { data: assignments } = await supabase
     .from("end_users")
@@ -151,7 +151,7 @@ export type AssignCastInput = {
 export type AssignCastResult = Result<{ assignmentId: string }>;
 
 /**
- * 担当キャスト変更
+ * 担当メイト変更
  * 権限: Admin/Supervisor
  */
 export async function assignCast(input: AssignCastInput): Promise<AssignCastResult> {
@@ -199,7 +199,7 @@ export async function assignCast(input: AssignCastInput): Promise<AssignCastResu
   if (!toCast) {
     return {
       ok: false,
-      error: { code: "NOT_FOUND", message: "指定されたキャストが見つかりません" },
+      error: { code: "NOT_FOUND", message: "指定されたメイトが見つかりません" },
     };
   }
 

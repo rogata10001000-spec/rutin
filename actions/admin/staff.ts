@@ -116,7 +116,7 @@ export async function getStaffList(): Promise<GetStaffListResult> {
     };
   }
 
-  // 各キャストの担当ユーザー数を取得
+  // 各メイトの担当ユーザー数を取得
   const items: StaffMember[] = await Promise.all(
     (data ?? []).map(async (row) => {
       let assignedUserCount = 0;
@@ -306,7 +306,7 @@ export type SetCastAcceptingResult = Result<{
 }>;
 
 /**
- * キャストの新規受付状態を変更
+ * メイトの新規受付状態を変更
  */
 export async function setCastAcceptingStatus(
   input: SetCastAcceptingInput
@@ -384,7 +384,7 @@ export type CreateStaffAccountResult = Result<{
 }>;
 
 /**
- * 新しいキャストアカウントを作成
+ * 新しいメイトアカウントを作成
  * Supabase Authで即時ログイン可能なユーザーを作成し、staff_profilesにレコードを作成
  */
 export async function createStaffAccount(
@@ -516,7 +516,7 @@ export type ResetStaffPasswordResult = Result<{
 }>;
 
 /**
- * 既存キャストのパスワードを再設定
+ * 既存メイトのパスワードを再設定
  * 新しいパスワードは平文保存せず、レスポンスで一度だけ返す
  */
 export async function resetStaffPassword(
@@ -550,7 +550,7 @@ export async function resetStaffPassword(
     if (staffError || !staff || staff.role !== "cast") {
       return {
         ok: false,
-        error: { code: "NOT_FOUND", message: "キャストが見つかりません" },
+        error: { code: "NOT_FOUND", message: "メイトが見つかりません" },
       };
     }
 

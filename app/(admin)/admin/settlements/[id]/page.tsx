@@ -73,7 +73,7 @@ export default async function SettlementDetailPage({
           </p>
         </div>
         <div className="rounded-lg border bg-white p-4">
-          <p className="text-sm text-gray-500">キャスト数</p>
+          <p className="text-sm text-gray-500">メイト数</p>
           <p className="text-2xl font-bold text-gray-900">
             {batch.castCount}人
           </p>
@@ -113,7 +113,7 @@ export default async function SettlementDetailPage({
       <div className="rounded-lg border bg-white">
         <div className="border-b px-6 py-4">
           <h2 className="text-lg font-semibold text-gray-900">
-            キャスト別明細
+            メイト別明細
           </h2>
         </div>
         <SettlementDetailTable items={items} />

@@ -13,7 +13,7 @@ export default async function CastLayout({
     redirect("/login");
   }
 
-  // キャスト以外はアクセス不可（管理者/SVは別のルートを使用）
+  // メイト以外はアクセス不可（管理者/SVは別のルートを使用）
   if (staff.role !== "cast") {
     redirect("/admin/staff");
   }

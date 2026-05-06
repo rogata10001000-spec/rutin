@@ -180,7 +180,7 @@ export function InboxFilters({ currentFilters, casts = [], summary }: InboxFilte
           </div>
         </div>
 
-        {/* 担当キャストフィルタ（新規） */}
+        {/* 担当メイトフィルタ（新規） */}
         <div className="relative">
           <select
             value={

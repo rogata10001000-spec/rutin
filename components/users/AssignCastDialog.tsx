@@ -10,7 +10,7 @@ import { getCastOptions, assignCast, type CastOption } from "@/actions/assignmen
 import { useToast } from "@/components/common/Toast";
 
 const formSchema = z.object({
-  toCastId: z.string().uuid("キャストを選択してください"),
+  toCastId: z.string().uuid("メイトを選択してください"),
   reason: z.string().min(1, "理由を入力してください").max(200, "200文字以内で入力してください"),
 });
 
@@ -117,7 +117,7 @@ export function AssignCastDialog({ open, user, onClose }: AssignCastDialogProps)
           {/* Header */}
           <div className="flex-shrink-0 border-b border-stone-100 bg-stone-50/50 px-6 py-4">
             <h3 className="text-lg font-bold text-stone-800">
-              担当キャスト変更
+              担当メイト変更
             </h3>
             <p className="mt-1 text-sm text-stone-500">
               {user.nickname}さんの担当を変更
@@ -154,7 +154,7 @@ export function AssignCastDialog({ open, user, onClose }: AssignCastDialogProps)
                       {...register("toCastId")}
                       className="block w-full appearance-none rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
                     >
-                      <option value="">キャストを選択...</option>
+                      <option value="">メイトを選択...</option>
                       {casts
                         .filter((c) => c.id !== user.assignedCastId)
                         .map((cast) => {

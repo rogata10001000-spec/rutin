@@ -113,7 +113,7 @@ export function ShadowDraftButton({
         </div>
 
         <p className="text-xs font-medium text-yellow-700">
-          Shadow期間中は直接送信できません。下書きを保存して担当キャストに確認してもらいましょう。
+          Shadow期間中は直接送信できません。下書きを保存して担当メイトに確認してもらいましょう。
         </p>
 
         {/* 下書き一覧 */}

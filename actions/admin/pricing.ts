@@ -24,7 +24,7 @@ const getStripeClient = () => {
 };
 
 // =====================================
-// キャスト別価格オーバーライド
+// メイト別価格オーバーライド
 // =====================================
 
 export type PriceOverride = {
@@ -103,7 +103,7 @@ export type UpsertCastPlanPriceOverrideInput = {
 export type UpsertCastPlanPriceOverrideResult = Result<{ id: string }>;
 
 /**
- * キャスト別価格オーバーライド作成/更新
+ * メイト別価格オーバーライド作成/更新
  */
 export async function upsertCastPlanPriceOverride(
   input: UpsertCastPlanPriceOverrideInput
@@ -335,7 +335,7 @@ export async function changeUserSubscriptionPrice(
 }
 
 // =====================================
-// キャスト一覧取得（価格設定用）
+// メイト一覧取得（価格設定用）
 // =====================================
 
 export type CastListItem = {
@@ -348,7 +348,7 @@ export type CastListItem = {
 export type GetCastsForPricingResult = Result<{ items: CastListItem[] }>;
 
 /**
- * 価格設定用キャスト一覧
+ * 価格設定用メイト一覧
  */
 export async function getCastsForPricing(): Promise<GetCastsForPricingResult> {
   const admin = await requireAdmin();

@@ -78,7 +78,7 @@ function SortablePhoto({
     >
       <Image
         src={photo.url}
-        alt={photo.caption || "キャスト写真"}
+        alt={photo.caption || "メイト写真"}
         fill
         unoptimized
         className="object-cover"
@@ -373,7 +373,7 @@ export function PhotoEditor({
         <ul className="mt-2 list-inside list-disc space-y-1">
           <li>ドラッグ&ドロップで写真の順序を変更できます</li>
           <li>写真をクリックするとキャプションを編集できます</li>
-          <li>1枚目の写真がキャスト一覧のサムネイルになります</li>
+          <li>1枚目の写真がメイト一覧のサムネイルになります</li>
           <li>対応形式: JPEG、PNG、WebP（最大5MB）</li>
         </ul>
       </div>

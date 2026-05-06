@@ -55,7 +55,7 @@ function buildSubscribeUrl(lineUserId: string) {
 function buildWelcomeMessage(lineUserId: string) {
   return `Rutinへようこそ！
 
-以下のリンクからキャストを選んで、7日間の無料トライアルを始めましょう。
+以下のリンクからメイトを選んで、7日間の無料トライアルを始めましょう。
 ${buildSubscribeUrl(lineUserId)}`;
 }
 

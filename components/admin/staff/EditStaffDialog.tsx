@@ -28,7 +28,7 @@ type EditStaffDialogProps = {
 };
 
 const roleOptions = [
-  { value: "cast", label: "キャスト" },
+  { value: "cast", label: "メイト" },
   { value: "supervisor", label: "スーパーバイザー" },
   { value: "admin", label: "管理者" },
 ] as const;
@@ -111,7 +111,7 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
       });
 
       if (result.ok) {
-        showToast("キャスト情報を更新しました", "success");
+        showToast("メイト情報を更新しました", "success");
         onClose();
         router.refresh();
       } else {
@@ -141,7 +141,7 @@ export function EditStaffDialog({ open, staff, onClose }: EditStaffDialogProps) 
         >
           <div className="flex-shrink-0 border-b border-stone-100 bg-stone-50/50 px-6 py-4">
             <h3 className="text-lg font-bold text-stone-800">
-              キャスト情報を編集
+              メイト情報を編集
             </h3>
             <p className="mt-1 text-sm text-stone-500">
               {staff.displayName}さんの情報
