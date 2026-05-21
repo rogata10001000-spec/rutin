@@ -16,6 +16,8 @@
     "test:e2e:ui": "playwright test --ui",
     "db:migrate": "supabase db push",
     "verify:env": "tsx scripts/verify-production-env.ts",
+    "setup:stripe": "tsx scripts/setup-stripe.ts",
+    "verify:stripe-checkout": "tsx scripts/verify-stripe-checkout.ts",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --local > lib/supabase/database.types.ts",
     "mcp:stripe": "tsx mcp-servers/stripe-mcp.ts",
