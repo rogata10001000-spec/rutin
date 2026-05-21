@@ -11,6 +11,10 @@ import { createSubscriptionCheckout as stripeCreateCheckout } from "@/lib/stripe
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { getUserFromServerCookies } from "@/lib/auth";
 import { getServerEnv } from "@/lib/env";
+import {
+  subscribeCheckoutCancelUrl,
+  subscribeCheckoutSuccessUrl,
+} from "@/lib/subscribe-paths";
 import { calculateAge } from "@/lib/age";
 import type { StaffGender } from "@/lib/supabase/types";
 
@@ -123,7 +127,7 @@ export async function listAvailableCasts(
       .from("end_users")
       .select("assigned_cast_id")
       .in("assigned_cast_id", castIds)
-      .neq("status", "incomplete"),
+      .not("status", "in", '("incomplete","canceled")'),
     supabase
       .from("cast_plan_price_overrides")
       .select("cast_id, plan_code, amount_monthly, stripe_price_id")
@@ -338,8 +342,8 @@ export async function createSubscriptionCheckoutSession(
       castId: parsed.data.castId,
       planCode: parsed.data.planCode,
       stripePriceId,
-      successUrl: `${APP_BASE_URL}/subscribe/complete?session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${APP_BASE_URL}/subscribe?canceled=true`,
+      successUrl: subscribeCheckoutSuccessUrl(),
+      cancelUrl: subscribeCheckoutCancelUrl(),
       trialPeriodDays: TRIAL_PERIOD_DAYS,
     });
 

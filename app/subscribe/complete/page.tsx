@@ -1,4 +1,11 @@
 import { retrieveCheckoutSession } from "@/lib/stripe";
+import { getCompleteTrialMessage, getTrialPeriodDays } from "@/lib/trial";
+
+const DEFAULT_PLAN_PRICES: Record<string, number> = {
+  light: 2980,
+  standard: 6980,
+  premium: 14800,
+};
 
 type PageProps = {
   searchParams?: Promise<{ session_id?: string }>;
@@ -7,6 +14,7 @@ type PageProps = {
 export default async function SubscribeCompletePage({ searchParams }: PageProps) {
   const params = await searchParams;
   const sessionId = params?.session_id;
+  const trialDays = getTrialPeriodDays();
 
   if (!sessionId) {
     return (
@@ -20,9 +28,11 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
   }
 
   let verified = false;
+  let planCode: string | null = null;
   try {
     const session = await retrieveCheckoutSession(sessionId);
     verified = session.mode === "subscription" && session.payment_status !== "unpaid";
+    planCode = session.metadata?.plan_code ?? null;
   } catch {
     verified = false;
   }
@@ -38,6 +48,12 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
     );
   }
 
+  const monthlyPrice =
+    planCode && planCode in DEFAULT_PLAN_PRICES
+      ? DEFAULT_PLAN_PRICES[planCode]
+      : null;
+  const trialMessage = getCompleteTrialMessage(trialDays, monthlyPrice);
+
   return (
     <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-12 text-center">
       <div className="mb-6 rounded-full bg-primary/10 p-4">
@@ -45,7 +61,8 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
           check_circle
         </span>
       </div>
-      <h1 className="text-2xl font-bold text-gray-900">契約ありがとうございます</h1>
+      <h1 className="text-2xl font-bold text-gray-900">{trialMessage.title}</h1>
+      <p className="mt-3 text-sm leading-relaxed text-gray-600">{trialMessage.body}</p>
       <p className="mt-3 text-sm text-gray-600">
         担当の伴走メイトからのメッセージをお待ちください。
       </p>

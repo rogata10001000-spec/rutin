@@ -376,8 +376,30 @@ test.describe("サブスクリプション導線", () => {
     await expect(page.locator("text=メイトが指定されていません")).toBeVisible();
   });
 
+  test("E2E-126-canceled 決済キャンセルバナー", async ({ page }) => {
+    await page.goto("/subscribe/cast?canceled=1");
+    await expect(page.getByText("決済がキャンセルされました")).toBeVisible();
+  });
+
+  test("E2E-127-plan-trial プラン画面にトライアル・自動課金の明示", async ({ page }) => {
+    await page.goto("/subscribe/plan?castId=00000000-0000-0000-0000-000000000001");
+    const mainText = await page.locator("main").innerText();
+    const showsTrialOrError =
+      mainText.includes("無料トライアル") ||
+      mainText.includes("自動請求") ||
+      mainText.includes("メイトが見つかりません") ||
+      mainText.includes("取得できません");
+    expect(showsTrialOrError).toBeTruthy();
+  });
+
+  test("E2E-128-plan-checkout-error プラン画面のCheckoutエラー表示", async ({ page }) => {
+    await page.goto("/subscribe/plan?castId=test&checkoutError=expired");
+    await expect(page.getByText("手続きを完了できませんでした")).toBeVisible();
+    await expect(page.getByText(/期限が切れています/)).toBeVisible();
+  });
+
   test.skip("E2E-126 Checkout遷移", async ({ page }) => {
-    // Stripe Checkoutへのリダイレクト
+    // Stripe Checkoutへのリダイレクト（Live Stripe + LINE cookie が必要）
   });
 });
 

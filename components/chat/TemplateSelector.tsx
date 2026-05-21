@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { getMessageTemplates, type MessageTemplate } from "@/actions/templates";
+import { useToast } from "@/components/common/Toast";
 
 type TemplateSelectorProps = {
   onSelect: (body: string) => void;
 };
 
 export function TemplateSelector({ onSelect }: TemplateSelectorProps) {
+  const { showToast, ToastContainer } = useToast();
   const [open, setOpen] = useState(false);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [isPending, startTransition] = useTransition();
@@ -24,8 +26,10 @@ export function TemplateSelector({ onSelect }: TemplateSelectorProps) {
       if (result.ok) {
         setTemplates(result.data.templates);
         setLoaded(true);
+        setOpen(true);
+      } else {
+        showToast(result.error.message, "error");
       }
-      setOpen(true);
     });
   };
 
@@ -33,6 +37,7 @@ export function TemplateSelector({ onSelect }: TemplateSelectorProps) {
 
   return (
     <div className="relative">
+      <ToastContainer />
       <button
         type="button"
         onClick={loadTemplates}

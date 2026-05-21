@@ -6,6 +6,13 @@ import { writeAuditLog } from "@/lib/audit";
 import { switchRichMenu } from "@/lib/line";
 import { checkRateLimit, requestKey } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import { getServerEnv } from "@/lib/env";
+import {
+  endUserNicknameFromLineId,
+  fetchStripeSubscription,
+  syncNewSubscriptionSideEffects,
+  trialEndAtFromSubscription,
+} from "@/lib/stripe-subscription-sync";
 import type { PayoutScopeType } from "@/lib/supabase/types";
 
 type SupabaseAdmin = ReturnType<typeof createAdminSupabaseClient>;
@@ -47,7 +54,7 @@ async function resolveSubscriptionPayoutRule(
   castId: string,
   planCode: string,
   occurredOn: string
-) {
+): Promise<{ id: string; percent: number } | null> {
   const candidates: Array<{
     scope_type: PayoutScopeType;
     cast_id: string | null;
@@ -84,10 +91,17 @@ async function resolveSubscriptionPayoutRule(
     if (rule) return rule;
   }
 
-  throw new Error("Subscription payout rule not found");
+  return null;
 }
 
-async function recognizeSubscriptionRevenue(supabase: SupabaseAdmin, invoice: Stripe.Invoice) {
+export type RevenueRecognitionResult =
+  | { skipped: true; reason: string }
+  | { revenueEventId: string; payoutAmount: number };
+
+export async function recognizeSubscriptionRevenue(
+  supabase: SupabaseAdmin,
+  invoice: Stripe.Invoice
+): Promise<RevenueRecognitionResult> {
   const subscriptionId = subscriptionIdFromInvoice(invoice);
   if (!subscriptionId) {
     return { skipped: true, reason: "invoice has no subscription" };
@@ -105,19 +119,37 @@ async function recognizeSubscriptionRevenue(supabase: SupabaseAdmin, invoice: St
     .single();
 
   if (!subscription) {
-    throw new Error(`Subscription not found for invoice: ${invoice.id}`);
+    logger.warn("invoice.paid: subscription row not found", {
+      stripeInvoiceId: invoice.id,
+      stripeSubscriptionId: subscriptionId,
+    });
+    return { skipped: true, reason: "subscription not found in database" };
   }
 
   const endUser = subscription.end_users as unknown as { assigned_cast_id: string | null };
   const castId = endUser.assigned_cast_id;
   if (!castId) {
-    throw new Error(`Assigned cast not found for subscription: ${subscription.id}`);
+    logger.warn("invoice.paid: assigned cast missing", {
+      stripeInvoiceId: invoice.id,
+      subscriptionId: subscription.id,
+    });
+    return { skipped: true, reason: "assigned cast not set" };
   }
 
   const occurredOn = new Date((invoice.created ?? Math.floor(Date.now() / 1000)) * 1000)
     .toISOString()
     .split("T")[0];
-  const taxRate = await getActiveTaxRate(supabase);
+
+  let taxRate: { id: string; rate: number };
+  try {
+    taxRate = await getActiveTaxRate(supabase);
+  } catch (err) {
+    logger.warn("invoice.paid: active tax rate not found", {
+      stripeInvoiceId: invoice.id,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    return { skipped: true, reason: "active tax rate not found" };
+  }
   const taxRateValue = Number(taxRate.rate);
   const amountExclTax = Math.floor(amountInclTax / (1 + taxRateValue));
   const taxJpy = amountInclTax - amountExclTax;
@@ -163,7 +195,10 @@ async function recognizeSubscriptionRevenue(supabase: SupabaseAdmin, invoice: St
   }
 
   if (!revenueEventId) {
-    throw new Error("Revenue event lookup failed");
+    logger.warn("invoice.paid: revenue event lookup failed after duplicate insert", {
+      stripeInvoiceId: invoice.id,
+    });
+    return { skipped: true, reason: "revenue event lookup failed" };
   }
 
   const payoutRule = await resolveSubscriptionPayoutRule(
@@ -172,6 +207,14 @@ async function recognizeSubscriptionRevenue(supabase: SupabaseAdmin, invoice: St
     subscription.plan_code,
     occurredOn
   );
+  if (!payoutRule) {
+    logger.warn("invoice.paid: payout rule not found", {
+      stripeInvoiceId: invoice.id,
+      castId,
+      planCode: subscription.plan_code,
+    });
+    return { skipped: true, reason: "payout rule not found" };
+  }
   const payoutAmount = Math.floor((amountExclTax * Number(payoutRule.percent)) / 100);
 
   const { error: payoutError } = await supabase.from("payout_calculations").insert({
@@ -252,8 +295,18 @@ export async function POST(request: Request) {
             : session.subscription.id;
 
         if (!lineUserId || !castId || !planCode) {
-          throw new Error("Missing metadata for subscription");
+          logger.warn("checkout.session.completed: missing subscription metadata", {
+            sessionId: session.id,
+          });
+          return { skipped: true, reason: "missing subscription metadata" };
         }
+
+        const stripeSubscription = await fetchStripeSubscription(subscriptionId);
+        const trialEndAt = trialEndAtFromSubscription(stripeSubscription);
+        const currentPeriodEnd = stripeSubscription.current_period_end
+          ? new Date(stripeSubscription.current_period_end * 1000).toISOString()
+          : null;
+        const subscriptionStatus = toSubscriptionStatus(stripeSubscription.status);
 
         // end_user取得または作成
         let { data: user } = await supabase
@@ -267,10 +320,11 @@ export async function POST(request: Request) {
             .from("end_users")
             .insert({
               line_user_id: lineUserId,
-              nickname: `ユーザー_${lineUserId.slice(-6)}`,
-              status: "trial",
+              nickname: endUserNicknameFromLineId(lineUserId),
+              status: subscriptionStatus,
               plan_code: planCode,
               assigned_cast_id: castId,
+              trial_end_at: trialEndAt,
             })
             .select("id")
             .single();
@@ -278,54 +332,48 @@ export async function POST(request: Request) {
           if (error) {
             throw new Error(`Failed to create end_user: ${error.message}`);
           }
-          user = { id: newUser.id, status: "trial" };
+          user = { id: newUser.id, status: subscriptionStatus };
         } else {
-          // 既存ユーザーの更新
           await supabase
             .from("end_users")
             .update({
-              status: "trial",
+              status: subscriptionStatus,
               plan_code: planCode,
               assigned_cast_id: castId,
+              trial_end_at: trialEndAt,
             })
             .eq("id", user.id);
         }
 
-        // サブスクリプション作成
         const { error: subError } = await supabase.from("subscriptions").insert({
           end_user_id: user.id,
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
-          status: "trial",
+          status: subscriptionStatus,
           plan_code: planCode,
           applied_stripe_price_id: metadata.stripe_price_id ?? "",
+          current_period_end: currentPeriodEnd,
         });
 
         if (subError && subError.code !== "23505") {
           throw new Error(`Failed to create subscription: ${subError.message}`);
+        } else if (subError?.code === "23505") {
+          await supabase
+            .from("subscriptions")
+            .update({
+              status: subscriptionStatus,
+              current_period_end: currentPeriodEnd,
+              applied_stripe_price_id: metadata.stripe_price_id ?? "",
+            })
+            .eq("stripe_subscription_id", subscriptionId);
         }
 
-        // 担当メイト割当履歴
-        await supabase.from("cast_assignments").insert({
-          end_user_id: user.id,
-          from_cast_id: null,
-          to_cast_id: castId,
-          reason: "初回契約",
-          created_by: castId,
+        await syncNewSubscriptionSideEffects(supabase, {
+          endUserId: user.id,
+          lineUserId,
+          castId,
+          trialEndAt,
         });
-
-        // リッチメニュー切替（契約者用）
-        const richMenuId = process.env.RICH_MENU_ID_CONTRACTED;
-        if (richMenuId) {
-          try {
-            await switchRichMenu(lineUserId, richMenuId);
-          } catch (err) {
-            logger.error("Stripe webhook rich menu switch failed", {
-              lineUserId,
-              error: err instanceof Error ? err.message : "unknown",
-            });
-          }
-        }
 
         // 監査ログ
         await writeAuditLog({
@@ -398,7 +446,10 @@ export async function POST(request: Request) {
             : subscription.customer?.id;
 
         if (!lineUserId || !castId || !planCode || !customerId || !appliedStripePriceId) {
-          throw new Error("Missing metadata for subscription create sync");
+          logger.warn("customer.subscription.created: missing metadata", {
+            subscriptionId,
+          });
+          return { skipped: true, reason: "missing subscription metadata" };
         }
 
         let { data: user } = await supabase
@@ -407,15 +458,18 @@ export async function POST(request: Request) {
           .eq("line_user_id", lineUserId)
           .single();
 
+        const trialEndAt = trialEndAtFromSubscription(subscription);
+
         if (!user) {
           const { data: newUser, error: userCreateError } = await supabase
             .from("end_users")
             .insert({
               line_user_id: lineUserId,
-              nickname: `ユーザー_${lineUserId.slice(-6)}`,
+              nickname: endUserNicknameFromLineId(lineUserId),
               status: newStatus,
               plan_code: planCode,
               assigned_cast_id: castId,
+              trial_end_at: trialEndAt,
             })
             .select("id")
             .single();
@@ -431,6 +485,7 @@ export async function POST(request: Request) {
               status: newStatus,
               plan_code: planCode,
               assigned_cast_id: castId,
+              trial_end_at: trialEndAt,
             })
             .eq("id", user.id);
         }
@@ -450,6 +505,25 @@ export async function POST(request: Request) {
           throw new Error(`Failed to create subscription: ${insertError.message}`);
         }
 
+        if (insertError?.code === "23505") {
+          await supabase
+            .from("subscriptions")
+            .update({
+              status: newStatus,
+              current_period_end: currentPeriodEnd,
+              cancel_at_period_end: cancelAtPeriodEnd,
+              applied_stripe_price_id: appliedStripePriceId,
+            })
+            .eq("stripe_subscription_id", subscriptionId);
+        }
+
+        await syncNewSubscriptionSideEffects(supabase, {
+          endUserId: user.id,
+          lineUserId,
+          castId,
+          trialEndAt,
+        });
+
         await writeAuditLog({
           action: "SUBSCRIPTION_SYNC",
           targetType: "subscriptions",
@@ -467,8 +541,8 @@ export async function POST(request: Request) {
       }
 
       const previousStatus = sub.status;
+      const trialEndAt = trialEndAtFromSubscription(subscription);
 
-      // サブスクリプション更新
       await supabase
         .from("subscriptions")
         .update({
@@ -479,13 +553,16 @@ export async function POST(request: Request) {
         })
         .eq("id", sub.id);
 
-      // end_userのstatusも更新
       await supabase
         .from("end_users")
-        .update({ status: newStatus })
+        .update({
+          status: newStatus,
+          ...(trialEndAt ? { trial_end_at: trialEndAt } : {}),
+        })
         .eq("id", sub.end_user_id);
 
-      // 監査ログ
+      const trialConverted = previousStatus === "trial" && newStatus === "active";
+
       await writeAuditLog({
         action: "SUBSCRIPTION_SYNC",
         targetType: "subscriptions",
@@ -496,6 +573,7 @@ export async function POST(request: Request) {
           previous_status: previousStatus,
           new_status: newStatus,
           cancel_at_period_end: cancelAtPeriodEnd,
+          ...(trialConverted ? { trial_converted: true } : {}),
         },
         actorStaffId: null,
       });
@@ -519,7 +597,7 @@ export async function POST(request: Request) {
 
       const { data: sub } = await supabase
         .from("subscriptions")
-        .select("id, end_user_id")
+        .select("id, end_user_id, end_users!inner(line_user_id)")
         .eq("stripe_subscription_id", subscriptionId)
         .single();
 
@@ -527,7 +605,6 @@ export async function POST(request: Request) {
         return { skipped: true };
       }
 
-      // サブスクリプション・ユーザーをcanceledに
       await supabase
         .from("subscriptions")
         .update({ status: "canceled" })
@@ -535,8 +612,21 @@ export async function POST(request: Request) {
 
       await supabase
         .from("end_users")
-        .update({ status: "canceled" })
+        .update({ status: "canceled", trial_end_at: null })
         .eq("id", sub.end_user_id);
+
+      const lineUserId = (sub.end_users as unknown as { line_user_id: string }).line_user_id;
+      const uncontractedMenuId = getServerEnv().RICH_MENU_ID_UNCONTRACTED;
+      if (lineUserId && uncontractedMenuId) {
+        try {
+          await switchRichMenu(lineUserId, uncontractedMenuId);
+        } catch (err) {
+          logger.error("Stripe webhook rich menu revert failed", {
+            lineUserId,
+            error: err instanceof Error ? err.message : "unknown",
+          });
+        }
+      }
 
       // 監査ログ
       await writeAuditLog({

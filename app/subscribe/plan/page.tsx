@@ -5,6 +5,16 @@ import {
   PlanCode,
 } from "../../../actions/subscriptions";
 import { getUserFromServerCookies } from "@/lib/auth";
+import {
+  checkoutErrorCodeFromResult,
+  getCheckoutErrorMessage,
+} from "@/lib/subscribe-checkout-errors";
+import {
+  getPlanCheckoutButtonLabel,
+  getPlanPageTrialNotice,
+  getTrialPeriodDays,
+} from "@/lib/trial";
+import { buildSubscribeCastUrl } from "@/lib/subscribe-paths";
 
 const planLabels: Record<PlanCode, string> = {
   light: "ライト",
@@ -27,12 +37,23 @@ const planDescription: Record<PlanCode, string> = {
 const formatYen = (amount: number) => `¥${amount.toLocaleString("ja-JP")}`;
 
 type PageProps = {
-  searchParams?: Promise<{ castId?: string }>;
+  searchParams?: Promise<{
+    castId?: string;
+    checkoutError?: string;
+    gender?: string;
+    canceled?: string;
+  }>;
 };
 
 export default async function SubscribePlanPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const castId = params?.castId;
+  const castBackUrl = buildSubscribeCastUrl({
+    gender: params?.gender,
+    canceled: params?.canceled,
+  });
+  const checkoutErrorMessage = getCheckoutErrorMessage(params?.checkoutError);
+  const trialDays = getTrialPeriodDays();
   const userToken = await getUserFromServerCookies();
   const hasLineSession = userToken.ok;
 
@@ -44,7 +65,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
           伴走メイトが指定されていません。伴走メイト選択からやり直してください。
         </p>
         <a
-          href="/subscribe/cast"
+          href={castBackUrl}
           className="mt-4 inline-flex text-sm font-medium text-primary hover:text-primary-dark"
         >
           伴走メイト選択へ戻る
@@ -74,7 +95,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
           指定された伴走メイトが見つかりません。
         </p>
         <a
-          href="/subscribe/cast"
+          href={castBackUrl}
           className="mt-4 inline-flex text-sm font-medium text-primary hover:text-primary-dark"
         >
           伴走メイト選択へ戻る
@@ -92,7 +113,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
       typeof selectedPlan !== "string" ||
       typeof selectedCastId !== "string"
     ) {
-      return;
+      redirect(`/subscribe/plan?castId=${castId}&checkoutError=generic`);
     }
 
     const result = await createSubscriptionCheckoutForCurrentUser({
@@ -103,15 +124,23 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
     if (result.ok) {
       redirect(result.data.checkoutUrl);
     }
+
+    const errorCode = checkoutErrorCodeFromResult(result.error);
+    const qs = new URLSearchParams({
+      castId: selectedCastId,
+      checkoutError: errorCode,
+    });
+    if (params?.gender) qs.set("gender", params.gender);
+    if (params?.canceled) qs.set("canceled", params.canceled);
+    redirect(`/subscribe/plan?${qs.toString()}`);
   }
 
   return (
     <div className="min-h-screen bg-background-light">
       <main className="mx-auto flex max-w-[480px] flex-col border-x border-orange-50 bg-background-light pb-12 shadow-sm">
-        {/* Navigation */}
         <nav className="sticky top-0 z-50 flex items-center bg-background-light/90 p-4 pb-2 backdrop-blur-md">
           <a
-            href="/subscribe/cast"
+            href={castBackUrl}
             className="flex size-10 cursor-pointer items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10"
             aria-label="伴走メイト選択に戻る"
           >
@@ -124,7 +153,16 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
           </h2>
         </nav>
 
-        {/* 伴走メイト情報＋トライアル案内 */}
+        {checkoutErrorMessage && (
+          <div className="mx-4 mt-4 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-medium text-red-800">
+            <div className="mb-1 flex items-center gap-2 font-bold">
+              <span className="material-symbols-outlined text-[20px]">error</span>
+              手続きを完了できませんでした
+            </div>
+            <p className="text-xs leading-relaxed text-red-700">{checkoutErrorMessage}</p>
+          </div>
+        )}
+
         <div className="px-4 py-4">
           <div className="flex flex-col gap-3 rounded-2xl border border-primary/20 bg-primary/10 p-5">
             <div className="flex items-center gap-2 text-sm font-bold tracking-wide text-primary">
@@ -134,8 +172,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
               担当: {cast.displayName}
             </div>
             <p className="text-sm leading-relaxed text-[#2D241E]">
-              選んだプランで7日間の無料トライアルを開始します。
-              トライアル期間中はいつでも解約でき、料金は発生しません。
+              {getPlanPageTrialNotice(trialDays, cast.prices.standard)}
             </p>
           </div>
         </div>
@@ -152,11 +189,11 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
           </div>
         )}
 
-        {/* Plan List */}
         <div className="flex flex-col gap-4 px-4">
           {(["light", "standard", "premium"] as PlanCode[]).map((planCode) => {
             const hasPriceId = Boolean(cast.stripePriceIds?.[planCode]);
             const canCheckout = hasLineSession && hasPriceId;
+            const monthlyPrice = cast.prices[planCode];
 
             return (
               <div
@@ -170,7 +207,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                 <div className="flex items-start justify-between">
                   <div className="flex flex-col">
                     {planCode === "standard" && (
-                      <span className="mb-1 w-fit rounded bg-primary text-[10px] font-bold text-white px-2 py-0.5">
+                      <span className="mb-1 w-fit rounded bg-primary px-2 py-0.5 text-[10px] font-bold text-white">
                         おすすめ
                       </span>
                     )}
@@ -186,14 +223,18 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                   </div>
                   <div className="text-right">
                     <span className="text-xl font-black text-primary">
-                      {formatYen(cast.prices[planCode])}
+                      {formatYen(monthlyPrice)}
                     </span>
                     <span className="ml-0.5 text-[10px] text-[#6B5A51]">/月</span>
                   </div>
                 </div>
 
+                <p className="text-[11px] leading-relaxed text-[#6B5A51]">
+                  {getPlanPageTrialNotice(trialDays, monthlyPrice)}
+                </p>
+
                 {!hasPriceId && (
-                  <p className="text-center text-xs font-medium text-zinc-400 bg-zinc-50 py-2 rounded-lg">
+                  <p className="rounded-lg bg-zinc-50 py-2 text-center text-xs font-medium text-zinc-400">
                     このプランは現在準備中です
                   </p>
                 )}
@@ -210,7 +251,9 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                         : "cursor-not-allowed bg-zinc-100 text-zinc-400 shadow-none"
                     }`}
                   >
-                    {canCheckout ? "このプランで7日間無料トライアル" : "選択できません"}
+                    {canCheckout
+                      ? getPlanCheckoutButtonLabel(trialDays)
+                      : "選択できません"}
                   </button>
                 </form>
               </div>

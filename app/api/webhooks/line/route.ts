@@ -1,6 +1,5 @@
 import {
   pushTextMessage,
-  switchRichMenu,
   verifyLineSignature,
   parsePostbackData,
   toCheckinStatus,
@@ -12,9 +11,13 @@ import { checkRateLimit, requestKey } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { generateUserToken } from "@/lib/auth";
 import { getServerEnv } from "@/lib/env";
+import { getLineWelcomeTrialMessage, getTrialPeriodDays } from "@/lib/trial";
 import { notifyStaffOfInboundMessage } from "@/lib/push-notifications";
+import {
+  ensureIncompleteEndUser,
+  sendLineUncontractedOnboarding,
+} from "@/lib/line-onboarding";
 
-// LINE Webhook Event Types
 type LineFollowEvent = {
   type: "follow";
   timestamp: number;
@@ -53,13 +56,47 @@ function buildSubscribeUrl(lineUserId: string) {
 }
 
 function buildWelcomeMessage(lineUserId: string) {
-  return `Rutinへようこそ！
-
-以下のリンクからメイトを選んで、7日間の無料トライアルを始めましょう。
-${buildSubscribeUrl(lineUserId)}`;
+  return getLineWelcomeTrialMessage(getTrialPeriodDays(), buildSubscribeUrl(lineUserId));
 }
 
 const DEFAULT_PLAN_CODE = getServerEnv().TRIAL_PLAN_CODE;
+
+async function saveInboundMessage(
+  supabase: ReturnType<typeof createAdminSupabaseClient>,
+  endUserId: string,
+  messageId: string,
+  messageText: string,
+  userStatus: string
+): Promise<{ messageId: string | null; duplicate: boolean }> {
+  const { data: savedMsg, error: msgError } = await supabase
+    .from("messages")
+    .insert({
+      end_user_id: endUserId,
+      direction: "in",
+      body: messageText,
+      line_message_id: messageId,
+    })
+    .select("id")
+    .single();
+
+  if (msgError) {
+    if (msgError.code === "23505") {
+      return { messageId: null, duplicate: true };
+    }
+    throw new Error(`Failed to save message: ${msgError.message}`);
+  }
+
+  await writeAuditLog({
+    action: "LINE_MESSAGE_SAVED",
+    targetType: "messages",
+    targetId: savedMsg.id,
+    success: true,
+    metadata: { end_user_id: endUserId, status: userStatus },
+    actorStaffId: null,
+  });
+
+  return { messageId: savedMsg.id, duplicate: false };
+}
 
 export async function POST(request: Request) {
   const allowed = checkRateLimit({
@@ -74,7 +111,6 @@ export async function POST(request: Request) {
   const body = await request.text();
   const signature = request.headers.get("x-line-signature");
 
-  // 署名検証
   if (!verifyLineSignature(signature, body)) {
     return new Response("Invalid signature", { status: 401 });
   }
@@ -86,55 +122,28 @@ export async function POST(request: Request) {
     const lineUserId = event.source.userId;
     const eventId = event.webhookEventId;
 
-    // =====================================================
-    // フォローイベント（友達追加）
-    // =====================================================
     if (event.type === "follow") {
       const result = await withWebhookIdempotency("line", eventId, "follow", async () => {
-        // end_user作成（status=incomplete）
-        const { data: existingUser } = await supabase
-          .from("end_users")
-          .select("id")
-          .eq("line_user_id", lineUserId)
-          .single();
+        const { id: userId, isNew } = await ensureIncompleteEndUser(
+          supabase,
+          lineUserId,
+          DEFAULT_PLAN_CODE
+        );
 
-        if (!existingUser) {
-          const { data: newUser, error } = await supabase
-            .from("end_users")
-            .insert({
-              line_user_id: lineUserId,
-              nickname: `ユーザー_${lineUserId.slice(-6)}`,
-              status: "incomplete",
-              plan_code: DEFAULT_PLAN_CODE,
-            })
-            .select("id")
-            .single();
-
-          if (error) {
-            throw new Error(`Failed to create end_user: ${error.message}`);
-          }
-
-          // 監査ログ
+        if (isNew) {
           await writeAuditLog({
             action: "LINE_FOLLOW",
             targetType: "end_users",
-            targetId: newUser.id,
+            targetId: userId,
             success: true,
             metadata: { line_user_id: lineUserId },
-            actorStaffId: null, // システム操作
+            actorStaffId: null,
           });
         }
 
-        // 歓迎メッセージ送信（例外的に自動送信OK）
-        await pushTextMessage(lineUserId, buildWelcomeMessage(lineUserId));
+        await sendLineUncontractedOnboarding(lineUserId, buildWelcomeMessage(lineUserId));
 
-        // 未契約者用リッチメニュー設定
-        const richMenuId = process.env.RICH_MENU_ID_UNCONTRACTED;
-        if (richMenuId) {
-          await switchRichMenu(lineUserId, richMenuId);
-        }
-
-        return { success: true };
+        return { success: true, userId, isNew };
       });
 
       if (result.status === "error") {
@@ -142,98 +151,57 @@ export async function POST(request: Request) {
       }
     }
 
-    // =====================================================
-    // メッセージイベント（テキスト）
-    // =====================================================
     if (event.type === "message" && event.message.type === "text") {
       const messageId = event.message.id;
       const messageText = event.message.text;
 
       const result = await withWebhookIdempotency("line", eventId, "message", async () => {
-        // end_user取得
         const { data: user } = await supabase
           .from("end_users")
           .select("id, status")
           .eq("line_user_id", lineUserId)
-          .single();
+          .maybeSingle();
 
         if (!user) {
-          // ユーザーが存在しない場合は作成
-          const { data: newUser, error } = await supabase
-            .from("end_users")
-            .insert({
-              line_user_id: lineUserId,
-              nickname: `ユーザー_${lineUserId.slice(-6)}`,
-              status: "incomplete",
-              plan_code: DEFAULT_PLAN_CODE,
-            })
-            .select("id")
-            .single();
+          const { id: newUserId, isNew } = await ensureIncompleteEndUser(
+            supabase,
+            lineUserId,
+            DEFAULT_PLAN_CODE
+          );
 
-          if (error) {
-            throw new Error(`Failed to create end_user: ${error.message}`);
+          if (isNew) {
+            await sendLineUncontractedOnboarding(lineUserId, buildWelcomeMessage(lineUserId));
           }
 
-          // messages(in) insert
-          const { data: savedMsg, error: msgError } = await supabase
-            .from("messages")
-            .insert({
-              end_user_id: newUser.id,
-              direction: "in",
-              body: messageText,
-              line_message_id: messageId,
-            })
-            .select("id")
-            .single();
+          const saved = await saveInboundMessage(
+            supabase,
+            newUserId,
+            messageId,
+            messageText,
+            "incomplete"
+          );
 
-          if (msgError) {
-            throw new Error(`Failed to save message: ${msgError.message}`);
-          }
-
-          // 監査ログ
-          await writeAuditLog({
-            action: "LINE_MESSAGE_SAVED",
-            targetType: "messages",
-            targetId: messageId,
-            success: true,
-            metadata: { end_user_id: newUser.id, status: "incomplete" },
-            actorStaffId: null,
-          });
-
-          return { userId: newUser.id, messageId: savedMsg.id, isNew: true };
+          return {
+            userId: newUserId,
+            messageId: saved.messageId,
+            duplicate: saved.duplicate,
+            isNew: true,
+          };
         }
 
-        // messages(in) insert
-        const { data: savedMsg, error: msgError } = await supabase
-          .from("messages")
-          .insert({
-            end_user_id: user.id,
-            direction: "in",
-            body: messageText,
-            line_message_id: messageId,
-          })
-          .select("id")
-          .single();
+        const saved = await saveInboundMessage(
+          supabase,
+          user.id,
+          messageId,
+          messageText,
+          user.status
+        );
 
-        if (msgError) {
-          // 重複は無視（冪等）
-          if (msgError.code !== "23505") {
-            throw new Error(`Failed to save message: ${msgError.message}`);
-          }
-          return { userId: user.id, duplicate: true };
-        }
-
-        // 監査ログ
-        await writeAuditLog({
-          action: "LINE_MESSAGE_SAVED",
-          targetType: "messages",
-          targetId: savedMsg.id,
-          success: true,
-          metadata: { end_user_id: user.id, status: user.status },
-          actorStaffId: null,
-        });
-
-        return { userId: user.id, messageId: savedMsg.id };
+        return {
+          userId: user.id,
+          messageId: saved.messageId,
+          duplicate: saved.duplicate,
+        };
       });
 
       if (result.status === "error") {
@@ -254,9 +222,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // =====================================================
-    // ポストバックイベント（チェックイン）
-    // =====================================================
     if (event.type === "postback") {
       const postbackData = parsePostbackData(event.postback.data);
 
@@ -264,24 +229,28 @@ export async function POST(request: Request) {
         const result = await withWebhookIdempotency("line", eventId, "postback_checkin", async () => {
           const checkinStatus = toCheckinStatus(postbackData.status);
           if (!checkinStatus) {
-            throw new Error(`Invalid checkin status: ${postbackData.status}`);
+            logger.warn("LINE checkin: invalid status", {
+              status: postbackData.status,
+              lineUserId,
+            });
+            return { skipped: true, reason: "invalid checkin status" };
           }
 
-          // JSTで今日の日付（postbackにdateがなければ補完）
-          const date = postbackData.date || new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+          const date =
+            postbackData.date ||
+            new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
 
-          // end_user取得
           const { data: user } = await supabase
             .from("end_users")
             .select("id")
             .eq("line_user_id", lineUserId)
-            .single();
+            .maybeSingle();
 
           if (!user) {
-            throw new Error("User not found for checkin");
+            logger.warn("LINE checkin: user not found", { lineUserId });
+            return { skipped: true, reason: "user not found for checkin" };
           }
 
-          // checkins upsert（同日は上書き）
           const { data: checkin, error } = await supabase
             .from("checkins")
             .upsert(
@@ -290,9 +259,7 @@ export async function POST(request: Request) {
                 date,
                 status: checkinStatus,
               },
-              {
-                onConflict: "end_user_id,date",
-              }
+              { onConflict: "end_user_id,date" }
             )
             .select("id")
             .single();
@@ -301,7 +268,6 @@ export async function POST(request: Request) {
             throw new Error(`Failed to save checkin: ${error.message}`);
           }
 
-          // 監査ログ
           await writeAuditLog({
             action: "CHECKIN_RECORDED",
             targetType: "checkins",
@@ -314,8 +280,6 @@ export async function POST(request: Request) {
             },
             actorStaffId: null,
           });
-
-          // Bot感ゼロ: 自動返信なし
 
           return { checkinId: checkin.id };
         });

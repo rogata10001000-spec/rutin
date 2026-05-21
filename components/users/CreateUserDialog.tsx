@@ -74,6 +74,9 @@ export function CreateUserDialog({ open, onClose }: CreateUserDialogProps) {
     const result = await getCastOptions();
     if (result.ok) {
       setCasts(result.data.casts);
+    } else {
+      showToast(result.error.message, "error");
+      setCasts([]);
     }
     setLoadingCasts(false);
   };

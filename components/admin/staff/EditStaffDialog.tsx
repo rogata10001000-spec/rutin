@@ -92,8 +92,12 @@ export function EditStaffDialog({ open, staff, onClose, viewerRole }: EditStaffD
     if (!open || viewerRole !== "admin") return;
     let cancelled = false;
     void listSupervisorOptions().then((res) => {
-      if (!cancelled && res.ok) {
+      if (cancelled) return;
+      if (res.ok) {
         setSupervisorChoices(res.data.supervisors);
+      } else {
+        showToast(res.error.message, "error");
+        setSupervisorChoices([]);
       }
     });
     return () => {

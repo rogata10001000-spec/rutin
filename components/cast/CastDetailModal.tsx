@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { buildSubscribePlanUrl } from "@/lib/subscribe-paths";
 import Image from "next/image";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { Navigation, Pagination, Keyboard } from "swiper/modules";
@@ -28,6 +30,7 @@ type CastDetailModalProps = {
 };
 
 export function CastDetailModal({ cast, isOpen, onClose }: CastDetailModalProps) {
+  const searchParams = useSearchParams();
   const [swiperInstance, setSwiperInstance] = useState<SwiperType | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -213,7 +216,7 @@ export function CastDetailModal({ cast, isOpen, onClose }: CastDetailModalProps)
         {/* CTA固定フッター */}
         <div className="shrink-0 border-t border-warm-border/50 bg-white px-5 py-4">
           <a
-            href={`/subscribe/plan?castId=${cast.id}`}
+            href={buildSubscribePlanUrl(cast.id, searchParams)}
             className="flex h-12 w-full items-center justify-center rounded-full bg-primary text-base font-bold text-white shadow-lg shadow-primary/30 transition-transform active:scale-95"
           >
             この伴走メイトでプランを見る

@@ -68,6 +68,9 @@ export function AssignCastDialog({ open, user, onClose }: AssignCastDialogProps)
     const result = await getCastOptions();
     if (result.ok) {
       setCasts(result.data.casts);
+    } else {
+      showToast(result.error.message, "error");
+      setCasts([]);
     }
     setLoadingCasts(false);
   };

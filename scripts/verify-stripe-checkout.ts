@@ -98,7 +98,7 @@ async function main() {
       verification: "true",
     },
     success_url: `${appBaseUrl}/subscribe/complete?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appBaseUrl}/subscribe?canceled=true`,
+    cancel_url: `${appBaseUrl}/subscribe/cast?canceled=1`,
   });
 
   if (!session.url) throw new Error("Checkout session URL is null");

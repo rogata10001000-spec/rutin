@@ -12,20 +12,24 @@ test.describe("Cast Photos - Public View", () => {
   test("should show promotional banner", async ({ page }) => {
     await page.goto("/subscribe/cast");
 
-    const hasEmptyState = await page.getByText("現在、新規受付中のメイトがいません。").isVisible();
+    const hasEmptyState = await page
+      .getByText("現在、新規受付中の伴走メイトがいません。")
+      .isVisible();
     if (!hasEmptyState) {
-      await expect(page.getByText("7日間無料トライアル")).toBeVisible();
+      await expect(page.getByText(/日間無料でお試し/)).toBeVisible();
     }
   });
 
-  test("should show category filters", async ({ page }) => {
+  test("should show gender filters", async ({ page }) => {
     await page.goto("/subscribe/cast");
 
-    const hasEmptyState = await page.getByText("現在、新規受付中のメイトがいません。").isVisible();
+    const hasEmptyState = await page
+      .getByText("現在、新規受付中の伴走メイトがいません。")
+      .isVisible();
     if (!hasEmptyState) {
       await expect(page.getByText("すべて")).toBeVisible();
-      await expect(page.getByText("結婚相談")).toBeVisible();
-      await expect(page.getByText("片思い")).toBeVisible();
+      await expect(page.getByRole("link", { name: "女性" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "男性" })).toBeVisible();
     }
   });
 
