@@ -3,6 +3,10 @@ import "server-only";
 import webPush from "web-push";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import {
+  resolveInboundMessageNotifyStaffIds,
+  truncateMessageBody,
+} from "@/lib/push-notification-targets";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 
 type PushPayload = {
@@ -122,42 +126,77 @@ export async function sendPushToStaff(staffId: string, payload: PushPayload) {
   return { sent, failed, skipped: false };
 }
 
+export async function notifyStaffOfInboundMessage(params: {
+  endUserId: string;
+  messageId: string;
+  body: string;
+}) {
+  const supabase = createAdminSupabaseClient();
+
+  const [{ data: user, error: userError }, { data: managers, error: managersError }] =
+    await Promise.all([
+      supabase
+        .from("end_users")
+        .select("assigned_cast_id")
+        .eq("id", params.endUserId)
+        .single(),
+      supabase
+        .from("staff_profiles")
+        .select("id")
+        .in("role", ["admin", "supervisor"])
+        .eq("active", true),
+    ]);
+
+  if (userError) {
+    logger.warn("Failed to resolve assigned cast for push notification", {
+      endUserId: params.endUserId,
+      error: userError.message,
+    });
+  }
+
+  if (managersError) {
+    logger.warn("Failed to resolve manager staff for push notification", {
+      endUserId: params.endUserId,
+      error: managersError.message,
+    });
+  }
+
+  const staffIds = resolveInboundMessageNotifyStaffIds({
+    assignedCastId: userError ? null : (user?.assigned_cast_id ?? null),
+    managerStaffIds: managersError ? [] : (managers ?? []).map((manager) => manager.id),
+  });
+
+  if (staffIds.length === 0) {
+    return;
+  }
+
+  const payload: PushPayload = {
+    title: "新着メッセージ",
+    body: truncateMessageBody(params.body),
+    url: `/chat/${params.endUserId}`,
+    tag: `message-${params.endUserId}`,
+  };
+
+  const results = await Promise.all(staffIds.map((staffId) => sendPushToStaff(staffId, payload)));
+
+  logger.info("Inbound message push notifications attempted", {
+    endUserId: params.endUserId,
+    messageId: params.messageId,
+    staffIds,
+    sent: results.reduce((total, result) => total + result.sent, 0),
+    failed: results.reduce((total, result) => total + result.failed, 0),
+    skipped: results.some((result) => result.skipped),
+  });
+}
+
+/** @deprecated Use notifyStaffOfInboundMessage instead */
 export async function notifyAssignedCastOfInboundMessage(params: {
   endUserId: string;
   messageId: string;
 }) {
-  const supabase = createAdminSupabaseClient();
-  const { data: user, error } = await supabase
-    .from("end_users")
-    .select("assigned_cast_id")
-    .eq("id", params.endUserId)
-    .single();
-
-  if (error) {
-    logger.warn("Failed to resolve assigned cast for push notification", {
-      endUserId: params.endUserId,
-      error: error.message,
-    });
-    return;
-  }
-
-  if (!user?.assigned_cast_id) {
-    return;
-  }
-
-  const result = await sendPushToStaff(user.assigned_cast_id, {
-    title: "新着メッセージ",
-    body: "新着メッセージがあります",
-    url: `/chat/${params.endUserId}`,
-    tag: `message-${params.endUserId}`,
-  });
-
-  logger.info("Inbound message push notification attempted", {
+  await notifyStaffOfInboundMessage({
     endUserId: params.endUserId,
     messageId: params.messageId,
-    staffId: user.assigned_cast_id,
-    sent: result.sent,
-    failed: result.failed,
-    skipped: result.skipped,
+    body: "新着メッセージがあります",
   });
 }

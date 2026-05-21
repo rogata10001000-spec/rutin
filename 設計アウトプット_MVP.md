@@ -15,12 +15,15 @@
 | 区分 | 置き場所 | 役割 |
 | --- | --- | --- |
 | Layout | `app/(admin)/layout.tsx` | 認証ガード、ロール取得、`AppShell`/`SideNav`/`TopBar` |
-| AppShell | `components/layout/AppShell.tsx` | 2カラムレイアウト基盤 |
+| AppShell | `components/layout/AppShell.tsx` | 2カラムレイアウト基盤、SW 事前登録、グローバル通知コンポーネント |
 | SideNav | `components/layout/SideNav.tsx` | RBACでメニュー表示制御 |
 | TopBar | `components/layout/TopBar.tsx` | ロール/ユーザー表示、補助操作 |
 | Badge | `components/common/BadgePlan.tsx` `BadgeStatus.tsx` `BadgeTag.tsx` | plan/status/tag 表示 |
 | ConfirmDialog | `components/common/ConfirmDialog.tsx` | 代理返信・価格変更・精算確定の二重確認 |
 | Toast | `components/common/Toast.tsx` | 成功/失敗の通知 |
+| RealtimeNotification | `components/common/RealtimeNotification.tsx` | タブ非表示時のブラウザ通知（Supabase Realtime 連動） |
+| PushNotificationManager | `components/common/PushNotificationManager.tsx` | Web Push 有効化/解除（全スタッフ、Safari PWA 対応） |
+| InboxAutoRefresh | `components/inbox/InboxAutoRefresh.tsx` | Realtime トリガー + 30秒ポーリング + タブ復帰 refresh |
 | Error/Empty/Skeleton | `components/common/ErrorState.tsx` `EmptyState.tsx` `LoadingSkeleton.tsx` | エラー/空/ローディング |
 
 #### 共通補足
@@ -48,9 +51,9 @@
 | --- | --- |
 | 目的 | 未返信/危険/未報告を優先表示し、対応を開始する |
 | server/client | Server（一覧取得はサーバ）＋ Client（フィルタ/ソート状態） |
-| 使用コンポーネント | `InboxFilters` `InboxTable` `InboxRowActions` |
+| 使用コンポーネント | `InboxFilters` `InboxTable` `InboxAutoRefresh` |
 | 使用するServer Actions | `getInboxItems(filters)` |
-| UI操作フロー | フィルタ変更 → Server Action再取得 → テーブル更新 |
+| UI操作フロー | フィルタ変更 → Server Action再取得 → テーブル更新。ユーザー返信時 → Realtime で即時 refresh（30秒 polling はフォールバック） |
 | RBAC | Admin/Supervisorは全件、Castは担当のみ（RLS） |
 | エラー/空状態 | 失敗時`ErrorState`、空は`EmptyState` |
 
@@ -90,9 +93,9 @@
 | --- | --- |
 | 目的 | チャット履歴を見ながら返信・代理返信・AI下書き・Shadow下書きを行う |
 | server/client | Server（履歴/サイド情報）＋ Client（入力/ページング） |
-| 使用コンポーネント | `ChatHistory` `MessageComposer` `AiDraftList` `MemoEditor` `BirthdayWidget` |
-| 使用するServer Actions | `getChatThread` `getUserSideInfo` `sendMessage` `sendProxyMessage` `generateAiDrafts` `createShadowDraft` |
-| UI操作フロー | 送信→Server Action→履歴更新。ProxyはConfirmDialog必須 |
+| 使用コンポーネント | `ChatContainer` `ChatHistory` `MessageComposer` `ChatSidePanel` `TodayProgressBar` `NextUserButton` |
+| 使用するServer Actions | `getChatThread` `sendMessage` `sendProxyMessage` |
+| UI操作フロー | 送信→Server Action→楽観的更新。新着は Supabase Realtime で即時追記。ProxyはConfirmDialog必須 |
 | RBAC | Admin/Supervisor全件、Cast担当のみ。Shadowは下書きのみ |
 | エラー/空状態 | 送信失敗はToast、履歴なしはEmpty |
 
@@ -251,6 +254,9 @@
 | E2E-040 | チャット送信 | Cast担当U1 | 入力→送信 | outメッセージ追加 |
 | E2E-041 | 代理返信 | Supervisor | Proxy ON→Confirm→送信 | sent_as_proxy=true、監査ログ |
 | E2E-042 | 代理返信UI不可 | Cast | `/chat/U1` | Proxyトグル非表示 |
+| E2E-043 | チャットリアルタイム | Cast担当U1、チャット画面表示中 | 別端末からLINEメッセージ送信 | 画面リロードなしで in メッセージ表示 |
+| E2E-044 | Inboxリアルタイム | Inbox表示中 | 別端末からLINEメッセージ送信 | 未返信ステータスが即時更新 |
+| E2E-045 | Web Push | cast/admin、通知有効化済み | LINEメッセージ送信（ブラウザ閉鎖） | 通知表示、クリックで `/chat/[id]` 遷移 |
 | E2E-050 | AI返信案 | Cast担当U1 | ボタン押下 | 3案表示 |
 | E2E-051 | AI 1日3回制限 | 同上 | 4回目 | 4回目は拒否 |
 | E2E-060 | Shadow下書き作成 | Shadow中CastB | 下書き保存 | shadow_drafts追加 |
@@ -291,6 +297,8 @@
 | UT-017 | 未使用ポイント除外 | purchaseのみ | 集計 | payout_calcなし |
 | UT-018 | 価格解決 | overrideあり | 解決 | override採用 |
 | UT-019 | webhook冪等 | revenue_event unique | 同ref 2回 | 2回目拒否/skip |
+| UT-020 | Push通知対象 | cast兼admin | dedupe | 1回のみ通知 |
+| UT-021 | メッセージtruncate | 81文字 | truncate | 80文字+... |
 
 > 端数規則は**税/配分とも切り捨て**で固定する（要件上、後から変更すると精算整合が崩れるため）。
 
@@ -312,8 +320,11 @@
 - `actions/users.ts`
 - `actions/gifts.ts`
 - `actions/audit.ts`
-- `actions/subscriptions.ts`（新規: プラン購入フロー）
-- `lib/auth.ts`（新規: JWT認証ユーティリティ）
+- `actions/push-notifications.ts`
+- `lib/message-realtime.ts`（Supabase Realtime 単一購読）
+- `hooks/useMessageRealtime.ts`
+- `lib/push-notifications.ts`（サーバー側 Web Push 送信）
+- `lib/push-notification-targets.ts`（通知対象 dedupe・本文 truncate）
 
 ### 3.2 共通型
 
@@ -357,6 +368,9 @@ export type Result<T> =
 | `getInboxItems` | Admin/Supervisor/Cast | `{ filters?: {...} }` | `Result<{ items: InboxItem[] }>` | Zod/RLS | `GET_INBOX_ITEMS`（任意） |
 | `getChatThread` | Admin/Supervisor/Cast | `{ endUserId: string; cursor?: string }` | `Result<{ items: Message[]; nextCursor?: string }>` | RLS | `GET_CHAT_THREAD`（任意） |
 | `searchAuditLogs` | Admin/Supervisor | `{ filters?: {...} }` | `Result<{ items: AuditLog[] }>` | 権限 | `SEARCH_AUDIT_LOGS`（任意） |
+| `getPushNotificationConfig` | 全スタッフ | なし | `Result<{ publicKey: string \| null; enabled: boolean }>` | 未ログイン | なし |
+| `registerPushSubscription` | 全スタッフ | `{ endpoint, p256dh, auth, userAgent?, platform? }` | `Result<{ subscriptionId: string }>` | Zod/未ログイン | なし |
+| `unregisterPushSubscription` | 全スタッフ | `{ endpoint: string }` | `Result<{ ok: true }>` | 未ログイン | なし |
 | `generateUserToken` | System | `{ lineUserId: string }` | `Result<{ token: string }>` | JWT生成失敗 | なし |
 | `verifyUserToken` | System | `{ token: string }` | `Result<{ lineUserId: string }>` | トークン無効/期限切れ | なし |
 | `listAvailableCasts` | UserWeb | `{ planCode?: string }` | `Result<{ casts: AvailableCast[] }>` | DB取得失敗 | なし |
@@ -387,6 +401,7 @@ export type Result<T> =
 | `payoutRuleSchema` | 配分率 | `schemas/payout.ts` |
 | `pointCheckoutSchema` | ポイント購入 | `schemas/gifts.ts` |
 | `sendGiftSchema` | ギフト送信 | `schemas/gifts.ts` |
+| `pushSubscriptionSchema` | Web Push 購読登録 | `schemas/push-notifications.ts` |
 | `settlementPeriodSchema` | 精算期間 | `schemas/settlements.ts` |
 
 ### 4.2 主要スキーマ（コピペ用）
@@ -701,10 +716,11 @@ export const settlementItemColumns: ColumnDef<SettlementItemRow>[] = [
 | ページ | serverで持つデータ | clientで持つUI状態 | 重要操作の安全策 |
 | --- | --- | --- | --- |
 | `/login` | なし | 入力値、送信中 | なし |
-| `/inbox` | InboxItems（優先度計算済み） | フィルタ、ソート、ページング | なし |
+| `/inbox` | InboxItems（優先度計算済み） | フィルタ、ソート、ページング | Realtime refresh（`InboxAutoRefresh`） |
 | `/users` | 検索結果 | 検索文字列、フィルタ | なし |
 | `/users/[id]` | ユーザー詳細一式 | メモ入力、担当変更ダイアログ | 担当変更はConfirmDialog＋監査 |
-| `/chat/[id]` | 履歴/サイド情報 | 返信入力、AI案展開、ページング | 代理返信/ShadowはConfirmDialog＋Server Action |
+| `/chat/[id]` | 履歴/サイド情報（SSR初回） | 返信入力、メッセージ state（Realtime追記） | 代理返信/ShadowはConfirmDialog＋Server Action |
+| AppShell（全画面） | なし | Push通知ウィジェット状態 | SW事前登録、RealtimeNotification |
 | `/admin/staff` | スタッフ一覧 | 編集ダイアログ | 監査ログ |
 | `/admin/pricing` | 価格一覧 | 編集フォーム、選択キャスト | 変更はConfirmDialog＋監査 |
 | `/admin/gifts` | 商品/ギフト一覧 | 編集フォーム | 監査ログ |
@@ -732,6 +748,15 @@ export const settlementItemColumns: ColumnDef<SettlementItemRow>[] = [
 ---
 
 ## 追加マイグレーション（MVP要件詰め反映）
+
+### Realtime publication（messages）
+
+```sql
+-- 20260521100000_enable_messages_realtime.sql
+alter publication supabase_realtime add table public.messages;
+```
+
+---
 
 ### style_summary追加
 ```sql

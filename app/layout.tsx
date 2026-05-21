@@ -14,8 +14,12 @@ export const metadata: Metadata = {
   description: "継続できない人のための、人による伴走型・習慣化サポートサービス",
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: "/icon.svg",
-    apple: "/icon.svg",
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
   },
   appleWebApp: {
     capable: true,
@@ -33,6 +37,7 @@ export default function RootLayout({
     <html lang="ja">
       <head>
         <meta name="theme-color" content="#c76f55" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"

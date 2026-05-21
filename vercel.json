@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/jobs/sla-alert",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/jobs/daily-summary",
+      "schedule": "0 13 * * *"
+    }
+  ]
+}

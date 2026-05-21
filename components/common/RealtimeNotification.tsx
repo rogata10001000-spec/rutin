@@ -1,54 +1,29 @@
 "use client";
 
-import { useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { truncateMessageBody } from "@/lib/push-notification-targets";
+import { useMessageRealtime } from "@/hooks/useMessageRealtime";
 
-type RealtimeNotificationProps = {
-  staffId: string;
-};
+export function RealtimeNotification() {
+  useMessageRealtime(
+    (message) => {
+      if (message.direction !== "in") {
+        return;
+      }
 
-export function RealtimeNotification({ staffId }: RealtimeNotificationProps) {
-  useEffect(() => {
-    const supabase = createClient();
-
-    const channel = supabase
-      .channel("new-messages")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: "direction=eq.in",
-        },
-        (payload) => {
-          const msg = payload.new as {
-            end_user_id: string;
-            body: string;
-            direction: string;
-          };
-
-          if (msg.direction !== "in") return;
-
-          if (
-            "Notification" in window &&
-            Notification.permission === "granted" &&
-            document.visibilityState === "hidden"
-          ) {
-            new Notification("新着メッセージ", {
-              body: msg.body.length > 80 ? msg.body.slice(0, 80) + "..." : msg.body,
-              icon: "/icon.svg",
-              tag: `msg-${msg.end_user_id}`,
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [staffId]);
+      if (
+        "Notification" in window &&
+        Notification.permission === "granted" &&
+        document.visibilityState === "hidden"
+      ) {
+        new Notification("新着メッセージ", {
+          body: truncateMessageBody(message.body),
+          icon: "/icon-192.png",
+          tag: `msg-${message.end_user_id}`,
+        });
+      }
+    },
+    (message) => message.direction === "in"
+  );
 
   return null;
 }

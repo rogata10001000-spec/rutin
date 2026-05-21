@@ -1,0 +1,42 @@
+-- Rutin production bootstrap helpers
+-- Run in Supabase SQL Editor (production). Replace placeholders before executing.
+
+-- ---------------------------------------------------------------------------
+-- 1. First admin staff_profiles row (after creating Auth user)
+-- ---------------------------------------------------------------------------
+-- insert into public.staff_profiles (id, role, display_name, active, accepting_new_users)
+-- values (
+--   '<AUTH_USER_UUID>'::uuid,
+--   'admin',
+--   'Admin Name',
+--   true,
+--   true
+-- );
+
+-- ---------------------------------------------------------------------------
+-- 2. Example cast staff (after creating Auth user)
+-- ---------------------------------------------------------------------------
+-- insert into public.staff_profiles (
+--   id, role, display_name, active, capacity_limit, accepting_new_users, supervisor_id
+-- )
+-- values (
+--   '<CAST_AUTH_UUID>'::uuid,
+--   'cast',
+--   'Cast Display Name',
+--   true,
+--   10,
+--   true,
+--   null  -- or '<SUPERVISOR_UUID>'::uuid
+-- );
+
+-- ---------------------------------------------------------------------------
+-- 3. Verify tax rate (initial migration should have seeded one)
+-- ---------------------------------------------------------------------------
+-- select id, name, rate, active from public.tax_rates where active = true;
+
+-- ---------------------------------------------------------------------------
+-- 4. Verify Realtime publication includes messages
+-- ---------------------------------------------------------------------------
+-- select schemaname, tablename
+-- from pg_publication_tables
+-- where pubname = 'supabase_realtime' and tablename = 'messages';

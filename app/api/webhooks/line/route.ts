@@ -12,7 +12,7 @@ import { checkRateLimit, requestKey } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { generateUserToken } from "@/lib/auth";
 import { getServerEnv } from "@/lib/env";
-import { notifyAssignedCastOfInboundMessage } from "@/lib/push-notifications";
+import { notifyStaffOfInboundMessage } from "@/lib/push-notifications";
 
 // LINE Webhook Event Types
 type LineFollowEvent = {
@@ -245,9 +245,10 @@ export async function POST(request: Request) {
         const messageIdForPush = "messageId" in result.data ? result.data.messageId : null;
 
         if (!isDuplicate && messageIdForPush) {
-          await notifyAssignedCastOfInboundMessage({
+          await notifyStaffOfInboundMessage({
             endUserId: result.data.userId,
             messageId: messageIdForPush,
+            body: messageText,
           });
         }
       }

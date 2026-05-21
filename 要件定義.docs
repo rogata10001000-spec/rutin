@@ -7,7 +7,7 @@
 ## 0. 文書メタ情報
 
 * 文書名：Rutin 要件定義書（完全版）
-* バージョン：v1.0
+* バージョン：v1.1（リアルタイム表示・Web Push通知を反映）
 * 対象リリース：MVP（初期リリース）＋将来拡張の設計余地を含む
 * 前提スタック（変更不可）
 
@@ -82,6 +82,14 @@
 * メモ（カテゴリ、ピン、編集履歴）
 * 監査ログ閲覧（Admin/Supervisor）
 * キャスト担当割当（履歴保持）＋Shadow（下書きのみ、送信不可）
+* **リアルタイム更新**（Supabase Realtime：`messages` INSERT を購読）
+  * 受信トレイ：ユーザー返信検知時に即時 refresh（30秒ポーリングはフォールバック）
+  * チャット画面：開いたまま新着メッセージを即時表示
+* **スタッフ向け通知**
+  * タブ非表示時：ブラウザ Notification API（`RealtimeNotification`）
+  * ブラウザ閉鎖時：Web Push（Service Worker + VAPID、Safari / Chrome 対応）
+  * 送信対象：担当キャスト ＋ admin / supervisor 全員
+  * iOS Safari：ホーム画面に追加した PWA からのみ Web Push 有効
 
 ### 課金（Stripe）
 
@@ -178,6 +186,8 @@
 | ギフト配分率設定    |     ○ |          × |                  × |
 | 精算バッチ作成/確定  |     ○ |          × |                  × |
 | 監査ログ閲覧      |     ○ |          ○ |              ×（原則） |
+| Web Push通知の有効化 |     ○ |          ○ |                  ○ |
+| リアルタイム受信（Inbox/Chat） | ○ | ○ | ○（RLSで担当分のみ） |
 
 ---
 
@@ -481,6 +491,13 @@ const lineUserId = decoded.line_user_id;
 * pausedは優先度を下げる（ペナルティ）
 * プラン、契約状態、担当キャスト、タグでフィルタ
 
+### リアルタイム更新
+
+* Supabase Realtime で `messages` テーブルの INSERT（`direction=in`）を購読
+* 新着ユーザー返信検知時に `router.refresh()` で一覧を即時更新
+* 30秒間隔のポーリングをフォールバックとして併用（Realtime 切断時の保険）
+* RLS により cast は担当ユーザーのイベントのみ受信
+
 ## 8.3 ユーザー一覧
 
 * 検索（ニックネーム、タグ）
@@ -511,6 +528,13 @@ const lineUserId = decoded.line_user_id;
   * Shadow下書き（Shadow対象のCastのみ、送信不可）
   * ギフトイベント表示（🎁）
 
+### リアルタイム更新
+
+* 表示中スレッドの `messages` INSERT を Supabase Realtime で購読
+* ユーザー返信（`direction=in`）および他スタッフの送信（`direction=out`）を即時反映
+* 自分の送信は楽観的更新＋Realtime 重複防止（`sent_by_staff_id` による除外）
+* 初回表示は SSR（`getChatThread`）、以降はクライアント state で追記
+
 ## 8.6 メモ機能
 
 * カテゴリ別（プロフィール / NG / 刺さる言葉 等）
@@ -530,7 +554,7 @@ const lineUserId = decoded.line_user_id;
 
 * 代理返信モードで送信
 * 監査ログ記録
-* 本来担当キャストへ通知（管理画面内通知でOK、外部通知は将来）
+* 本来担当キャストへ Web Push / 管理画面内通知（リアルタイム UI 更新）
 * 代理返信であることはユーザーに表示しない（Bot感ゼロ＆運用上も内部のみ）
 
 ### 具体的なユースケース
@@ -563,7 +587,10 @@ const lineUserId = decoded.line_user_id;
 ### 通知方法
 
 ```
-管理画面内通知:
+Web Push / 管理画面リアルタイム更新:
+「新着メッセージ」— 本文プレビュー付き。クリックで /chat/[id] へ遷移。
+
+代理返信時（将来拡張）:
 「[代理返信] Supervisor田中さんが、あなたの担当ユーザー山田さんへ返信しました。
  理由: 緊急対応（危険検知）
  内容を確認してください。」
@@ -580,6 +607,81 @@ const lineUserId = decoded.line_user_id;
 * 担当が単に忙しい（SLA内なら待つ）
 * 個人的な好みで内容を変えたい
 * 担当に相談せず勝手に介入
+
+## 8.9 リアルタイム表示・スタッフ通知（Web Push / ブラウザ通知）
+
+### 8.9.1 リアルタイム UI 更新
+
+**方式:** Supabase Realtime（`postgres_changes`、単一チャンネル共有）
+
+| 画面 | トリガー | 挙動 |
+| --- | --- | --- |
+| 受信トレイ | `messages` INSERT（`direction=in`） | `router.refresh()` で SSR 再取得 |
+| チャット | `messages` INSERT（同一 `end_user_id`） | メッセージ state へ追記（ID 重複チェック） |
+| 全画面（AppShell） | 同上 | タブ非表示時にブラウザ通知（任意） |
+
+**Supabase 側設定（必須）:**
+```sql
+alter publication supabase_realtime add table public.messages;
+```
+
+**RLS との関係:**
+* Realtime イベントは `messages_select` ポリシーに従いフィルタされる
+* cast：担当ユーザー（＋ shadow）の INSERT のみ
+* admin / supervisor：全件
+
+**フォールバック:**
+* 受信トレイは 30 秒ポーリングを併用
+* タブ復帰時（`visibilitychange`）に即時 refresh
+
+### 8.9.2 Web Push 通知（ブラウザ閉鎖時）
+
+**対象スタッフ:**
+* 担当キャスト（`end_users.assigned_cast_id`）
+* admin / supervisor 全員（同一 staff の重複送信は排除）
+
+**トリガー:** LINE webhook で `messages(in)` 保存成功時（重複イベント除く）
+
+**ペイロード:**
+* title: 「新着メッセージ」
+* body: メッセージ本文プレビュー（80 文字 truncate）
+* url: `/chat/{endUserId}`
+* tag: `message-{endUserId}`（同一ユーザー通知の置換）
+
+**技術構成:**
+* VAPID 鍵（`WEB_PUSH_VAPID_*`）
+* Service Worker（`public/sw.js`）
+* 購読情報テーブル `staff_push_subscriptions`
+* Server Actions: `registerPushSubscription` / `unregisterPushSubscription`
+
+**UI（全スタッフ共通）:**
+* `PushNotificationManager`：右下固定ウィジェットで有効化/解除
+* ログアウト時に当該端末の購読を解除
+
+### 8.9.3 Safari / iOS 対応
+
+| 環境 | Web Push | 備考 |
+| --- | --- | --- |
+| macOS Safari 16+ | ○ | ブラウザ通知許可が必要 |
+| iOS Safari（ブラウザ） | × | PushManager 非対応 |
+| iOS Safari（PWA：ホーム画面追加） | ○（16.4+） | ホーム画面追加後に有効化 |
+| Chrome / Edge / Firefox | ○ | 標準的な Web Push |
+
+**PWA 要件:**
+* `manifest.webmanifest`（standalone、PNG アイコン 192/512）
+* `apple-touch-icon.png`（180×180）
+* AppShell マウント時に Service Worker を事前登録
+
+**iOS 非 PWA 時の UI:**
+* 通知ボタン disabled
+* 「共有 → ホーム画面に追加」案内を表示
+
+### 8.9.4 ブラウザ通知（タブ非表示時）
+
+* `RealtimeNotification` コンポーネント（AppShell グローバル）
+* `Notification.permission === "granted"` かつ `document.visibilityState === "hidden"` のとき表示
+* Web Push 未設定でも、管理画面を開いた状態でタブ切替時に通知可能
+* ブラウザ完全閉鎖時は Web Push のみ届く
 
 ---
 
@@ -686,10 +788,15 @@ const context = {
 
 ## 11.1 裏側アラート
 
-* 未返信アラート（SLA超過見込み/超過）
+* 未返信アラート（SLA超過見込み/超過）— cron: `/api/jobs/sla-alert`（5分間隔想定）
+* 日次サマリー（未対応集計）— cron: `/api/jobs/daily-summary`（22:00 JST 想定）
 * 未報告検知（2日以上チェックインなし等）
 * 危険ワード検知（リスクフラグ）
 * テンプレ提示（管理画面に候補を出すだけ）
+* **新着メッセージ Web Push**（担当 cast ＋ admin/supervisor、LINE webhook 連動）
+* **管理画面リアルタイム更新**（Supabase Realtime、セクション 8.9 参照）
+
+> cron ジョブは `Authorization: Bearer {CRON_SECRET}` で認証。Slack/LINE 外部通知は将来拡張。
 
 ## 11.2 危険検知（将来拡張・MVP除外）
 
@@ -866,11 +973,14 @@ const context = {
 * webhook再送・重複受信耐性（冪等）
 * 送信失敗時の再送手段（管理画面で手動再送）
 * バッチ（SLA集計、未返信検知）はRoute Handlers＋cron前提
+* Web Push 送信失敗時は期限切れ購読（404/410）を自動無効化
 
 ## 14.4 パフォーマンス
 
 * Inboxは重くなりやすいので、必要に応じて「集計ビュー」または「計算済みテーブル」を採用
 * messagesは (end_user_id, created_at desc) index必須
+* Realtime は `messages` テーブルへの単一 Supabase チャンネル購読（コンポーネント間で共有）
+* Realtime 切断時は Inbox の 30 秒ポーリングがフォールバック
 
 ## 14.5 ロギング/監視
 
@@ -896,6 +1006,16 @@ const context = {
 * 未返信時間が正しく表示される
 * pausedユーザーが優先度低下する
 * 危険フラグがInbox最上位に出る（Admin/Supervisor）
+* ユーザー返信時に Inbox がリアルタイム更新される（Realtime または 30 秒以内）
+
+## 15.3a リアルタイム表示・通知
+
+* チャット画面を開いたまま LINE 返信が即時表示される
+* 自分の送信でメッセージが重複表示されない
+* cast は担当外ユーザーの Realtime イベントを受信しない（RLS）
+* Web Push：担当 cast ＋ admin/supervisor に新着通知が届く
+* iOS Safari PWA で Web Push 有効化・受信ができる
+* ログアウト時に Push 購読が解除される
 
 ## 15.4 AI返信案
 
@@ -1082,6 +1202,33 @@ index：
 
 * `(end_user_id, created_at desc)`
 * `(sent_by_staff_id, created_at desc)`
+
+**Realtime（Supabase）:**
+
+* `supabase_realtime` publication に `messages` を追加（マイグレーション必須）
+* クライアントは INSERT イベントのみ購読（UPDATE/DELETE は禁止のため不要）
+
+---
+
+### 16.1.7a スタッフ Web Push 購読
+
+#### `staff_push_subscriptions`
+
+* `id uuid pk`
+* `staff_id uuid fk -> staff_profiles(id) on delete cascade`
+* `endpoint text unique not null`（PushSubscription endpoint）
+* `p256dh text not null`
+* `auth text not null`
+* `user_agent text null`
+* `platform text null`
+* `enabled bool default true`
+* `last_seen_at timestamptz default now()`
+* `created_at timestamptz default now()`
+* `updated_at timestamptz default now()`
+
+index：
+
+* `(staff_id, enabled)`
 
 ---
 
@@ -1500,6 +1647,13 @@ index：
 * update/delete：禁止（改ざん防止）
 * Shadow cast：insert不可（送信禁止）。shadow_draftsに限定。
 
+#### staff_push_subscriptions
+
+* select：本人 ＋ Admin/Supervisor
+* insert：本人のみ（`staff_id = auth.uid()`）
+* update：本人 ＋ Admin
+* delete：本人のみ
+
 #### checkins
 
 * Admin/Supervisor：全select
@@ -1599,7 +1753,30 @@ index：
     * messages(out) insert（sent_as_proxy=true, proxy_for_cast_id=担当）
     * LINE送信
     * audit：PROXY_SEND
-    * 担当キャストへ管理画面通知（内部のみ）
+    * 担当キャストへ Web Push / リアルタイム UI 通知
+
+### 16.4.1a スタッフ通知（Web Push）
+
+* `getPushNotificationConfig()`
+
+  * 権限：ログイン済み全スタッフ
+  * 戻り値：VAPID 公開鍵、設定有無
+
+* `registerPushSubscription({ endpoint, p256dh, auth, userAgent?, platform? })`
+
+  * 権限：ログイン済み全スタッフ
+  * 処理：`staff_push_subscriptions` upsert（endpoint 単位）
+
+* `unregisterPushSubscription({ endpoint })`
+
+  * 権限：ログイン済み全スタッフ（本人の購読のみ）
+  * 処理：`enabled=false` に更新
+
+* `notifyStaffOfInboundMessage({ endUserId, messageId, body })`（サーバー内部、LINE webhook から呼び出し）
+
+  * 対象：担当 cast ＋ admin/supervisor 全員（重複排除）
+  * 処理：各 staff の有効購読へ Web Push 送信
+  * 失敗時：404/410 購読を自動無効化
 
 ### 16.4.2 担当・Shadow
 
@@ -1732,6 +1909,7 @@ index：
 
       * end_user作成/更新（line_user_id）
       * messages(in) insert（line_message_id unique）
+      * **Web Push 通知**（`notifyStaffOfInboundMessage`：担当 cast ＋ admin/supervisor）
       * 危険検知（MVPでは未実装、将来拡張）
     * postback（checkin）
 
@@ -1770,7 +1948,17 @@ index：
 
 ### 16.5.3 cron/バッチ
 
-* `GET /api/jobs/inbox-metrics`
+* `GET /api/jobs/sla-alert`
+
+  * SLA 警告圏内・超過ユーザーを検出し監査ログ記録
+  * 5 分間隔実行想定、`CRON_SECRET` 認証
+
+* `GET /api/jobs/daily-summary`
+
+  * 日次未対応・SLA 超過集計を監査ログ記録
+  * 22:00 JST 実行想定、`CRON_SECRET` 認証
+
+* `GET /api/jobs/inbox-metrics`（将来）
 
   * 未返信時間、SLA残、未報告、pausedペナルティなどを算出（ビュー or キャッシュ）
 * `GET /api/jobs/risk-scan`（将来）
@@ -1807,6 +1995,18 @@ index：
 * Mutation：Server Actions（必須）
 * 管理系バッチ/webhook：Route Handlers
 * テーブル：TanStack Table（Inbox、ユーザー一覧、監査ログなど）
+* **リアルタイム更新**：Supabase Realtime（`lib/message-realtime.ts` 単一購読、`hooks/useMessageRealtime.ts`）
+* **グローバル通知 UI**：`AppShell` に `RealtimeNotification` / `PushNotificationManager` を常時マウント
+
+### 17.3 リアルタイム・通知コンポーネント
+
+| コンポーネント | 置き場所 | 役割 |
+| --- | --- | --- |
+| `InboxAutoRefresh` | `/inbox` | Realtime トリガー ＋ 30 秒ポーリング ＋ タブ復帰 refresh |
+| `ChatContainer` | `/chat/[id]` | Realtime でメッセージ追記 |
+| `RealtimeNotification` | `AppShell` | タブ非表示時のブラウザ通知 |
+| `PushNotificationManager` | `AppShell` | Web Push 有効化/解除（全スタッフ） |
+| `public/sw.js` | static | push / notificationclick ハンドラ |
 
 ---
 
@@ -1990,6 +2190,15 @@ index：
 ## その他
 
 * `DEFAULT_TAX_RATE_ID`（税率の有効ID）
+* `CRON_SECRET`（cron ジョブ認証、16 文字以上）
+
+## Web Push 通知
+
+* `WEB_PUSH_VAPID_PUBLIC_KEY`（VAPID 公開鍵）
+* `WEB_PUSH_VAPID_PRIVATE_KEY`（VAPID 秘密鍵、サーバ専用）
+* `WEB_PUSH_CONTACT`（VAPID contact、例：`mailto:admin@example.com`。未設定時は `APP_BASE_URL`）
+
+> 生成例：`npx web-push generate-vapid-keys`
 
 ---
 
@@ -2034,6 +2243,9 @@ index：
 * [x] 未使用ポイントは配分対象外（運営100%）
 * [x] 配分は税抜ベース
 * [x] webhook冪等、監査ログ必須、RLS必須
+* [x] 管理画面リアルタイム更新（Supabase Realtime + Inbox フォールバック polling）
+* [x] スタッフ Web Push 通知（担当 cast ＋ admin/supervisor、Safari PWA 対応）
+* [x] `staff_push_subscriptions` テーブル + VAPID 設定
 
 ---
 

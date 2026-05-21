@@ -23,7 +23,39 @@ function urlBase64ToUint8Array(base64String: string) {
 }
 
 function isPushSupported() {
-  return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  return "serviceWorker" in navigator && "Notification" in window;
+}
+
+function canSubscribeToPush() {
+  return isPushSupported() && "PushManager" in window;
+}
+
+function getDeviceContext() {
+  if (typeof window === "undefined") {
+    return {
+      isIOS: false,
+      isMacSafari: false,
+      isStandalone: false,
+      requiresHomeScreenInstall: false,
+    };
+  }
+
+  const userAgent = window.navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+  const isMacSafari =
+    /Macintosh/.test(userAgent) &&
+    /Safari/.test(userAgent) &&
+    !/Chrome|CriOS|Edg|OPR|Firefox/.test(userAgent);
+  const isStandalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+
+  return {
+    isIOS,
+    isMacSafari,
+    isStandalone,
+    requiresHomeScreenInstall: isIOS && !isStandalone,
+  };
 }
 
 export function PushNotificationManager() {
@@ -32,25 +64,35 @@ export function PushNotificationManager() {
   const [message, setMessage] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState(false);
 
-  const deviceHint = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    const isIOS = /iPad|iPhone|iPod/.test(window.navigator.userAgent);
-    const isStandalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+  const deviceContext = useMemo(() => getDeviceContext(), []);
 
-    if (isIOS && !isStandalone) {
-      return "iPhoneではホーム画面に追加した後に通知を許可してください。";
+  const deviceHint = useMemo(() => {
+    if (deviceContext.requiresHomeScreenInstall) {
+      return "iPhone/iPadでは共有ボタンから「ホーム画面に追加」した後、このアプリから通知を有効にしてください。";
+    }
+
+    if (deviceContext.isMacSafari) {
+      return "Safariでは「Safari → 設定 → Webサイト → 通知」で rutin の通知を許可してください。";
     }
 
     return null;
-  }, []);
+  }, [deviceContext.isMacSafari, deviceContext.requiresHomeScreenInstall]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function initialize() {
       if (!isPushSupported()) {
+        setStatus("unsupported");
+        return;
+      }
+
+      if (deviceContext.requiresHomeScreenInstall) {
+        setStatus("disabled");
+        return;
+      }
+
+      if (!canSubscribeToPush()) {
         setStatus("unsupported");
         return;
       }
@@ -86,10 +128,10 @@ export function PushNotificationManager() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [deviceContext.requiresHomeScreenInstall]);
 
   const handleEnable = async () => {
-    if (!publicKey || !isPushSupported()) return;
+    if (!publicKey || !canSubscribeToPush() || deviceContext.requiresHomeScreenInstall) return;
 
     setIsWorking(true);
     setMessage(null);
@@ -146,7 +188,7 @@ export function PushNotificationManager() {
   };
 
   const handleDisable = async () => {
-    if (!isPushSupported()) return;
+    if (!canSubscribeToPush()) return;
 
     setIsWorking(true);
     setMessage(null);
@@ -172,7 +214,13 @@ export function PushNotificationManager() {
     }
   };
 
-  if (status === "loading" || status === "unsupported") {
+  const enableDisabled =
+    isWorking ||
+    status === "denied" ||
+    status === "not-configured" ||
+    deviceContext.requiresHomeScreenInstall;
+
+  if (status === "loading" || (status === "unsupported" && !deviceContext.requiresHomeScreenInstall)) {
     return null;
   }
 
@@ -183,7 +231,7 @@ export function PushNotificationManager() {
           notifications
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-stone-800">スマホ通知</p>
+          <p className="text-sm font-bold text-stone-800">Web通知（Safari / Chrome 対応）</p>
           <p className="mt-1 text-xs leading-5 text-stone-600">
             状態:{" "}
             {status === "enabled"
@@ -210,7 +258,7 @@ export function PushNotificationManager() {
               <button
                 type="button"
                 onClick={handleEnable}
-                disabled={isWorking || status === "denied" || status === "not-configured"}
+                disabled={enableDisabled}
                 className="rounded-lg bg-terracotta px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-terracotta/90 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isWorking ? "有効化中..." : "通知を有効にする"}

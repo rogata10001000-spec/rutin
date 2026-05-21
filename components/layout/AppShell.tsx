@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SideNav } from "./SideNav";
 import { TopBar } from "./TopBar";
 import { CommandPalette } from "@/components/common/CommandPalette";
@@ -18,6 +18,14 @@ type AppShellProps = {
 
 export function AppShell({ staffId, staffName, staffRole, children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {
+        // SW registration may fail outside secure contexts; push UI handles errors.
+      });
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-stone-50 pattern-grid-lg">
@@ -54,8 +62,8 @@ export function AppShell({ staffId, staffName, staffRole, children }: AppShellPr
       {/* グローバルキーボードショートカット */}
       <CommandPalette role={staffRole} />
       <ShortcutHelp />
-      <RealtimeNotification staffId={staffId} />
-      {staffRole === "cast" && <PushNotificationManager />}
+      <RealtimeNotification />
+      <PushNotificationManager />
     </div>
   );
 }

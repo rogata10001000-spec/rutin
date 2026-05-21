@@ -63,7 +63,7 @@ export default async function InboxPage({
             受信トレイ
           </h1>
           <p className="mt-1 text-sm text-stone-500">
-            全ユーザーを優先度順で表示しています（30秒ごとに自動更新）
+            全ユーザーを優先度順で表示しています（リアルタイム更新、30秒ごとのバックアップあり）
           </p>
         </div>
       </div>

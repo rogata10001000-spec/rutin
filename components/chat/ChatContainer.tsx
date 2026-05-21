@@ -11,6 +11,7 @@ import { TodayProgressBar } from "./TodayProgressBar";
 import { NextUserButton } from "./NextUserButton";
 import { useToast } from "@/components/common/Toast";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { useMessageRealtime } from "@/hooks/useMessageRealtime";
 
 type ChatContainerProps = {
   endUserId: string;
@@ -40,6 +41,33 @@ export function ChatContainer({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useMessageRealtime(
+    (message) => {
+      if (message.direction === "out" && message.sent_by_staff_id === staffId) {
+        return;
+      }
+
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === message.id)) {
+          return prev;
+        }
+
+        return [
+          ...prev,
+          {
+            id: message.id,
+            direction: message.direction,
+            body: message.body,
+            sentByStaffName: null,
+            sentAsProxy: message.sent_as_proxy,
+            createdAt: message.created_at,
+          },
+        ];
+      });
+    },
+    (message) => message.end_user_id === endUserId
+  );
 
   const handleSend = async (body: string) => {
     if (proxyMode && canProxy) {
@@ -72,12 +100,17 @@ export function ChatContainer({
         : await sendMessage({ endUserId, body });
 
       if (result.ok) {
-        // 成功: 楽観的メッセージを実際のIDで置き換え
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === optimisticId ? { ...m, id: result.data.messageId } : m
-          )
-        );
+        // 成功: 楽観的メッセージを実際のIDで置き換え（Realtime分と重複しないようdedupe）
+        setMessages((prev) => {
+          const messageId = result.data.messageId;
+          if (prev.some((m) => m.id === messageId)) {
+            return prev.filter((m) => m.id !== optimisticId);
+          }
+
+          return prev.map((m) =>
+            m.id === optimisticId ? { ...m, id: messageId } : m
+          );
+        });
         showToast("メッセージを送信しました", "success");
       } else {
         // 失敗: 楽観的メッセージを削除（ロールバック）
