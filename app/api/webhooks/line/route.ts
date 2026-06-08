@@ -290,6 +290,30 @@ export async function POST(request: Request) {
         }
       }
 
+      if (postbackData.action === "select_mate") {
+        const result = await withWebhookIdempotency(
+          "line",
+          eventId,
+          "postback_select_mate",
+          async () => {
+            await pushTextMessage(
+              lineUserId,
+              `こちらからメイトを選んで、無料トライアルを始められます（リンクは30分間有効です）。\n${buildSubscribeUrl(
+                lineUserId
+              )}`
+            );
+            return { sent: true };
+          }
+        );
+
+        if (result.status === "error") {
+          logger.error("LINE webhook select_mate error", {
+            message: result.message,
+            eventId,
+          });
+        }
+      }
+
       if (postbackData.action === "manage_subscription") {
         const result = await withWebhookIdempotency(
           "line",
