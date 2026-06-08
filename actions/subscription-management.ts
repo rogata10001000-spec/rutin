@@ -85,16 +85,23 @@ async function resolveCurrentUserSubscription(
       ok: false,
       code: "UNAUTHORIZED",
       message: isExpired
-        ? "LINE連携の有効期限が切れています。LINEからもう一度開いてください。"
-        : "LINEの案内リンクからアクセスしてください。",
+        ? "ログインの有効期限が切れています。もう一度ログインしてください。"
+        : "ログインが必要です。LINEまたはメールからアクセスしてください。",
     };
   }
 
-  const { data: endUser } = await supabase
+  // 本人解決は end_user_id を優先、無ければ line_user_id でフォールバック
+  let endUserQuery = supabase
     .from("end_users")
-    .select("id, line_user_id, assigned_cast_id, trial_end_at")
-    .eq("line_user_id", user.lineUserId)
-    .maybeSingle();
+    .select("id, line_user_id, assigned_cast_id, trial_end_at");
+  if (user.endUserId) {
+    endUserQuery = endUserQuery.eq("id", user.endUserId);
+  } else if (user.lineUserId) {
+    endUserQuery = endUserQuery.eq("line_user_id", user.lineUserId);
+  } else {
+    return { ok: false, code: "UNAUTHORIZED", message: "ログインが必要です。" };
+  }
+  const { data: endUser } = await endUserQuery.maybeSingle();
 
   if (!endUser) {
     return { ok: false, code: "NOT_FOUND", message: "契約情報が見つかりません。" };

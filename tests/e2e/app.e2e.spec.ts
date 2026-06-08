@@ -405,13 +405,29 @@ test.describe("サブスクリプション導線", () => {
   test("E2E-129-account-plan 契約管理: 未ログインは契約なし/案内表示", async ({ page }) => {
     await page.goto("/account/plan");
     const mainText = await page.locator("main").innerText();
-    // LINE cookie が無い場合は「契約情報なし or アクセス案内」のいずれかを表示
+    // LINE/メール cookie が無い場合は「契約情報なし or ログイン案内」のいずれかを表示
     const showsGuidance =
       mainText.includes("ご契約中のプランはありません") ||
       mainText.includes("ご契約情報を表示できません") ||
-      mainText.includes("LINEの案内リンク") ||
+      mainText.includes("ログインが必要です") ||
+      mainText.includes("メールでログイン") ||
       mainText.includes("メイトを選ぶ");
     expect(showsGuidance).toBeTruthy();
+  });
+
+  test("E2E-132-account-login メールログイン画面の表示", async ({ page }) => {
+    await page.goto("/account/login");
+    await expect(page.locator("h1")).toContainText("ログイン");
+    await expect(page.locator('input[type="email"]')).toBeVisible();
+    await expect(page.getByRole("button", { name: /ログインリンクを送る/ })).toBeVisible();
+  });
+
+  test("E2E-133-account-auth 不正トークンはログイン画面へ誘導", async ({ page }) => {
+    await page.goto("/account/auth");
+    // lt 無し → /account/login?error=invalid へリダイレクト
+    await expect(page).toHaveURL(/\/account\/login/);
+    const mainText = await page.locator("main").innerText();
+    expect(mainText.includes("ログイン")).toBeTruthy();
   });
 });
 

@@ -395,8 +395,29 @@ export async function createSubscriptionCheckoutForCurrentUser(
     };
   }
 
+  // 新規契約は LINE 連携が前提（Stripe metadata に line_user_id が必要）
+  let lineUserId = user.lineUserId;
+  if (!lineUserId && user.endUserId) {
+    const supabase = createAdminSupabaseClient();
+    const { data: endUser } = await supabase
+      .from("end_users")
+      .select("line_user_id")
+      .eq("id", user.endUserId)
+      .maybeSingle();
+    lineUserId = endUser?.line_user_id ?? null;
+  }
+  if (!lineUserId) {
+    return {
+      ok: false,
+      error: {
+        code: "UNAUTHORIZED",
+        message: "新規のご契約はLINEの案内リンクからお手続きください。",
+      },
+    };
+  }
+
   return createSubscriptionCheckoutSession({
-    lineUserId: user.lineUserId,
+    lineUserId,
     castId: input.castId,
     planCode: input.planCode,
   });

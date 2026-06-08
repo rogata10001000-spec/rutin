@@ -8,10 +8,19 @@ export default async function AccountPlanPage() {
   const result = await getMySubscription();
 
   if (!result.ok) {
+    const needsLogin = result.error.code === "UNAUTHORIZED";
     return (
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
         <h1 className="text-lg font-bold text-amber-900">ご契約情報を表示できません</h1>
         <p className="mt-2 text-sm leading-relaxed text-amber-800">{result.error.message}</p>
+        {needsLogin && (
+          <a
+            href="/account/login"
+            className="mt-4 inline-flex items-center justify-center whitespace-nowrap rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-primary-dark"
+          >
+            メールでログイン
+          </a>
+        )}
       </div>
     );
   }

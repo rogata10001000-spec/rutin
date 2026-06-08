@@ -145,6 +145,12 @@ const navItems: NavItem[] = [
     roles: ["admin"],
   },
   {
+    name: "アカウント統合",
+    href: "/admin/account-merge",
+    icon: <UsersIcon />,
+    roles: ["admin"],
+  },
+  {
     name: "監査ログ",
     href: "/admin/audit",
     icon: <AuditIcon />,

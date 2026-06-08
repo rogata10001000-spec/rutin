@@ -26,6 +26,9 @@ const serverEnvSchema = z.object({
   WEB_PUSH_VAPID_PUBLIC_KEY: z.string().optional(),
   WEB_PUSH_VAPID_PRIVATE_KEY: z.string().optional(),
   WEB_PUSH_CONTACT: z.string().optional(),
+  // メール送信（Resend）。LINE非依存の連絡・ログイン経路に使用。
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().optional(),
 });
 
 const clientEnvSchema = z.object({

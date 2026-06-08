@@ -66,6 +66,9 @@ type EndUsersRow = {
   line_user_id: string;
   nickname: string;
   birthday: string | null;
+  email: string | null;
+  email_verified_at: string | null;
+  phone: string | null;
   status: SubscriptionStatus;
   plan_code: string;
   assigned_cast_id: string | null;
@@ -74,6 +77,15 @@ type EndUsersRow = {
   trial_end_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type UserLoginTokensRow = {
+  id: string;
+  end_user_id: string;
+  token_hash: string;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
 };
 
 type CastAssignmentsRow = {
@@ -425,15 +437,27 @@ export interface Database {
       };
       end_users: {
         Row: EndUsersRow;
-        Insert: Omit<EndUsersRow, "id" | "created_at" | "updated_at" | "paused_priority_penalty" | "tags" | "birthday" | "trial_end_at" | "assigned_cast_id"> & {
+        Insert: Omit<EndUsersRow, "id" | "created_at" | "updated_at" | "paused_priority_penalty" | "tags" | "birthday" | "trial_end_at" | "assigned_cast_id" | "email" | "email_verified_at" | "phone"> & {
           id?: string;
           paused_priority_penalty?: number;
           tags?: string[];
           birthday?: string | null;
           trial_end_at?: string | null;
           assigned_cast_id?: string | null;
+          email?: string | null;
+          email_verified_at?: string | null;
+          phone?: string | null;
         };
         Update: Partial<Omit<EndUsersRow, "id" | "created_at">>;
+        Relationships: [];
+      };
+      user_login_tokens: {
+        Row: UserLoginTokensRow;
+        Insert: Omit<UserLoginTokensRow, "id" | "created_at" | "used_at"> & {
+          id?: string;
+          used_at?: string | null;
+        };
+        Update: Partial<Pick<UserLoginTokensRow, "used_at">>;
         Relationships: [];
       };
       cast_assignments: {

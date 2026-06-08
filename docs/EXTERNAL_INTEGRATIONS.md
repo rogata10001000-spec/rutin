@@ -38,10 +38,12 @@ Replace `<APP_BASE_URL>` with your production domain (same value as `APP_BASE_UR
    - `customer.subscription.created`
    - `customer.subscription.updated`
    - `customer.subscription.deleted`
+   - `customer.subscription.trial_will_end`
    - `invoice.paid`
    - `invoice.payment_failed`
 6. Copy signing secret → `STRIPE_WEBHOOK_SECRET`
 7. Checkout success/cancel URLs must use `APP_BASE_URL` (configured in subscription actions).
+8. Checkout collects the customer email; the webhook stores it on `end_users.email` (LINE非依存の連絡先)。
 
 ### Verification
 
@@ -49,6 +51,36 @@ Replace `<APP_BASE_URL>` with your production domain (same value as `APP_BASE_UR
 - `end_users.status` becomes active/trial
 - Contracted rich menu applied via webhook
 - Event visible in `/admin/webhooks` with `status = processed`
+
+## Email (Resend) — LINE非依存の連絡・ログイン経路
+
+LINE が利用できない場合でも顧客と連絡が取れ、顧客自身がプラン変更・解約できるようにするためのメール経路。
+
+1. [Resend](https://resend.com/) でアカウントを作成し、送信ドメインを検証（SPF / DKIM を DNS に設定）。
+2. API キーを発行 → `RESEND_API_KEY`
+3. 送信元アドレスを設定 → `EMAIL_FROM`（例: `Rutin <noreply@your-domain.com>`、検証済みドメイン推奨）
+4. 未設定でもアプリは動作する（メール送信はスキップされ、LINE のみで動く）。本番では設定を推奨。
+
+### メールでできること
+
+- **メールログイン**: `/account/login` でメール入力 → マジックリンク（`/account/auth?lt=...`、30分・単回）→ 本人セッション発行 → `/account/plan`。
+- **重要通知の二重送信**: 支払い失敗・解約完了・解約予約・トライアル終了予告を、LINE と メールへ best-effort 送信（`lib/notifications.ts`）。
+
+### バックフィル（既存契約者のメール取り込み）
+
+```bash
+npm run backfill:email -- --dry-run   # 対象確認
+npm run backfill:email                # 実行（Stripe Customer の email を end_users へ）
+```
+
+### アカウント統合
+
+同一人物が LINE/メールで別アカウントに分かれた場合、管理画面 `/admin/account-merge`（管理者のみ）で統合できる。統合元の子データは統合先へ移動し、統合元は削除される（不可逆）。
+
+### Verification
+
+- `/account/login` でメール送信 → 受信したリンクからログインできる
+- 支払い失敗時に LINE とメールの両方へ通知が届く（`RESEND_API_KEY` 設定時）
 
 ## Soft Launch Scope
 

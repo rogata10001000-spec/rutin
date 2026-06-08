@@ -50,6 +50,7 @@ export type AuditAction =
   // ユーザー管理
   | "USER_PROFILE_UPDATE"
   | "USER_CREATE"
+  | "END_USER_MERGE"
   // マスタ管理
   | "PLAN_PRICE_CREATE"
   | "PLAN_PRICE_UPDATE"

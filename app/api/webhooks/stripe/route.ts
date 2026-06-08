@@ -19,6 +19,14 @@ import {
   resolveCastPlanPricing,
   planCodeFromStripePriceId,
 } from "@/lib/plan-pricing";
+import { normalizeEmail } from "@/lib/email-address";
+import { notifyUser } from "@/lib/notifications";
+import {
+  paymentFailedNotification,
+  subscriptionCanceledNotification,
+  cancelScheduledNotification,
+  trialWillEndNotification,
+} from "@/lib/notification-templates";
 
 type SupabaseAdmin = ReturnType<typeof createAdminSupabaseClient>;
 
@@ -313,10 +321,15 @@ export async function POST(request: Request) {
           : null;
         const subscriptionStatus = toSubscriptionStatus(stripeSubscription.status);
 
+        // Checkout で入力された顧客メールを LINE 非依存の連絡先として取り込む
+        const checkoutEmail = normalizeEmail(
+          session.customer_details?.email ?? session.customer_email
+        );
+
         // end_user取得または作成
         let { data: user } = await supabase
           .from("end_users")
-          .select("id, status")
+          .select("id, status, email")
           .eq("line_user_id", lineUserId)
           .single();
 
@@ -330,6 +343,7 @@ export async function POST(request: Request) {
               plan_code: planCode,
               assigned_cast_id: castId,
               trial_end_at: trialEndAt,
+              ...(checkoutEmail ? { email: checkoutEmail } : {}),
             })
             .select("id")
             .single();
@@ -337,7 +351,7 @@ export async function POST(request: Request) {
           if (error) {
             throw new Error(`Failed to create end_user: ${error.message}`);
           }
-          user = { id: newUser.id, status: subscriptionStatus };
+          user = { id: newUser.id, status: subscriptionStatus, email: checkoutEmail };
         } else {
           await supabase
             .from("end_users")
@@ -346,6 +360,8 @@ export async function POST(request: Request) {
               plan_code: planCode,
               assigned_cast_id: castId,
               trial_end_at: trialEndAt,
+              // 既存メール未登録時のみ Checkout のメールで補完（上書きはしない）
+              ...(checkoutEmail && !user.email ? { email: checkoutEmail } : {}),
             })
             .eq("id", user.id);
         }
@@ -431,7 +447,7 @@ export async function POST(request: Request) {
       // サブスクリプションを検索
       const { data: sub } = await supabase
         .from("subscriptions")
-        .select("id, end_user_id, status, plan_code")
+        .select("id, end_user_id, status, plan_code, cancel_at_period_end")
         .eq("stripe_subscription_id", subscriptionId)
         .single();
 
@@ -592,6 +608,17 @@ export async function POST(request: Request) {
 
       const trialConverted = previousStatus === "trial" && newStatus === "active";
 
+      // 解約予約が新たに入った場合（false→true）に期間終了日を案内（best-effort）
+      const cancelNewlyScheduled =
+        !sub.cancel_at_period_end && cancelAtPeriodEnd && newStatus !== "canceled";
+      if (cancelNewlyScheduled) {
+        await notifyUser(
+          supabase,
+          sub.end_user_id,
+          cancelScheduledNotification(currentPeriodEnd)
+        );
+      }
+
       await writeAuditLog({
         action: "SUBSCRIPTION_SYNC",
         targetType: "subscriptions",
@@ -603,6 +630,7 @@ export async function POST(request: Request) {
           new_status: newStatus,
           cancel_at_period_end: cancelAtPeriodEnd,
           ...(trialConverted ? { trial_converted: true } : {}),
+          ...(cancelNewlyScheduled ? { cancel_scheduled: true } : {}),
           ...(planChanged
             ? { plan_changed: true, previous_plan_code: sub.plan_code, new_plan_code: planCodeToSync }
             : {}),
@@ -660,6 +688,9 @@ export async function POST(request: Request) {
         }
       }
 
+      // 解約完了を LINE / メールで通知（best-effort）
+      await notifyUser(supabase, sub.end_user_id, subscriptionCanceledNotification());
+
       // 監査ログ
       await writeAuditLog({
         action: "SUBSCRIPTION_SYNC",
@@ -669,6 +700,37 @@ export async function POST(request: Request) {
         metadata: { event: eventType, new_status: "canceled" },
         actorStaffId: null,
       });
+
+      return { subscriptionId: sub.id };
+    });
+
+    if (result.status === "error") {
+      return stripeWebhookErrorResponse(eventType, eventId, result.message);
+    }
+  }
+
+  // =====================================================
+  // customer.subscription.trial_will_end - トライアル終了予告
+  // =====================================================
+  if (eventType === "customer.subscription.trial_will_end") {
+    const subscription = event.data.object as Stripe.Subscription;
+
+    const result = await withWebhookIdempotency("stripe", eventId, eventType, async () => {
+      const { data: sub } = await supabase
+        .from("subscriptions")
+        .select("id, end_user_id")
+        .eq("stripe_subscription_id", subscription.id)
+        .single();
+
+      if (!sub) {
+        return { skipped: true };
+      }
+
+      const trialEndIso = subscription.trial_end
+        ? new Date(subscription.trial_end * 1000).toISOString()
+        : null;
+
+      await notifyUser(supabase, sub.end_user_id, trialWillEndNotification(trialEndIso));
 
       return { subscriptionId: sub.id };
     });
@@ -725,6 +787,9 @@ export async function POST(request: Request) {
         .from("end_users")
         .update({ status: "past_due" })
         .eq("id", sub.end_user_id);
+
+      // 支払い更新のお願いを LINE / メールで通知（best-effort）
+      await notifyUser(supabase, sub.end_user_id, paymentFailedNotification());
 
       // 監査ログ
       await writeAuditLog({

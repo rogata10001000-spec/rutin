@@ -17,6 +17,26 @@ async function resolveUserToken(token?: string) {
   return cookieUser;
 }
 
+/**
+ * トークンから line_user_id を解決する。
+ * line_user_id を優先し、無ければ end_user_id から逆引きする。
+ * ギフト・ポイント機能はLINEコンテキスト前提のため line_user_id が必須。
+ */
+async function resolveLineUserId(tokenResult: {
+  lineUserId: string | null;
+  endUserId: string | null;
+}): Promise<string | null> {
+  if (tokenResult.lineUserId) return tokenResult.lineUserId;
+  if (!tokenResult.endUserId) return null;
+  const supabase = createAdminSupabaseClient();
+  const { data } = await supabase
+    .from("end_users")
+    .select("line_user_id")
+    .eq("id", tokenResult.endUserId)
+    .maybeSingle();
+  return data?.line_user_id ?? null;
+}
+
 export type CreatePointCheckoutInput = {
   token?: string; // 互換性維持用（Cookie優先）
   productId: string;
@@ -43,7 +63,13 @@ export async function createPointCheckoutSession(
     };
   }
 
-  const lineUserId = tokenResult.lineUserId;
+  const lineUserId = await resolveLineUserId(tokenResult);
+  if (!lineUserId) {
+    return {
+      ok: false,
+      error: { code: "UNAUTHORIZED", message: "認証エラー" },
+    };
+  }
 
   // Zodバリデーション
   const parsed = pointCheckoutSchema.safeParse({
@@ -163,7 +189,13 @@ export async function sendGift(input: SendGiftInput): Promise<SendGiftResult> {
     };
   }
 
-  const lineUserId = tokenResult.lineUserId;
+  const lineUserId = await resolveLineUserId(tokenResult);
+  if (!lineUserId) {
+    return {
+      ok: false,
+      error: { code: "UNAUTHORIZED", message: "認証エラー" },
+    };
+  }
 
   // Zodバリデーション
   const parsed = sendGiftSchema.safeParse({
@@ -351,10 +383,18 @@ export async function getUserPointBalance(input?: {
 
   const supabase = createAdminSupabaseClient();
 
+  const lineUserId = await resolveLineUserId(tokenResult);
+  if (!lineUserId) {
+    return {
+      ok: false,
+      error: { code: "UNAUTHORIZED", message: "認証エラー" },
+    };
+  }
+
   const { data: user } = await supabase
     .from("end_users")
     .select("id")
-    .eq("line_user_id", tokenResult.lineUserId)
+    .eq("line_user_id", lineUserId)
     .single();
 
   if (!user) {

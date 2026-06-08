@@ -30,6 +30,8 @@ const productionEnvSchema = z.object({
   RICH_MENU_ID_CONTRACTED: z.string().min(1),
   WEB_PUSH_VAPID_PUBLIC_KEY: z.string().min(1).optional(),
   WEB_PUSH_VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+  RESEND_API_KEY: z.string().min(1).optional(),
+  EMAIL_FROM: z.string().min(1).optional(),
 });
 
 const result = productionEnvSchema.safeParse(process.env);
@@ -51,7 +53,17 @@ if (
   process.exit(1);
 }
 
+if (env.RESEND_API_KEY && !env.EMAIL_FROM) {
+  console.error("EMAIL_FROM must be set when RESEND_API_KEY is configured.");
+  process.exit(1);
+}
+
 console.log("Production environment validation passed.");
 if (!env.WEB_PUSH_VAPID_PUBLIC_KEY) {
   console.warn("Warning: Web Push VAPID keys are not set. Staff push notifications will be skipped.");
+}
+if (!env.RESEND_API_KEY) {
+  console.warn(
+    "Warning: RESEND_API_KEY is not set. Email login and email notifications (LINE-independent fallback) will be skipped."
+  );
 }

@@ -131,12 +131,29 @@ const USER_TOKEN_SECRET = getServerEnv().LINE_USER_TOKEN_SECRET;
 const USER_TOKEN_EXPIRY = 60 * 30; // 30分
 
 interface UserTokenPayload {
-  line_user_id: string;
+  /** LINE経由の本人。メール単独ログイン（将来）では存在しない場合がある。 */
+  line_user_id?: string;
+  /** end_users.id。本人アンカー。新しいセッションでは必ず含める。 */
+  end_user_id?: string;
   exp: number;
 }
 
+export type VerifiedUser = {
+  ok: true;
+  lineUserId: string | null;
+  endUserId: string | null;
+  error?: undefined;
+};
+
+export type VerifyUserFailure = {
+  ok: false;
+  lineUserId?: undefined;
+  endUserId?: undefined;
+  error: "invalid" | "expired";
+};
+
 /**
- * ユーザー向けトークン生成
+ * LINE導線用トークン生成（line_user_id ベース・後方互換）。
  */
 export function generateUserToken(lineUserId: string): string {
   if (!USER_TOKEN_SECRET) {
@@ -153,24 +170,45 @@ export function generateUserToken(lineUserId: string): string {
 }
 
 /**
+ * セッショントークン生成（本人ID中心）。
+ * end_user_id を必須アンカーとし、判明していれば line_user_id も載せる。
+ * メールログイン・LINE双方で共通利用する。
+ */
+export function generateUserSessionToken(params: {
+  endUserId: string;
+  lineUserId?: string | null;
+  expiresInSeconds?: number;
+}): string {
+  if (!USER_TOKEN_SECRET) {
+    throw new Error("LINE_USER_TOKEN_SECRET is not configured");
+  }
+
+  const payload: Record<string, unknown> = {
+    end_user_id: params.endUserId,
+    exp: Math.floor(Date.now() / 1000) + (params.expiresInSeconds ?? USER_TOKEN_EXPIRY),
+  };
+  if (params.lineUserId) {
+    payload.line_user_id = params.lineUserId;
+  }
+
+  return jwt.sign(payload, USER_TOKEN_SECRET);
+}
+
+/**
  * ユーザー向けトークン検証
  */
-export function verifyUserToken(token: string): {
-  ok: true;
-  lineUserId: string;
-  error?: undefined;
-} | {
-  ok: false;
-  lineUserId?: undefined;
-  error: "invalid" | "expired";
-} {
+export function verifyUserToken(token: string): VerifiedUser | VerifyUserFailure {
   if (!USER_TOKEN_SECRET) {
     return { ok: false, error: "invalid" };
   }
 
   try {
     const decoded = jwt.verify(token, USER_TOKEN_SECRET) as UserTokenPayload;
-    return { ok: true, lineUserId: decoded.line_user_id };
+    return {
+      ok: true,
+      lineUserId: decoded.line_user_id ?? null,
+      endUserId: decoded.end_user_id ?? null,
+    };
   } catch (err) {
     if (err instanceof jwt.TokenExpiredError) {
       return { ok: false, error: "expired" };
@@ -182,13 +220,9 @@ export function verifyUserToken(token: string): {
 /**
  * リクエストからユーザートークンを取得・検証
  */
-export function getUserFromRequest(request: Request): {
-  ok: true;
-  lineUserId: string;
-} | {
-  ok: false;
-  error: "missing" | "invalid" | "expired";
-} {
+export function getUserFromRequest(request: Request):
+  | VerifiedUser
+  | { ok: false; error: "missing" | "invalid" | "expired" } {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
 
   if (!token) {
@@ -199,8 +233,7 @@ export function getUserFromRequest(request: Request): {
 }
 
 export async function getUserFromServerCookies(): Promise<
-  | { ok: true; lineUserId: string }
-  | { ok: false; error: "missing" | "invalid" | "expired" }
+  VerifiedUser | { ok: false; error: "missing" | "invalid" | "expired" }
 > {
   const cookieStore = await cookies();
   const token = cookieStore.get(USER_SESSION_COOKIE)?.value;
