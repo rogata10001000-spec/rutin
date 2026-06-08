@@ -31,6 +31,7 @@ const productionEnvSchema = z.object({
   WEB_PUSH_VAPID_PUBLIC_KEY: z.string().min(1).optional(),
   WEB_PUSH_VAPID_PRIVATE_KEY: z.string().min(1).optional(),
   RESEND_API_KEY: z.string().min(1).optional(),
+  NOTIFICATION_FROM_EMAIL: z.string().min(1).optional(),
   EMAIL_FROM: z.string().min(1).optional(),
 });
 
@@ -53,8 +54,8 @@ if (
   process.exit(1);
 }
 
-if (env.RESEND_API_KEY && !env.EMAIL_FROM) {
-  console.error("EMAIL_FROM must be set when RESEND_API_KEY is configured.");
+if (env.RESEND_API_KEY && !env.NOTIFICATION_FROM_EMAIL && !env.EMAIL_FROM) {
+  console.error("NOTIFICATION_FROM_EMAIL or EMAIL_FROM must be set when RESEND_API_KEY is configured.");
   process.exit(1);
 }
 

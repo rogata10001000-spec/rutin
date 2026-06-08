@@ -15,7 +15,8 @@ function getResendClient(): Resend | null {
 
 /** 送信元アドレス（未設定時はデフォルト）。 */
 function getFromAddress(): string {
-  return getServerEnv().EMAIL_FROM ?? "Rutin <onboarding@resend.dev>";
+  const env = getServerEnv();
+  return env.NOTIFICATION_FROM_EMAIL ?? env.EMAIL_FROM ?? "Rutin <onboarding@resend.dev>";
 }
 
 export type SendEmailParams = {

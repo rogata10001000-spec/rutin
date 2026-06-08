@@ -58,7 +58,7 @@ LINE が利用できない場合でも顧客と連絡が取れ、顧客自身が
 
 1. [Resend](https://resend.com/) でアカウントを作成し、送信ドメインを検証（SPF / DKIM を DNS に設定）。
 2. API キーを発行 → `RESEND_API_KEY`
-3. 送信元アドレスを設定 → `EMAIL_FROM`（例: `Rutin <noreply@your-domain.com>`、検証済みドメイン推奨）
+3. 送信元アドレスを設定 → `NOTIFICATION_FROM_EMAIL`（例: `Rutin(ルティン) <noreply@musuv.jp>`、検証済みドメイン推奨）
 4. 未設定でもアプリは動作する（メール送信はスキップされ、LINE のみで動く）。本番では設定を推奨。
 
 ### メールでできること
