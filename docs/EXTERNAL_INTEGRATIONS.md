@@ -12,18 +12,36 @@ Replace `<APP_BASE_URL>` with your production domain (same value as `APP_BASE_UR
 6. Create two rich menus (未契約 / 契約済) with postback actions for check-in (◯/△/×) per requirements.
 7. Copy menu IDs → `RICH_MENU_ID_UNCONTRACTED`, `RICH_MENU_ID_CONTRACTED`
 8. **LIFF / Web**: ensure subscribe URLs in rich menu point to `https://<APP_BASE_URL>/subscribe/...`
-9. 契約済リッチメニューに「契約・プラン」ボタンを **postback** で追加する。
-   - postback data: `action=manage_subscription`
-   - 固定 URI ではなく postback にすること。webhook が本人の `line_user_id` から短命トークン付き URL（30分有効）を生成して返信し、`https://<APP_BASE_URL>/account/plan?token=...` へ誘導する。
+9. 契約済リッチメニューに「契約・プラン」ボタンを設定する。**推奨は LIFF リンク方式**（下記「LIFF（契約マイページのワンタップ導線）」を参照）。後方互換として postback 方式も併用可。
+   - LIFF 方式（推奨）: ボタンを **リンク** タイプにし、URL を `https://liff.line.me/<LIFF_ID>` に設定。ワンタップで本人のマイページが開く。
+   - postback 方式（フォールバック）: postback data `action=manage_subscription`。webhook が本人の `line_user_id` から短命トークン付き URL（30分有効）を生成して返信し、`https://<APP_BASE_URL>/account/plan?token=...` へ誘導する。
    - 未契約・解約済みユーザーが押した場合は、自動的に新規契約導線（`/subscribe/cast`）へ案内する。
+
+## LIFF（契約マイページのワンタップ導線）
+
+リッチメニューから全員共通の LIFF URL でワンタップ遷移し、LIFF の IDトークンをサーバーで検証して本人セッションを発行する。
+
+1. LINE Developers Console で、Messaging API チャネルと **同一プロバイダー** の **LINE Login チャネル** を用意する（無ければ作成）。
+   - ⚠️ 異なるプロバイダーだと IDトークンの `sub` が保存済み `line_user_id` と不一致になり本人解決できない。
+2. その LINE Login チャネルに **LIFF アプリ** を追加する。
+   - エンドポイント URL: `https://<APP_BASE_URL>/liff/mypage`
+   - サイズ: Full（推奨）
+   - scope: `profile`（`openid` を含める。`email` は任意）
+3. 発行された **LIFF ID** → `NEXT_PUBLIC_LIFF_ID`
+4. LIFF が属する **チャネル ID**（LINE Login チャネルの Channel ID） → `LINE_LIFF_CHANNEL_ID`（IDトークン検証の `client_id`/`aud`）
+5. リッチメニュー「契約・プラン」ボタンを **リンク** タイプにし、URL を `https://liff.line.me/<NEXT_PUBLIC_LIFF_ID>` に設定。
+6. ローカル / Vercel 双方に `NEXT_PUBLIC_LIFF_ID` と `LINE_LIFF_CHANNEL_ID` を設定する。
+   - env 未設定時は `/liff/mypage` が「準備中」を表示するだけで、既存導線（postback・メールログイン）には無影響。
 
 ### Verification
 
 - Send a test message from LINE → appears in admin Inbox
 - Postback check-in → row in `checkins` table
 - New friend → welcome flow (no duplicate errors in `webhook_events`)
-- Postback `action=manage_subscription`（契約者） → 契約管理ページのトークン付き URL が返信される
+- 実機 LINE でリッチメニュー「契約・プラン」（LIFFリンク） → ワンタップで `/account/plan` に本人の契約が表示される
+- Postback `action=manage_subscription`（契約者・フォールバック） → 契約管理ページのトークン付き URL が返信される
 - 契約管理ページでプラン変更/解約 → Stripe と `subscriptions` の `plan_code` / `cancel_at_period_end` が一致
+- `/liff/mypage` を LINE 外（PCブラウザ等）で開く → 「LINEアプリから開いてください」を表示
 
 ## Stripe (Live Mode)
 

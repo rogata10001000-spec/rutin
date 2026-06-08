@@ -9,6 +9,8 @@ const serverEnvSchema = z.object({
   LINE_CHANNEL_SECRET: z.string().min(1),
   LINE_CHANNEL_ACCESS_TOKEN: z.string().min(1),
   LINE_USER_TOKEN_SECRET: z.string().min(32),
+  // LIFF: IDトークン検証用のチャネルID（client_id）。未設定ならLIFF導線は無効。
+  LINE_LIFF_CHANNEL_ID: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().min(1),
   STRIPE_WEBHOOK_SECRET: z.string().min(1),
   STRIPE_PRICE_LIGHT: z.string().optional(),
@@ -37,6 +39,8 @@ const clientEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
   WEB_PUSH_VAPID_PUBLIC_KEY: z.string().optional(),
+  // LIFF アプリ ID（フロントの liff.init 用、公開値）
+  NEXT_PUBLIC_LIFF_ID: z.string().optional(),
 });
 
 let cachedServerEnv: z.infer<typeof serverEnvSchema> | null = null;
@@ -63,6 +67,7 @@ export const getClientEnv = () => {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
     WEB_PUSH_VAPID_PUBLIC_KEY: process.env.WEB_PUSH_VAPID_PUBLIC_KEY,
+    NEXT_PUBLIC_LIFF_ID: process.env.NEXT_PUBLIC_LIFF_ID,
   });
   if (!parsed.success) {
     throw new Error(

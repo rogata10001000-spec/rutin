@@ -33,6 +33,8 @@ const productionEnvSchema = z.object({
   RESEND_API_KEY: z.string().min(1).optional(),
   NOTIFICATION_FROM_EMAIL: z.string().min(1).optional(),
   EMAIL_FROM: z.string().min(1).optional(),
+  NEXT_PUBLIC_LIFF_ID: z.string().min(1).optional(),
+  LINE_LIFF_CHANNEL_ID: z.string().min(1).optional(),
 });
 
 const result = productionEnvSchema.safeParse(process.env);
@@ -59,6 +61,14 @@ if (env.RESEND_API_KEY && !env.NOTIFICATION_FROM_EMAIL && !env.EMAIL_FROM) {
   process.exit(1);
 }
 
+if (
+  (env.NEXT_PUBLIC_LIFF_ID && !env.LINE_LIFF_CHANNEL_ID) ||
+  (!env.NEXT_PUBLIC_LIFF_ID && env.LINE_LIFF_CHANNEL_ID)
+) {
+  console.error("NEXT_PUBLIC_LIFF_ID and LINE_LIFF_CHANNEL_ID must both be set or both omitted.");
+  process.exit(1);
+}
+
 console.log("Production environment validation passed.");
 if (!env.WEB_PUSH_VAPID_PUBLIC_KEY) {
   console.warn("Warning: Web Push VAPID keys are not set. Staff push notifications will be skipped.");
@@ -66,5 +76,10 @@ if (!env.WEB_PUSH_VAPID_PUBLIC_KEY) {
 if (!env.RESEND_API_KEY) {
   console.warn(
     "Warning: RESEND_API_KEY is not set. Email login and email notifications (LINE-independent fallback) will be skipped."
+  );
+}
+if (!env.NEXT_PUBLIC_LIFF_ID) {
+  console.warn(
+    "Warning: NEXT_PUBLIC_LIFF_ID / LINE_LIFF_CHANNEL_ID are not set. The LIFF one-tap mypage entry will be disabled."
   );
 }
