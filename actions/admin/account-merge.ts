@@ -33,7 +33,12 @@ export async function searchEndUsers(query: string): Promise<SearchEndUsersResul
   }
 
   const supabase = createAdminSupabaseClient();
-  const escaped = q.replace(/[%_]/g, (m) => `\\${m}`);
+  // PostgREST の or フィルタ構文を壊す文字（, ( ) 等）を除去し、LIKE のワイルドカードをエスケープ
+  const sanitized = q.replace(/[(),*\\]/g, " ").trim();
+  const escaped = sanitized.replace(/[%_]/g, (m) => `\\${m}`);
+  if (!escaped) {
+    return { ok: true, data: { items: [] } };
+  }
 
   const { data, error } = await supabase
     .from("end_users")

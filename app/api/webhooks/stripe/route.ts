@@ -343,7 +343,6 @@ export async function POST(request: Request) {
               plan_code: planCode,
               assigned_cast_id: castId,
               trial_end_at: trialEndAt,
-              ...(checkoutEmail ? { email: checkoutEmail } : {}),
             })
             .select("id")
             .single();
@@ -351,7 +350,7 @@ export async function POST(request: Request) {
           if (error) {
             throw new Error(`Failed to create end_user: ${error.message}`);
           }
-          user = { id: newUser.id, status: subscriptionStatus, email: checkoutEmail };
+          user = { id: newUser.id, status: subscriptionStatus, email: null };
         } else {
           await supabase
             .from("end_users")
@@ -360,10 +359,24 @@ export async function POST(request: Request) {
               plan_code: planCode,
               assigned_cast_id: castId,
               trial_end_at: trialEndAt,
-              // 既存メール未登録時のみ Checkout のメールで補完（上書きはしない）
-              ...(checkoutEmail && !user.email ? { email: checkoutEmail } : {}),
             })
             .eq("id", user.id);
+        }
+
+        // メール取り込みは best-effort（未登録時のみ・衝突時は無視）。
+        // サブスク同期本体をメール一意制約違反で失敗させない。
+        if (checkoutEmail && !user.email) {
+          const { error: emailErr } = await supabase
+            .from("end_users")
+            .update({ email: checkoutEmail })
+            .eq("id", user.id)
+            .is("email", null);
+          if (emailErr) {
+            logger.warn("checkout.session.completed: email capture skipped", {
+              endUserId: user.id,
+              message: emailErr.message,
+            });
+          }
         }
 
         const { error: subError } = await supabase.from("subscriptions").insert({
