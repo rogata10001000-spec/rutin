@@ -17,6 +17,7 @@ import {
   ensureIncompleteEndUser,
   sendLineUncontractedOnboarding,
 } from "@/lib/line-onboarding";
+import { buildAccountPlanUrl } from "@/lib/subscribe-paths";
 
 type LineFollowEvent = {
   type: "follow";
@@ -286,6 +287,43 @@ export async function POST(request: Request) {
 
         if (result.status === "error") {
           logger.error("LINE webhook checkin error", { message: result.message, eventId });
+        }
+      }
+
+      if (postbackData.action === "manage_subscription") {
+        const result = await withWebhookIdempotency(
+          "line",
+          eventId,
+          "postback_manage_subscription",
+          async () => {
+            const { data: user } = await supabase
+              .from("end_users")
+              .select("id, status")
+              .eq("line_user_id", lineUserId)
+              .maybeSingle();
+
+            // 契約者以外（未契約・解約済み）は新規契約導線へ案内
+            const isContracted =
+              user && !["incomplete", "canceled"].includes(user.status);
+
+            const message = isContracted
+              ? `契約内容の確認・プラン変更・解約はこちらから行えます（リンクは30分間有効です）。\n${buildAccountPlanUrl(
+                  generateUserToken(lineUserId)
+                )}`
+              : `現在ご契約中のプランがありません。こちらからメイトを選んでご契約いただけます。\n${buildSubscribeUrl(
+                  lineUserId
+                )}`;
+
+            await pushTextMessage(lineUserId, message);
+            return { contracted: Boolean(isContracted) };
+          }
+        );
+
+        if (result.status === "error") {
+          logger.error("LINE webhook manage_subscription error", {
+            message: result.message,
+            eventId,
+          });
         }
       }
     }

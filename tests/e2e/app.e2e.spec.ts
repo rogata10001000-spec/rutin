@@ -401,6 +401,18 @@ test.describe("サブスクリプション導線", () => {
   test.skip("E2E-126 Checkout遷移", async ({ page }) => {
     // Stripe Checkoutへのリダイレクト（Live Stripe + LINE cookie が必要）
   });
+
+  test("E2E-129-account-plan 契約管理: 未ログインは契約なし/案内表示", async ({ page }) => {
+    await page.goto("/account/plan");
+    const mainText = await page.locator("main").innerText();
+    // LINE cookie が無い場合は「契約情報なし or アクセス案内」のいずれかを表示
+    const showsGuidance =
+      mainText.includes("ご契約中のプランはありません") ||
+      mainText.includes("ご契約情報を表示できません") ||
+      mainText.includes("LINEの案内リンク") ||
+      mainText.includes("メイトを選ぶ");
+    expect(showsGuidance).toBeTruthy();
+  });
 });
 
 test.describe("UI/UX", () => {

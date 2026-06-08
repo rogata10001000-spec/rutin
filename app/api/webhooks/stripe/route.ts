@@ -14,6 +14,11 @@ import {
   trialEndAtFromSubscription,
 } from "@/lib/stripe-subscription-sync";
 import type { PayoutScopeType } from "@/lib/supabase/types";
+import {
+  PLAN_CODES,
+  resolveCastPlanPricing,
+  planCodeFromStripePriceId,
+} from "@/lib/plan-pricing";
 
 type SupabaseAdmin = ReturnType<typeof createAdminSupabaseClient>;
 
@@ -426,7 +431,7 @@ export async function POST(request: Request) {
       // サブスクリプションを検索
       const { data: sub } = await supabase
         .from("subscriptions")
-        .select("id, end_user_id, status")
+        .select("id, end_user_id, status, plan_code")
         .eq("stripe_subscription_id", subscriptionId)
         .single();
 
@@ -543,6 +548,28 @@ export async function POST(request: Request) {
       const previousStatus = sub.status;
       const trialEndAt = trialEndAtFromSubscription(subscription);
 
+      // plan_code 同期: Stripe メタデータ優先、無ければ price ID から逆引き
+      const metadataPlanCode = subscription.metadata?.plan_code;
+      let planCodeToSync: string | null =
+        metadataPlanCode && PLAN_CODES.includes(metadataPlanCode as (typeof PLAN_CODES)[number])
+          ? metadataPlanCode
+          : null;
+
+      if (!planCodeToSync && appliedStripePriceId) {
+        const { data: euForPlan } = await supabase
+          .from("end_users")
+          .select("assigned_cast_id")
+          .eq("id", sub.end_user_id)
+          .maybeSingle();
+        const pricing = await resolveCastPlanPricing(
+          supabase,
+          euForPlan?.assigned_cast_id ?? null
+        );
+        planCodeToSync = planCodeFromStripePriceId(pricing, appliedStripePriceId);
+      }
+
+      const planChanged = Boolean(planCodeToSync && planCodeToSync !== sub.plan_code);
+
       await supabase
         .from("subscriptions")
         .update({
@@ -550,6 +577,7 @@ export async function POST(request: Request) {
           current_period_end: currentPeriodEnd,
           cancel_at_period_end: cancelAtPeriodEnd,
           ...(appliedStripePriceId ? { applied_stripe_price_id: appliedStripePriceId } : {}),
+          ...(planCodeToSync ? { plan_code: planCodeToSync } : {}),
         })
         .eq("id", sub.id);
 
@@ -558,6 +586,7 @@ export async function POST(request: Request) {
         .update({
           status: newStatus,
           ...(trialEndAt ? { trial_end_at: trialEndAt } : {}),
+          ...(planCodeToSync ? { plan_code: planCodeToSync } : {}),
         })
         .eq("id", sub.end_user_id);
 
@@ -574,6 +603,9 @@ export async function POST(request: Request) {
           new_status: newStatus,
           cancel_at_period_end: cancelAtPeriodEnd,
           ...(trialConverted ? { trial_converted: true } : {}),
+          ...(planChanged
+            ? { plan_changed: true, previous_plan_code: sub.plan_code, new_plan_code: planCodeToSync }
+            : {}),
         },
         actorStaffId: null,
       });

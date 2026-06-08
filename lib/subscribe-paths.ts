@@ -9,6 +9,13 @@ export const SUBSCRIBE_PATHS = {
   root: "/subscribe",
 } as const;
 
+export const ACCOUNT_PLAN_PATH = "/account/plan";
+
+/** 契約者向け契約・プラン管理ページの絶対URL（短命トークン付き、LINE送信用） */
+export function buildAccountPlanUrl(token: string): string {
+  return `${base()}${ACCOUNT_PLAN_PATH}?token=${encodeURIComponent(token)}`;
+}
+
 /** クエリを維持した cast ページ URL（サーバー用） */
 export function buildSubscribeCastUrl(params?: Record<string, string | undefined>): string {
   const qs = new URLSearchParams();

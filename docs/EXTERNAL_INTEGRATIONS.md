@@ -12,12 +12,18 @@ Replace `<APP_BASE_URL>` with your production domain (same value as `APP_BASE_UR
 6. Create two rich menus (未契約 / 契約済) with postback actions for check-in (◯/△/×) per requirements.
 7. Copy menu IDs → `RICH_MENU_ID_UNCONTRACTED`, `RICH_MENU_ID_CONTRACTED`
 8. **LIFF / Web**: ensure subscribe URLs in rich menu point to `https://<APP_BASE_URL>/subscribe/...`
+9. 契約済リッチメニューに「契約・プラン」ボタンを **postback** で追加する。
+   - postback data: `action=manage_subscription`
+   - 固定 URI ではなく postback にすること。webhook が本人の `line_user_id` から短命トークン付き URL（30分有効）を生成して返信し、`https://<APP_BASE_URL>/account/plan?token=...` へ誘導する。
+   - 未契約・解約済みユーザーが押した場合は、自動的に新規契約導線（`/subscribe/cast`）へ案内する。
 
 ### Verification
 
 - Send a test message from LINE → appears in admin Inbox
 - Postback check-in → row in `checkins` table
 - New friend → welcome flow (no duplicate errors in `webhook_events`)
+- Postback `action=manage_subscription`（契約者） → 契約管理ページのトークン付き URL が返信される
+- 契約管理ページでプラン変更/解約 → Stripe と `subscriptions` の `plan_code` / `cancel_at_period_end` が一致
 
 ## Stripe (Live Mode)
 

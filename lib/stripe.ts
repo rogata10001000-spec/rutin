@@ -108,6 +108,45 @@ export async function retrieveCheckoutSession(sessionId: string) {
 }
 
 /**
+ * サブスクリプションのプラン（Price）を変更する。
+ * proration_behavior: "none" のため、新価格は次回請求サイクルから反映される。
+ */
+export async function updateSubscriptionPlanPrice(params: {
+  subscriptionId: string;
+  newStripePriceId: string;
+  planCode: string;
+}): Promise<Stripe.Subscription> {
+  const subscription = await stripe.subscriptions.retrieve(params.subscriptionId);
+  const itemId = subscription.items.data[0]?.id;
+  if (!itemId) {
+    throw new Error("Subscription has no items to update");
+  }
+
+  return stripe.subscriptions.update(params.subscriptionId, {
+    items: [{ id: itemId, price: params.newStripePriceId }],
+    proration_behavior: "none",
+    metadata: {
+      ...subscription.metadata,
+      plan_code: params.planCode,
+      stripe_price_id: params.newStripePriceId,
+    },
+  });
+}
+
+/**
+ * 期間終了時解約のオン/オフを切り替える。
+ * cancelAtPeriodEnd=true で次回更新日に自動終了、false で解約予定を取り消す。
+ */
+export async function setSubscriptionCancelAtPeriodEnd(
+  subscriptionId: string,
+  cancelAtPeriodEnd: boolean
+): Promise<Stripe.Subscription> {
+  return stripe.subscriptions.update(subscriptionId, {
+    cancel_at_period_end: cancelAtPeriodEnd,
+  });
+}
+
+/**
  * Checkout Session作成（ポイント購入用）
  */
 export async function createPointCheckout(params: {
