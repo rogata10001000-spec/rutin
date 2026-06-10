@@ -6,9 +6,7 @@ import { Result, toZodErrorMessage } from "./types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { canAccessUser } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
-import { MEMO_CATEGORIES, type MemoCategory } from "@/lib/memo-categories";
-
-export type { MemoCategory };
+import { MEMO_CATEGORIES } from "@/lib/memo-categories";
 
 export type Memo = {
   id: string;
