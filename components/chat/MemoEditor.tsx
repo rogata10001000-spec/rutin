@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import {
   getUserMemos,
   upsertMemo,
-  MEMO_CATEGORIES,
   type Memo,
 } from "@/actions/memos";
+import { MEMO_CATEGORIES } from "@/lib/memo-categories";
 import { useToast } from "@/components/common/Toast";
 
 type MemoEditorProps = {

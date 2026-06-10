@@ -6,16 +6,9 @@ import { Result, toZodErrorMessage } from "./types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { canAccessUser } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
+import { MEMO_CATEGORIES, type MemoCategory } from "@/lib/memo-categories";
 
-// メモカテゴリ定数
-export const MEMO_CATEGORIES = [
-  { value: "profile", label: "プロフィール" },
-  { value: "ng", label: "NG事項" },
-  { value: "resonance", label: "刺さる言葉" },
-  { value: "other", label: "その他" },
-] as const;
-
-export type MemoCategory = typeof MEMO_CATEGORIES[number]["value"];
+export type { MemoCategory };
 
 export type Memo = {
   id: string;

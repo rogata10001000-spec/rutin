@@ -9,10 +9,10 @@ import {
   getMemoRevisions,
   upsertMemo,
   deleteMemo,
-  MEMO_CATEGORIES,
   type Memo,
   type MemoRevision,
 } from "@/actions/memos";
+import { MEMO_CATEGORIES } from "@/lib/memo-categories";
 import { useToast } from "@/components/common/Toast";
 import { SaveStatus } from "@/components/common/SaveStatus";
 import { useKeyboardShortcut } from "@/hooks/useKeyboardShortcut";

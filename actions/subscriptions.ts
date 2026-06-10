@@ -424,7 +424,11 @@ export async function createSubscriptionCheckoutForCurrentUser(
 }
 
 // 互換用エイリアス（既存UI以外の呼び出しで使用）
-export const createSubscriptionCheckout = createSubscriptionCheckoutSession;
+export async function createSubscriptionCheckout(
+  input: CreateSubscriptionCheckoutInput
+): Promise<CreateSubscriptionCheckoutResult> {
+  return createSubscriptionCheckoutSession(input);
+}
 
 // =====================================
 // プラン情報取得
