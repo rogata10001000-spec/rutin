@@ -1,4 +1,5 @@
 import { getLineAccounts } from "@/actions/admin/line-accounts";
+import { LineAccountSetupGuide } from "@/components/admin/line-accounts/LineAccountSetupGuide";
 import { LineAccountsTable } from "@/components/admin/line-accounts/LineAccountsTable";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,8 @@ export default async function LineAccountsPage() {
           で生成してください。
         </div>
       )}
+
+      <LineAccountSetupGuide />
 
       <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-soft">
         <LineAccountsTable
