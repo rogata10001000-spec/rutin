@@ -1,24 +1,30 @@
 const setupSteps = [
   {
     label: "Step 1",
-    title: "LINE側でチャネル作成",
-    body: "共通Routine公式LINEと同じプロバイダー内に、メイト用のMessaging APIチャネルを作成します。",
-    details: ["Channel ID", "Channel secret", "Channel access token", "友だち追加URL"],
+    title: "メイト用公式LINEを作成",
+    body: "LINE Official Account Managerで、メイトごとの公式LINEアカウントを作成します。",
+    details: ["例: メイトA｜Rutin", "アイコン設定", "プロフィール設定", "あいさつ文OFF推奨"],
   },
   {
     label: "Step 2",
+    title: "既存Rutinプロバイダーを選ぶ",
+    body: "Messaging APIを有効化するとき、新規プロバイダーは作らず既存のRutinプロバイダーを選択します。",
+    details: ["プロバイダー新規作成NG", "既存Rutinを選択", "同一line_user_id維持"],
+  },
+  {
+    label: "Step 3",
     title: "Routineに登録",
     body: "この画面の「アカウントを追加」から、担当メイトとLINEチャネル情報を登録します。",
     details: ["担当メイト", "token/secret", "友だち追加URL", "Webhook用ID"],
   },
   {
-    label: "Step 3",
+    label: "Step 4",
     title: "Webhook URLを設定",
     body: "一覧に表示されたWebhook URLをLINE Developersの該当チャネルに設定し、Use webhookを有効化します。",
     details: ["URLをコピー", "Webhook URLへ貼付", "Use webhook ON", "Verify実行"],
   },
   {
-    label: "Step 4",
+    label: "Step 5",
     title: "実機で確認",
     body: "契約後の案内、友だち追加、受信、管理画面からの返信が想定通り動くか確認します。",
     details: ["契約完了案内", "Inbox反映", "アカウント名表示", "返信元確認"],
@@ -34,7 +40,9 @@ const operationFlow = [
 ];
 
 const checklist = [
-  "同一プロバイダー内でメイト用Messaging APIチャネルを作成した",
+  "メイト用公式LINEを作成した",
+  "Messaging API有効化時に既存のRutinプロバイダーを選んだ",
+  "新しいプロバイダーを作成していない",
   "LINE_TOKEN_ENC_KEYを本番環境にも設定した",
   "チャネルシークレットとアクセストークンをRoutineに登録した",
   "友だち追加URLを登録した",
@@ -56,13 +64,51 @@ export function LineAccountSetupGuide() {
             メイト別LINE公式アカウントの設定手順
           </h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
-            メイト個別LINEは、LINE Developersでチャネルを作成してからRoutineに登録します。
+            メイト個別LINEは、まずLINE Official Account Managerで公式LINEを作り、
+            Messaging API有効化時に既存のRutinプロバイダーを選んでからRoutineに登録します。
             契約入口と契約変更・解約のリッチメニューは共通Routine LINEのまま維持し、
             契約後の会話だけをメイトLINEへ誘導します。
           </p>
         </div>
         <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-          必須: 共通LINEと同じプロバイダーで作成
+          必須: プロバイダーは新規作成しない
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-xl border border-emerald-100 bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-700">
+              OK
+            </span>
+            <h3 className="font-bold text-stone-800">正しい作成順序</h3>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm font-medium text-stone-700">
+            <span className="rounded-lg bg-stone-100 px-2.5 py-1">公式LINEを作る</span>
+            <span className="text-emerald-500">→</span>
+            <span className="rounded-lg bg-stone-100 px-2.5 py-1">Messaging API有効化</span>
+            <span className="text-emerald-500">→</span>
+            <span className="rounded-lg bg-emerald-100 px-2.5 py-1 text-emerald-800">
+              既存Rutinプロバイダーを選択
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-red-100 bg-white p-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-sm font-bold text-red-700">
+              NG
+            </span>
+            <h3 className="font-bold text-stone-800">やってはいけないこと</h3>
+          </div>
+          <div className="mt-3 space-y-2 text-sm leading-6 text-stone-600">
+            <p>メイトごとに新しいプロバイダーを作らないでください。</p>
+            <p>
+              別プロバイダーにすると
+              <code className="mx-1 rounded bg-red-50 px-1.5 py-0.5 text-red-700">line_user_id</code>
+              が共通LINEと一致せず、既存ユーザーと自動連携できません。
+            </p>
+          </div>
         </div>
       </div>
 
@@ -81,7 +127,7 @@ export function LineAccountSetupGuide() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {setupSteps.map((step) => (
           <div key={step.label} className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
             <span className="inline-flex whitespace-nowrap rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-700">
