@@ -28,12 +28,13 @@ Replace `<APP_BASE_URL>` with your production domain (same value as `APP_BASE_UR
 
 手順（各メイトについて）:
 1. 同一プロバイダーに Messaging API チャネルを新規作成する。
-2. 管理画面 `/admin/line-accounts` で「アカウントを追加」→ 担当メイト・チャネルシークレット・チャネルアクセストークン・（任意で）リッチメニューID・友だち追加URLを登録する。
+2. 管理画面 `/admin/line-accounts` で「アカウントを追加」→ 担当メイト・チャネルシークレット・チャネルアクセストークン・友だち追加URLを登録する。
 3. 一覧に表示される **Webhook URL**（`https://<APP_BASE_URL>/api/webhooks/line/<accountId>`）をコピーし、そのチャネルの **Webhook URL** に設定して **Use webhook** を有効化する。
 4. 友だち追加URL（`https://lin.ee/...`）を登録しておくと、契約完了時・担当変更時に共通アカウントから自動で案内される。
+5. メイト個別LINE側にはリッチメニューを設定しない。契約変更・解約・プラン確認は共通Rutin公式LINEのリッチメニューで行う。
 
 挙動:
-- メイトアカウントへ follow / メッセージが届くと、`line_user_id` で既存 `end_user` を解決し、会話アカウント（`primary_line_account_id`）を更新。契約者には契約済リッチメニューへ切り替える。
+- メイトアカウントへ follow / メッセージが届くと、`line_user_id` で既存 `end_user` を解決し、会話アカウント（`primary_line_account_id`）を更新する。メイト個別LINEではリッチメニュー切替は行わない。
 - 管理画面からの返信は、ユーザーの担当メイトの公式LINE（未設定なら共通）から自動送信される。
 - メイトアカウント未登録時は共通アカウントで会話継続（無停止フォールバック）。
 8. 未契約リッチメニューの「メイトを選ぶ」ボタンは **リンク直指定ではなく postback** にする。

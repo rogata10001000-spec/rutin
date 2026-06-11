@@ -9,7 +9,7 @@ const setupSteps = [
     label: "Step 2",
     title: "Routineに登録",
     body: "この画面の「アカウントを追加」から、担当メイトとLINEチャネル情報を登録します。",
-    details: ["担当メイト", "token/secret", "リッチメニューID", "友だち追加URL"],
+    details: ["担当メイト", "token/secret", "友だち追加URL", "Webhook用ID"],
   },
   {
     label: "Step 3",
@@ -38,6 +38,8 @@ const checklist = [
   "LINE_TOKEN_ENC_KEYを本番環境にも設定した",
   "チャネルシークレットとアクセストークンをRoutineに登録した",
   "友だち追加URLを登録した",
+  "メイトLINE側にはリッチメニューを設定していない",
+  "契約変更・解約は共通Rutin公式LINEのリッチメニューで案内している",
   "一覧のWebhook URLをLINE Developersに設定し、Use webhookをONにした",
   "テストユーザーで契約、友だち追加、受信、返信を確認した",
 ];
@@ -55,7 +57,8 @@ export function LineAccountSetupGuide() {
           </h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-stone-600">
             メイト個別LINEは、LINE Developersでチャネルを作成してからRoutineに登録します。
-            契約入口は共通Routine LINEのまま維持し、契約後にメイトLINEへ誘導します。
+            契約入口と契約変更・解約のリッチメニューは共通Routine LINEのまま維持し、
+            契約後の会話だけをメイトLINEへ誘導します。
           </p>
         </div>
         <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
@@ -110,7 +113,8 @@ export function LineAccountSetupGuide() {
               で既存ユーザーを特定し、会話中アカウントをメイトLINEへ切り替えます。
             </p>
             <p>
-              切り替え前の返信や通知は共通LINEから送信され、切り替え後はメイト個別LINEから送信されます。
+              メイト個別LINEにはリッチメニューを設定しません。契約変更や解約は、共通Rutin公式LINEのリッチメニューから行います。
+              切り替え前の返信や通知は共通LINEから送信され、切り替え後の会話返信はメイト個別LINEから送信されます。
             </p>
           </div>
         </div>

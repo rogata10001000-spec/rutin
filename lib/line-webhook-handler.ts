@@ -143,27 +143,23 @@ async function markPrimaryAccountIfMate(
 }
 
 /**
- * メイト個別アカウント上で、契約状態に応じたリッチメニューに切り替える。
- * 契約者には契約済メニュー、未契約者には未契約メニュー。
+ * 共通Rutin公式LINE上で、契約済リッチメニューへ切り替える。
+ * メイト個別LINEにはリッチメニューを設定しない運用のため、メイトアカウントでは何もしない。
  */
-async function applyMateRichMenu(
+async function applyDefaultContractedRichMenu(
   account: ResolvedLineAccount,
-  lineUserId: string,
-  status: string
+  lineUserId: string
 ): Promise<void> {
-  if (!account.id || account.isDefault) return;
+  if (!account.isDefault) return;
 
-  const isContracted = !CONTRACTED_STATUSES_EXCLUDED.includes(status as never);
-  const richMenuId = isContracted
-    ? account.richMenuContractedId
-    : account.richMenuUncontractedId;
+  const richMenuId = account.richMenuContractedId;
 
   if (!richMenuId) return;
 
   try {
     await switchRichMenu(account.credentials, lineUserId, richMenuId);
   } catch (err) {
-    logger.error("LINE mate rich menu switch failed", {
+    logger.error("LINE default contracted rich menu switch failed", {
       lineUserId,
       accountId: account.id,
       error: err instanceof Error ? err.message : "unknown",
@@ -237,8 +233,8 @@ export async function handleLineWebhook(
 
         await markPrimaryAccountIfMate(supabase, account, user.id);
 
-        // 既存契約者がメイト個別アカウントを追加した場合は、
-        // トライアル案内ではなく契約済メニューへ切り替える。
+        // メイト個別LINEにはリッチメニューを設定しない。
+        // 契約者が共通LINEを再追加した場合だけ、共通LINE側の契約済メニューを復元する。
         const { data: statusRow } = await supabase
           .from("end_users")
           .select("status")
@@ -247,8 +243,8 @@ export async function handleLineWebhook(
         const status = statusRow?.status ?? "incomplete";
         const isContracted = !["incomplete", "canceled"].includes(status);
 
-        if (!account.isDefault && account.id && isContracted) {
-          await applyMateRichMenu(account, lineUserId, status);
+        if (isContracted) {
+          await applyDefaultContractedRichMenu(account, lineUserId);
         } else {
           await sendLineUncontractedOnboarding(
             account,
@@ -321,11 +317,7 @@ export async function handleLineWebhook(
           lastSyncedAt: user.line_profile_synced_at,
         });
 
-        // 会話アカウントが切り替わった初回のみリッチメニューを更新（毎メッセージのAPI呼び出しを回避）
-        const accountChanged = await markPrimaryAccountIfMate(supabase, account, user.id);
-        if (accountChanged) {
-          await applyMateRichMenu(account, lineUserId, user.status);
-        }
+        await markPrimaryAccountIfMate(supabase, account, user.id);
 
         const saved = await saveInboundMessage(
           supabase,
