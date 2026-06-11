@@ -87,7 +87,7 @@ export default async function InboxPage({
 
       {/* 左ペイン: フィルタ + 会話一覧 */}
       <aside
-        className={`flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-soft lg:w-[26rem] lg:shrink-0 ${
+        className={`flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-soft lg:w-72 lg:shrink-0 xl:w-[24rem] ${
           selectedUserId ? "hidden lg:flex" : "flex"
         }`}
       >

@@ -18,6 +18,7 @@ type AppShellProps = {
 
 export function AppShell({ staffId, staffName, staffRole, children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -25,7 +26,18 @@ export function AppShell({ staffId, staffName, staffRole, children }: AppShellPr
         // SW registration may fail outside secure contexts; push UI handles errors.
       });
     }
+    // デスクトップサイドバーの折りたたみ状態を復元
+    const saved = localStorage.getItem("sidebarCollapsed");
+    if (saved === "true") setSidebarCollapsed(true);
   }, []);
+
+  const handleToggleCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("sidebarCollapsed", String(next));
+      return next;
+    });
+  };
 
   return (
     <div className="min-h-screen bg-stone-50 pattern-grid-lg">
@@ -42,10 +54,12 @@ export function AppShell({ staffId, staffName, staffRole, children }: AppShellPr
         role={staffRole}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        isCollapsed={sidebarCollapsed}
+        onToggleCollapsed={handleToggleCollapsed}
       />
 
       {/* メインコンテンツエリア */}
-      <div className="lg:pl-64 transition-all duration-300">
+      <div className={`transition-all duration-300 ${sidebarCollapsed ? "lg:pl-16" : "lg:pl-64"}`}>
         <TopBar
           staffName={staffName}
           staffRole={staffRole}

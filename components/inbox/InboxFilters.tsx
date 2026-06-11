@@ -205,7 +205,8 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
       )}
 
       {/* フィルタコントロール */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="overflow-x-auto pb-0.5 no-scrollbar">
+      <div className="flex min-w-max flex-wrap items-center gap-2">
         {/* 返信状態フィルタ（新規） */}
         <div className="relative">
           <select
@@ -437,6 +438,7 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
             クリア
           </button>
         )}
+      </div>
       </div>
 
       {/* タグ絞り込み */}

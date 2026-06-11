@@ -8,6 +8,8 @@ type SideNavProps = {
   role: StaffRole;
   isOpen: boolean;
   onClose: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapsed?: () => void;
 };
 
 type NavItem = {
@@ -158,14 +160,14 @@ const navItems: NavItem[] = [
   },
 ];
 
-export function SideNav({ role, isOpen, onClose }: SideNavProps) {
+export function SideNav({ role, isOpen, onClose, isCollapsed = false, onToggleCollapsed }: SideNavProps) {
   const pathname = usePathname();
 
   const itemsToShow = navItems.filter((item) => item.roles.includes(role));
 
   return (
     <>
-      {/* モバイル用サイドバー */}
+      {/* モバイル用サイドバー（オーバーレイ形式・変更なし） */}
       <div
         className={`fixed inset-y-0 left-0 z-50 w-64 transform bg-white shadow-soft-lg transition-transform duration-300 lg:hidden ${
           isOpen ? "translate-x-0" : "-translate-x-full"
@@ -175,6 +177,7 @@ export function SideNav({ role, isOpen, onClose }: SideNavProps) {
           <span className="text-xl font-bold tracking-tight text-stone-800">Rutin</span>
           <button
             onClick={onClose}
+            aria-label="メニューを閉じる"
             className="rounded-lg p-2 text-stone-400 hover:bg-stone-100 hover:text-stone-600"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -204,26 +207,57 @@ export function SideNav({ role, isOpen, onClose }: SideNavProps) {
         </nav>
       </div>
 
-      {/* デスクトップ用サイドバー */}
-      <div className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-stone-200 bg-white lg:block">
-        <div className="flex h-16 items-center px-6">
-          <span className="text-xl font-bold tracking-tight text-stone-800">Rutin</span>
+      {/* デスクトップ用サイドバー（折りたたみ対応） */}
+      <div
+        className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-stone-200 bg-white transition-all duration-300 lg:flex ${
+          isCollapsed ? "w-16" : "w-64"
+        }`}
+      >
+        {/* ヘッダー */}
+        <div
+          className={`flex h-16 shrink-0 items-center border-b border-stone-100 ${
+            isCollapsed ? "justify-center px-2" : "justify-between px-5"
+          }`}
+        >
+          {!isCollapsed && (
+            <span className="text-xl font-bold tracking-tight text-stone-800">Rutin</span>
+          )}
+          <button
+            onClick={onToggleCollapsed}
+            aria-label={isCollapsed ? "メニューを展開" : "メニューを折りたたむ"}
+            className="rounded-lg p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-600 transition-colors"
+          >
+            {isCollapsed ? (
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            ) : (
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            )}
+          </button>
         </div>
-        <nav className="mt-6 px-3 space-y-1">
+
+        {/* ナビゲーション */}
+        <nav className={`mt-4 flex-1 overflow-y-auto space-y-1 ${isCollapsed ? "px-2" : "px-3"}`}>
           {itemsToShow.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+                title={isCollapsed ? item.name : undefined}
+                className={`flex items-center rounded-xl py-2.5 text-sm font-medium transition-all duration-200 ${
+                  isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+                } ${
                   isActive
                     ? "bg-terracotta/10 text-terracotta shadow-sm"
                     : "text-stone-600 hover:bg-stone-50 hover:text-stone-900"
                 }`}
               >
                 {item.icon}
-                {item.name}
+                {!isCollapsed && <span className="truncate">{item.name}</span>}
               </Link>
             );
           })}
