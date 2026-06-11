@@ -76,6 +76,94 @@ export const pushTextMessage = async (
 };
 
 /**
+ * 未契約ユーザー向けに、長いURLを本文へ出さずメイト選択へ案内する。
+ */
+export const sendSubscribeGuideFlexMessage = async (
+  account: Pick<LineAccountCredentials, "accessToken">,
+  lineUserId: string,
+  subscribeUrl: string,
+  trialDays: number
+): Promise<void> => {
+  const trialLabel = `${trialDays}日間`;
+  const flexMessage = {
+    type: "flex",
+    altText: `メイトを選んで${trialLabel}無料トライアルを始められます`,
+    contents: {
+      type: "bubble",
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: [
+          {
+            type: "text",
+            text: "メイトを選んで始めましょう",
+            weight: "bold",
+            size: "lg",
+            color: "#2D241E",
+            wrap: true,
+          },
+          {
+            type: "text",
+            text: `気になる伴走メイトを選んで、まずは${trialLabel}無料でRutinをお試しいただけます。`,
+            size: "sm",
+            color: "#6B5A51",
+            wrap: true,
+          },
+          {
+            type: "text",
+            text: "ボタンの有効期限は30分です。",
+            size: "xs",
+            color: "#8A786D",
+            wrap: true,
+          },
+        ],
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        spacing: "sm",
+        contents: [
+          {
+            type: "button",
+            style: "primary",
+            color: "#D97757",
+            action: {
+              type: "uri",
+              label: "メイトを見る",
+              uri: subscribeUrl,
+            },
+          },
+        ],
+      },
+    },
+  };
+
+  const res = await fetchWithRetry(`${LINE_API_BASE}/message/push`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${account.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      to: lineUserId,
+      messages: [flexMessage],
+    }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    logger.error("LINE subscribe guide Flex message failed", {
+      status: res.status,
+      lineUserId,
+    });
+    throw new Error(
+      `LINE subscribe guide Flex message failed: ${res.status} - ${errorText.slice(0, 200)}`
+    );
+  }
+};
+
+/**
  * LINEプロフィールを取得（指定アカウントのトークンで取得）
  */
 export const getLineProfile = async (

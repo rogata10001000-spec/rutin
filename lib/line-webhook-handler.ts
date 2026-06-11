@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   pushTextMessage,
+  sendSubscribeGuideFlexMessage,
   switchRichMenu,
   verifyLineSignature,
   parsePostbackData,
@@ -426,12 +427,11 @@ export async function handleLineWebhook(
           eventId,
           "postback_select_mate",
           async () => {
-            await pushTextMessage(
+            await sendSubscribeGuideFlexMessage(
               account.credentials,
               lineUserId,
-              `こちらからメイトを選んで、無料トライアルを始められます（リンクは30分間有効です）。\n${buildSubscribeUrl(
-                lineUserId
-              )}`
+              buildSubscribeUrl(lineUserId),
+              getTrialPeriodDays()
             );
             return { sent: true };
           }
@@ -461,16 +461,24 @@ export async function handleLineWebhook(
             const isContracted =
               user && !CONTRACTED_STATUSES_EXCLUDED.includes(user.status as never);
 
-            const message = isContracted
-              ? `契約内容の確認・プラン変更・解約はこちらから行えます（リンクは30分間有効です）。\n${buildAccountPlanUrl(
-                  generateUserToken(lineUserId)
-                )}`
-              : `現在ご契約中のプランがありません。こちらからメイトを選んでご契約いただけます。\n${buildSubscribeUrl(
-                  lineUserId
-                )}`;
+            if (!isContracted) {
+              await sendSubscribeGuideFlexMessage(
+                account.credentials,
+                lineUserId,
+                buildSubscribeUrl(lineUserId),
+                getTrialPeriodDays()
+              );
+              return { contracted: false };
+            }
 
-            await pushTextMessage(account.credentials, lineUserId, message);
-            return { contracted: Boolean(isContracted) };
+            await pushTextMessage(
+              account.credentials,
+              lineUserId,
+              `契約内容の確認・プラン変更・解約はこちらから行えます（リンクは30分間有効です）。\n${buildAccountPlanUrl(
+                generateUserToken(lineUserId)
+              )}`
+            );
+            return { contracted: true };
           }
         );
 
