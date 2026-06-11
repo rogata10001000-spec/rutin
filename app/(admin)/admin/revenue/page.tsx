@@ -1,12 +1,13 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { requireAdmin } from "@/lib/auth";
-import { getRevenueSummary } from "@/actions/admin/revenue";
+import { getRevenueForecast, getRevenueSummary } from "@/actions/admin/revenue";
 import type { RevenuePeriodPreset } from "@/actions/admin/revenue";
 import { RevenueSummaryCards } from "@/components/admin/revenue/RevenueSummaryCards";
 import { RevenueBreakdown } from "@/components/admin/revenue/RevenueBreakdown";
 import { MateRevenueTable } from "@/components/admin/revenue/MateRevenueTable";
 import { RevenuePeriodFilter } from "@/components/admin/revenue/RevenuePeriodFilter";
+import { RevenueForecastTable } from "@/components/admin/revenue/RevenueForecastTable";
 
 export const dynamic = "force-dynamic";
 
@@ -29,11 +30,14 @@ export default async function RevenuePage({
   const params = await searchParams;
   const preset = (params.preset ?? "current_month") as RevenuePeriodPreset;
 
-  const result = await getRevenueSummary({
-    preset,
-    periodFrom: params.from,
-    periodTo: params.to,
-  });
+  const [result, forecastResult] = await Promise.all([
+    getRevenueSummary({
+      preset,
+      periodFrom: params.from,
+      periodTo: params.to,
+    }),
+    getRevenueForecast(6),
+  ]);
 
   return (
     <div>
@@ -58,6 +62,13 @@ export default async function RevenuePage({
       {result.ok ? (
         <div className="space-y-6">
           <RevenueSummaryCards summary={result.data.summary} />
+          {forecastResult.ok ? (
+            <RevenueForecastTable forecast={forecastResult.data} />
+          ) : (
+            <div className="rounded-lg border bg-white p-4 text-center text-red-600">
+              {forecastResult.error.message}
+            </div>
+          )}
           <RevenueBreakdown breakdown={result.data.summary.breakdown} />
           <div className="rounded-lg border bg-white">
             <div className="border-b px-5 py-4">

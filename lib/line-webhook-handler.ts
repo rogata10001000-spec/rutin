@@ -24,6 +24,7 @@ import {
   syncLineProfileToEndUser,
 } from "@/lib/line-onboarding";
 import { buildAccountPlanUrl } from "@/lib/subscribe-paths";
+import { recordSubscriptionLifecycleEvent } from "@/lib/subscription-lifecycle";
 
 type LineFollowEvent = {
   type: "follow";
@@ -212,6 +213,13 @@ export async function handleLineWebhook(
     if (event.type === "follow") {
       const result = await withWebhookIdempotency("line", eventId, "follow", async () => {
         const user = await ensureIncompleteEndUser(supabase, lineUserId, DEFAULT_PLAN_CODE);
+        const followedAt = new Date(event.timestamp).toISOString();
+
+        await supabase
+          .from("end_users")
+          .update({ line_followed_at: followedAt })
+          .eq("id", user.id)
+          .is("line_followed_at", null);
 
         if (user.isNew) {
           await writeAuditLog({
@@ -223,6 +231,21 @@ export async function handleLineWebhook(
             actorStaffId: null,
           });
         }
+
+        await recordSubscriptionLifecycleEvent(supabase, {
+          endUserId: user.id,
+          castId: account.castId,
+          eventType: "line_follow",
+          planCode: DEFAULT_PLAN_CODE,
+          occurredAt: followedAt,
+          sourceRefType: "line:follow",
+          sourceRefId: eventId,
+          metadata: {
+            line_user_id: lineUserId,
+            line_account_id: lineAccountId,
+            is_new: user.isNew,
+          },
+        });
 
         await syncLineProfileToEndUser(supabase, account, {
           endUserId: user.id,
@@ -275,6 +298,31 @@ export async function handleLineWebhook(
 
         if (!user) {
           const createdUser = await ensureIncompleteEndUser(supabase, lineUserId, DEFAULT_PLAN_CODE);
+          const firstContactAt = new Date(event.timestamp).toISOString();
+
+          await supabase
+            .from("end_users")
+            .update({ line_followed_at: firstContactAt })
+            .eq("id", createdUser.id)
+            .is("line_followed_at", null);
+
+          if (createdUser.isNew) {
+            await recordSubscriptionLifecycleEvent(supabase, {
+              endUserId: createdUser.id,
+              castId: account.castId,
+              eventType: "line_follow",
+              planCode: DEFAULT_PLAN_CODE,
+              occurredAt: firstContactAt,
+              sourceRefType: "line:first_message",
+              sourceRefId: eventId,
+              metadata: {
+                line_user_id: lineUserId,
+                line_account_id: lineAccountId,
+                message_id: messageId,
+                inferred_from: "first_message",
+              },
+            });
+          }
 
           await syncLineProfileToEndUser(supabase, account, {
             endUserId: createdUser.id,

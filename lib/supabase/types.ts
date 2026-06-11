@@ -16,6 +16,14 @@ export type PointReason = "purchase" | "gift_redeem" | "refund" | "chargeback" |
 export type RevenueEventType = "gift_redeem" | "subscription_monthly" | "refund" | "chargeback" | "breakage";
 export type PayoutRuleType = "gift_share" | "subscription_share";
 export type PayoutScopeType = "global" | "cast" | "cast_gift" | "cast_gift_category" | "cast_plan";
+export type SubscriptionLifecycleEventType =
+  | "line_follow"
+  | "trial_start"
+  | "subscribe"
+  | "plan_change"
+  | "cancel_scheduled"
+  | "cancel"
+  | "resume";
 
 // Row types
 type StaffProfileRow = {
@@ -88,6 +96,10 @@ type EndUsersRow = {
   paused_priority_penalty: number;
   tags: string[];
   trial_end_at: string | null;
+  trial_started_at: string | null;
+  subscribed_at: string | null;
+  canceled_at: string | null;
+  line_followed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -206,6 +218,19 @@ type WebhookEventsRow = {
   status: "processing" | "processed" | "failed";
   processing_started_at: string | null;
   attempt_count: number;
+};
+
+type SubscriptionLifecycleEventsRow = {
+  id: string;
+  end_user_id: string;
+  cast_id: string | null;
+  event_type: SubscriptionLifecycleEventType;
+  plan_code: string | null;
+  occurred_at: string;
+  source_ref_type: string | null;
+  source_ref_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
 };
 
 type TaxRatesRow = {
@@ -478,12 +503,16 @@ export interface Database {
       };
       end_users: {
         Row: EndUsersRow;
-        Insert: Omit<EndUsersRow, "id" | "created_at" | "updated_at" | "paused_priority_penalty" | "tags" | "birthday" | "trial_end_at" | "assigned_cast_id" | "primary_line_account_id" | "email" | "email_verified_at" | "phone" | "line_display_name" | "line_picture_url" | "line_profile_synced_at"> & {
+        Insert: Omit<EndUsersRow, "id" | "created_at" | "updated_at" | "paused_priority_penalty" | "tags" | "birthday" | "trial_end_at" | "trial_started_at" | "subscribed_at" | "canceled_at" | "line_followed_at" | "assigned_cast_id" | "primary_line_account_id" | "email" | "email_verified_at" | "phone" | "line_display_name" | "line_picture_url" | "line_profile_synced_at"> & {
           id?: string;
           paused_priority_penalty?: number;
           tags?: string[];
           birthday?: string | null;
           trial_end_at?: string | null;
+          trial_started_at?: string | null;
+          subscribed_at?: string | null;
+          canceled_at?: string | null;
+          line_followed_at?: string | null;
           assigned_cast_id?: string | null;
           primary_line_account_id?: string | null;
           email?: string | null;
@@ -611,6 +640,19 @@ export interface Database {
           attempt_count?: number;
         };
         Update: Partial<Pick<WebhookEventsRow, "processed_at" | "success" | "error_message" | "status" | "processing_started_at" | "attempt_count">>;
+        Relationships: [];
+      };
+      subscription_lifecycle_events: {
+        Row: SubscriptionLifecycleEventsRow;
+        Insert: Omit<SubscriptionLifecycleEventsRow, "id" | "created_at" | "metadata" | "source_ref_type" | "source_ref_id" | "cast_id" | "plan_code"> & {
+          id?: string;
+          cast_id?: string | null;
+          plan_code?: string | null;
+          source_ref_type?: string | null;
+          source_ref_id?: string | null;
+          metadata?: Record<string, unknown>;
+        };
+        Update: Record<string, never>;
         Relationships: [];
       };
       tax_rates: {

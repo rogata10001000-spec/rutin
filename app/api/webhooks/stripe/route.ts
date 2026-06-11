@@ -8,11 +8,13 @@ import { getDefaultLineAccount } from "@/lib/line-accounts";
 import { checkRateLimit, requestKey } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import {
+  currentPeriodEndFromStripeSubscription,
   endUserNicknameFromLineId,
   fetchStripeSubscription,
   syncNewSubscriptionSideEffects,
   trialEndAtFromSubscription,
 } from "@/lib/stripe-subscription-sync";
+import { recordSubscriptionLifecycleEvent } from "@/lib/subscription-lifecycle";
 import type { PayoutScopeType } from "@/lib/supabase/types";
 import {
   PLAN_CODES,
@@ -316,10 +318,11 @@ export async function POST(request: Request) {
 
         const stripeSubscription = await fetchStripeSubscription(subscriptionId);
         const trialEndAt = trialEndAtFromSubscription(stripeSubscription);
-        const currentPeriodEnd = stripeSubscription.current_period_end
-          ? new Date(stripeSubscription.current_period_end * 1000).toISOString()
-          : null;
+        const currentPeriodEnd = currentPeriodEndFromStripeSubscription(stripeSubscription);
         const subscriptionStatus = toSubscriptionStatus(stripeSubscription.status);
+        const subscriptionStartedAt = new Date(
+          (stripeSubscription.created ?? session.created ?? Math.floor(Date.now() / 1000)) * 1000
+        ).toISOString();
 
         // Checkout で入力された顧客メールを LINE 非依存の連絡先として取り込む
         const checkoutEmail = normalizeEmail(
@@ -343,6 +346,10 @@ export async function POST(request: Request) {
               plan_code: planCode,
               assigned_cast_id: castId,
               trial_end_at: trialEndAt,
+              line_followed_at: subscriptionStartedAt,
+              ...(subscriptionStatus === "trial"
+                ? { trial_started_at: subscriptionStartedAt }
+                : { subscribed_at: subscriptionStartedAt }),
             })
             .select("id")
             .single();
@@ -359,6 +366,9 @@ export async function POST(request: Request) {
               plan_code: planCode,
               assigned_cast_id: castId,
               trial_end_at: trialEndAt,
+              ...(subscriptionStatus === "trial"
+                ? { trial_started_at: subscriptionStartedAt }
+                : { subscribed_at: subscriptionStartedAt }),
             })
             .eq("id", user.id);
         }
@@ -396,11 +406,28 @@ export async function POST(request: Request) {
             .from("subscriptions")
             .update({
               status: subscriptionStatus,
-              current_period_end: currentPeriodEnd,
               applied_stripe_price_id: metadata.stripe_price_id ?? "",
+              ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
             })
             .eq("stripe_subscription_id", subscriptionId);
         }
+
+        await recordSubscriptionLifecycleEvent(supabase, {
+          endUserId: user.id,
+          castId,
+          eventType: subscriptionStatus === "trial" ? "trial_start" : "subscribe",
+          planCode,
+          occurredAt: subscriptionStartedAt,
+          sourceRefType: "stripe:subscription_initial",
+          sourceRefId: subscriptionId,
+          metadata: {
+            stripe_checkout_session_id: session.id,
+            stripe_subscription_id: subscriptionId,
+            stripe_customer_id: customerId,
+            status: subscriptionStatus,
+            trial_end_at: trialEndAt,
+          },
+        });
 
         await syncNewSubscriptionSideEffects(supabase, {
           endUserId: user.id,
@@ -451,16 +478,17 @@ export async function POST(request: Request) {
     const result = await withWebhookIdempotency("stripe", eventId, eventType, async () => {
       const subscriptionId = subscription.id;
       const newStatus = toSubscriptionStatus(subscription.status);
-      const currentPeriodEnd = subscription.current_period_end
-        ? new Date(subscription.current_period_end * 1000).toISOString()
-        : null;
+      const currentPeriodEnd = currentPeriodEndFromStripeSubscription(subscription);
       const cancelAtPeriodEnd = subscription.cancel_at_period_end;
       const appliedStripePriceId = subscription.items.data[0]?.price?.id ?? null;
+      const subscriptionStartedAt = new Date(
+        (subscription.created ?? Math.floor(Date.now() / 1000)) * 1000
+      ).toISOString();
 
       // サブスクリプションを検索
       const { data: sub } = await supabase
         .from("subscriptions")
-        .select("id, end_user_id, status, plan_code, cancel_at_period_end")
+        .select("id, end_user_id, status, plan_code, cancel_at_period_end, end_users!inner(assigned_cast_id)")
         .eq("stripe_subscription_id", subscriptionId)
         .single();
 
@@ -504,6 +532,10 @@ export async function POST(request: Request) {
               plan_code: planCode,
               assigned_cast_id: castId,
               trial_end_at: trialEndAt,
+              line_followed_at: subscriptionStartedAt,
+              ...(newStatus === "trial"
+                ? { trial_started_at: subscriptionStartedAt }
+                : { subscribed_at: subscriptionStartedAt }),
             })
             .select("id")
             .single();
@@ -520,6 +552,9 @@ export async function POST(request: Request) {
               plan_code: planCode,
               assigned_cast_id: castId,
               trial_end_at: trialEndAt,
+              ...(newStatus === "trial"
+                ? { trial_started_at: subscriptionStartedAt }
+                : { subscribed_at: subscriptionStartedAt }),
             })
             .eq("id", user.id);
         }
@@ -544,12 +579,29 @@ export async function POST(request: Request) {
             .from("subscriptions")
             .update({
               status: newStatus,
-              current_period_end: currentPeriodEnd,
               cancel_at_period_end: cancelAtPeriodEnd,
               applied_stripe_price_id: appliedStripePriceId,
+              ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
             })
             .eq("stripe_subscription_id", subscriptionId);
         }
+
+        await recordSubscriptionLifecycleEvent(supabase, {
+          endUserId: user.id,
+          castId,
+          eventType: newStatus === "trial" ? "trial_start" : "subscribe",
+          planCode,
+          occurredAt: subscriptionStartedAt,
+          sourceRefType: "stripe:subscription_initial",
+          sourceRefId: subscriptionId,
+          metadata: {
+            stripe_event_id: eventId,
+            stripe_subscription_id: subscriptionId,
+            status: newStatus,
+            trial_end_at: trialEndAt,
+            synced_from: "subscription.created",
+          },
+        });
 
         await syncNewSubscriptionSideEffects(supabase, {
           endUserId: user.id,
@@ -598,28 +650,32 @@ export async function POST(request: Request) {
       }
 
       const planChanged = Boolean(planCodeToSync && planCodeToSync !== sub.plan_code);
+      const trialConverted = previousStatus === "trial" && newStatus === "active";
 
       await supabase
         .from("subscriptions")
         .update({
           status: newStatus,
-          current_period_end: currentPeriodEnd,
           cancel_at_period_end: cancelAtPeriodEnd,
+          ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
           ...(appliedStripePriceId ? { applied_stripe_price_id: appliedStripePriceId } : {}),
           ...(planCodeToSync ? { plan_code: planCodeToSync } : {}),
         })
         .eq("id", sub.id);
 
+      const endUser = sub.end_users as unknown as { assigned_cast_id: string | null };
+      const castId = endUser.assigned_cast_id;
+      const lifecycleUserUpdate = {
+        status: newStatus,
+        ...(trialEndAt ? { trial_end_at: trialEndAt } : {}),
+        ...(trialConverted ? { subscribed_at: new Date().toISOString() } : {}),
+        ...(planCodeToSync ? { plan_code: planCodeToSync } : {}),
+      };
+
       await supabase
         .from("end_users")
-        .update({
-          status: newStatus,
-          ...(trialEndAt ? { trial_end_at: trialEndAt } : {}),
-          ...(planCodeToSync ? { plan_code: planCodeToSync } : {}),
-        })
+        .update(lifecycleUserUpdate)
         .eq("id", sub.end_user_id);
-
-      const trialConverted = previousStatus === "trial" && newStatus === "active";
 
       // 解約予約が新たに入った場合（false→true）に期間終了日を案内（best-effort）
       const cancelNewlyScheduled =
@@ -630,6 +686,51 @@ export async function POST(request: Request) {
           sub.end_user_id,
           cancelScheduledNotification(currentPeriodEnd)
         );
+        await recordSubscriptionLifecycleEvent(supabase, {
+          endUserId: sub.end_user_id,
+          castId,
+          eventType: "cancel_scheduled",
+          planCode: planCodeToSync ?? sub.plan_code,
+          sourceRefType: `stripe:${eventType}:cancel_scheduled`,
+          sourceRefId: eventId,
+          metadata: {
+            stripe_subscription_id: subscriptionId,
+            current_period_end: currentPeriodEnd,
+            cancel_at_period_end: cancelAtPeriodEnd,
+          },
+        });
+      }
+
+      if (trialConverted) {
+        await recordSubscriptionLifecycleEvent(supabase, {
+          endUserId: sub.end_user_id,
+          castId,
+          eventType: "subscribe",
+          planCode: planCodeToSync ?? sub.plan_code,
+          sourceRefType: `stripe:${eventType}:trial_converted`,
+          sourceRefId: eventId,
+          metadata: {
+            stripe_subscription_id: subscriptionId,
+            previous_status: previousStatus,
+            new_status: newStatus,
+          },
+        });
+      }
+
+      if (planChanged) {
+        await recordSubscriptionLifecycleEvent(supabase, {
+          endUserId: sub.end_user_id,
+          castId,
+          eventType: "plan_change",
+          planCode: planCodeToSync,
+          sourceRefType: `stripe:${eventType}:plan_change`,
+          sourceRefId: eventId,
+          metadata: {
+            stripe_subscription_id: subscriptionId,
+            previous_plan_code: sub.plan_code,
+            new_plan_code: planCodeToSync,
+          },
+        });
       }
 
       await writeAuditLog({
@@ -670,7 +771,7 @@ export async function POST(request: Request) {
 
       const { data: sub } = await supabase
         .from("subscriptions")
-        .select("id, end_user_id, end_users!inner(line_user_id)")
+        .select("id, end_user_id, plan_code, end_users!inner(line_user_id, assigned_cast_id)")
         .eq("stripe_subscription_id", subscriptionId)
         .single();
 
@@ -685,10 +786,14 @@ export async function POST(request: Request) {
 
       await supabase
         .from("end_users")
-        .update({ status: "canceled", trial_end_at: null })
+        .update({ status: "canceled", trial_end_at: null, canceled_at: new Date().toISOString() })
         .eq("id", sub.end_user_id);
 
-      const lineUserId = (sub.end_users as unknown as { line_user_id: string }).line_user_id;
+      const endUser = sub.end_users as unknown as {
+        line_user_id: string;
+        assigned_cast_id: string | null;
+      };
+      const lineUserId = endUser.line_user_id;
       if (lineUserId) {
         // 契約変更・解約導線は共通Rutin公式LINEのリッチメニューで管理する。
         const defaultAccount = await getDefaultLineAccount(supabase);
@@ -707,6 +812,19 @@ export async function POST(request: Request) {
 
       // 解約完了を LINE / メールで通知（best-effort）
       await notifyUser(supabase, sub.end_user_id, subscriptionCanceledNotification());
+
+      await recordSubscriptionLifecycleEvent(supabase, {
+        endUserId: sub.end_user_id,
+        castId: endUser.assigned_cast_id,
+        eventType: "cancel",
+        planCode: sub.plan_code,
+        sourceRefType: `stripe:${eventType}`,
+        sourceRefId: eventId,
+        metadata: {
+          stripe_subscription_id: subscriptionId,
+          new_status: "canceled",
+        },
+      });
 
       // 監査ログ
       await writeAuditLog({

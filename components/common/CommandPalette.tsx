@@ -26,6 +26,7 @@ const defaultCommands: Command[] = [
   { id: "pricing", label: "価格設定", path: "/admin/pricing", icon: "💰", keywords: ["price", "価格", "料金"], roles: ["admin"] },
   { id: "settlements", label: "精算", path: "/admin/settlements", icon: "💵", keywords: ["settlement", "精算", "支払い"], roles: ["admin"] },
   { id: "revenue", label: "売上ダッシュボード", path: "/admin/revenue", icon: "📈", keywords: ["revenue", "売上", "収益"], roles: ["admin"] },
+  { id: "marketing", label: "マーケ分析", path: "/admin/marketing", icon: "📊", keywords: ["marketing", "マーケ", "分析", "解約率", "クロージング率"], roles: ["admin"] },
   { id: "payout-rules", label: "配分ルール", path: "/admin/payout-rules", icon: "📊", keywords: ["payout", "配分", "ルール"], roles: ["admin"] },
   { id: "plans", label: "プラン管理", path: "/admin/plans", icon: "📝", keywords: ["plan", "プラン"], roles: ["admin"] },
   { id: "tax-rates", label: "税率管理", path: "/admin/tax-rates", icon: "🧾", keywords: ["tax", "税率"], roles: ["admin"] },

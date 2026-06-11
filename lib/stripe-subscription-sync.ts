@@ -1,14 +1,11 @@
 import type Stripe from "stripe";
-import { stripe } from "@/lib/stripe";
-import { pushTextMessage, switchRichMenu } from "@/lib/line";
-import { getDefaultLineAccount, getLineAccountForCast } from "@/lib/line-accounts";
-import { logger } from "@/lib/logger";
-import { endUserNicknameFromLineId } from "@/lib/line-onboarding";
 import type { createAdminSupabaseClient } from "@/lib/supabase/server";
 
-export { endUserNicknameFromLineId };
-
 type SupabaseAdmin = ReturnType<typeof createAdminSupabaseClient>;
+
+export function endUserNicknameFromLineId(lineUserId: string): string {
+  return `ユーザー_${lineUserId.slice(-6)}`;
+}
 
 export function trialEndAtFromSubscription(
   subscription: Stripe.Subscription
@@ -19,9 +16,26 @@ export function trialEndAtFromSubscription(
   return null;
 }
 
+export function currentPeriodEndFromStripeSubscription(
+  subscription: Stripe.Subscription
+): string | null {
+  const subscriptionWithItemPeriods = subscription as Stripe.Subscription & {
+    items?: {
+      data?: Array<{ current_period_end?: number | null }>;
+    };
+    current_period_end?: number | null;
+  };
+  const unix =
+    subscriptionWithItemPeriods.items?.data?.[0]?.current_period_end ??
+    subscriptionWithItemPeriods.current_period_end;
+
+  return unix ? new Date(unix * 1000).toISOString() : null;
+}
+
 export async function fetchStripeSubscription(
   subscriptionId: string
 ): Promise<Stripe.Subscription> {
+  const { stripe } = await import("@/lib/stripe");
   return stripe.subscriptions.retrieve(subscriptionId);
 }
 
@@ -41,6 +55,13 @@ export async function syncNewSubscriptionSideEffects(
       .update({ trial_end_at: params.trialEndAt })
       .eq("id", params.endUserId);
   }
+
+  const [{ pushTextMessage, switchRichMenu }, { getDefaultLineAccount, getLineAccountForCast }, { logger }] =
+    await Promise.all([
+      import("@/lib/line"),
+      import("@/lib/line-accounts"),
+      import("@/lib/logger"),
+    ]);
 
   const { data: existingAssignment } = await supabase
     .from("cast_assignments")

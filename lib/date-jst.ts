@@ -52,3 +52,15 @@ export function getJstMonthFromDate(dateIso: string): { year: number; month: num
   const [year, month] = dateOnly.split("-").map(Number);
   return { year, month };
 }
+
+export function getJstMonthKey(dateIso: string): string {
+  return dateIso.slice(0, 7);
+}
+
+export function addJstMonths(year: number, month: number, offset: number): { year: number; month: number } {
+  const total = year * 12 + (month - 1) + offset;
+  return {
+    year: Math.floor(total / 12),
+    month: (total % 12) + 1,
+  };
+}

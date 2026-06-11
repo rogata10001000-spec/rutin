@@ -17,6 +17,8 @@ import {
   setSubscriptionCancelAtPeriodEnd,
   updateSubscriptionPlanPrice,
 } from "@/lib/stripe";
+import { currentPeriodEndFromStripeSubscription } from "@/lib/stripe-subscription-sync";
+import { recordSubscriptionLifecycleEvent } from "@/lib/subscription-lifecycle";
 import { changePlanSchema } from "@/schemas/subscription-management";
 import type { PlanCode, SubscriptionStatus } from "@/lib/supabase/types";
 
@@ -342,8 +344,14 @@ export async function cancelMySubscription(): Promise<CancelMySubscriptionResult
     return { ok: true, data: { currentPeriodEnd: subscription.current_period_end } };
   }
 
+  let currentPeriodEnd = subscription.current_period_end;
   try {
-    await setSubscriptionCancelAtPeriodEnd(subscription.stripe_subscription_id, true);
+    const updatedSubscription = await setSubscriptionCancelAtPeriodEnd(
+      subscription.stripe_subscription_id,
+      true
+    );
+    currentPeriodEnd =
+      currentPeriodEndFromStripeSubscription(updatedSubscription) ?? subscription.current_period_end;
   } catch (err) {
     logger.error("cancelMySubscription: stripe update failed", {
       subscriptionId: subscription.stripe_subscription_id,
@@ -357,8 +365,26 @@ export async function cancelMySubscription(): Promise<CancelMySubscriptionResult
 
   await supabase
     .from("subscriptions")
-    .update({ cancel_at_period_end: true })
+    .update({
+      cancel_at_period_end: true,
+      ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
+    })
     .eq("id", subscription.id);
+
+  await recordSubscriptionLifecycleEvent(supabase, {
+    endUserId: ctx.endUserId,
+    castId: ctx.assignedCastId,
+    eventType: "cancel_scheduled",
+    planCode: subscription.plan_code,
+    sourceRefType: "subscription:self_cancel",
+    sourceRefId: `${subscription.id}:${new Date().toISOString()}`,
+    metadata: {
+      line_user_id: ctx.lineUserId,
+      cancel_at_period_end: true,
+      current_period_end: currentPeriodEnd,
+      changed_by: "end_user_self",
+    },
+  });
 
   await writeAuditLog({
     action: "SUBSCRIPTION_SYNC",
@@ -374,7 +400,7 @@ export async function cancelMySubscription(): Promise<CancelMySubscriptionResult
     actorStaffId: null,
   });
 
-  return { ok: true, data: { currentPeriodEnd: subscription.current_period_end } };
+  return { ok: true, data: { currentPeriodEnd } };
 }
 
 export type ResumeMySubscriptionResult = Result<{ resumed: boolean }>;
@@ -421,6 +447,20 @@ export async function resumeMySubscription(): Promise<ResumeMySubscriptionResult
     .from("subscriptions")
     .update({ cancel_at_period_end: false })
     .eq("id", subscription.id);
+
+  await recordSubscriptionLifecycleEvent(supabase, {
+    endUserId: ctx.endUserId,
+    castId: ctx.assignedCastId,
+    eventType: "resume",
+    planCode: subscription.plan_code,
+    sourceRefType: "subscription:self_resume",
+    sourceRefId: `${subscription.id}:${new Date().toISOString()}`,
+    metadata: {
+      line_user_id: ctx.lineUserId,
+      cancel_at_period_end: false,
+      changed_by: "end_user_self",
+    },
+  });
 
   await writeAuditLog({
     action: "SUBSCRIPTION_SYNC",
