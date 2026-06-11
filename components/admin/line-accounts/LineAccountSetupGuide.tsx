@@ -13,9 +13,9 @@ const setupSteps = [
   },
   {
     label: "Step 3",
-    title: "Routineに登録",
-    body: "この画面の「アカウントを追加」から、担当メイトとLINEチャネル情報を登録します。",
-    details: ["担当メイト", "token/secret", "友だち追加URL", "Webhook用ID"],
+    title: "メイト用チャネルのtoken/secretを登録",
+    body: "共通Rutinではなく、メイト用公式LINEのMessaging APIチャネルを開き、その画面のシークレットとアクセストークンを登録します。",
+    details: ["担当メイト", "メイト用token", "メイト用secret", "友だち追加URL"],
   },
   {
     label: "Step 4",
@@ -43,13 +43,37 @@ const checklist = [
   "メイト用公式LINEを作成した",
   "Messaging API有効化時に既存のRutinプロバイダーを選んだ",
   "新しいプロバイダーを作成していない",
+  "LINE Developersでメイト用チャネルを開いていることを確認した",
+  "共通Rutin公式LINEのアクセストークンを流用していない",
+  "共通Rutin公式LINEのトークンを再発行していない",
   "LINE_TOKEN_ENC_KEYを本番環境にも設定した",
-  "チャネルシークレットとアクセストークンをRoutineに登録した",
+  "メイト用チャネルのシークレットとアクセストークンをRoutineに登録した",
   "友だち追加URLを登録した",
   "メイトLINE側にはリッチメニューを設定していない",
   "契約変更・解約は共通Rutin公式LINEのリッチメニューで案内している",
   "一覧のWebhook URLをLINE Developersに設定し、Use webhookをONにした",
   "テストユーザーで契約、友だち追加、受信、返信を確認した",
+];
+
+const tokenRules = [
+  {
+    label: "覚えること",
+    title: "アクセストークンは「1チャネルに1つ」",
+    body: "1つしか発行できないのは正常です。共通Rutinチャネルには共通Rutin用が1つ、メイト用チャネルにはメイト用が1つあります。",
+    tone: "emerald",
+  },
+  {
+    label: "登録するもの",
+    title: "メイト用LINEのチャネル画面にある1つを使う",
+    body: "LINE Developersでチャネル名がメイト用公式LINEになっていることを確認し、その画面のChannel secretとChannel access tokenをRoutineに貼り付けます。",
+    tone: "stone",
+  },
+  {
+    label: "禁止",
+    title: "共通Rutinの「再発行」は押さない",
+    body: "再発行はトークンを増やす操作ではありません。共通Rutin公式LINEの既存トークンが無効になり、本番環境の設定更新が必要になります。",
+    tone: "red",
+  },
 ];
 
 export function LineAccountSetupGuide() {
@@ -108,6 +132,75 @@ export function LineAccountSetupGuide() {
               <code className="mx-1 rounded bg-red-50 px-1.5 py-0.5 text-red-700">line_user_id</code>
               が共通LINEと一致せず、既存ユーザーと自動連携できません。
             </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-sky-100 bg-sky-50/70 p-4 shadow-sm">
+        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-sky-700">
+              Token Rule
+            </p>
+            <h3 className="mt-1 text-base font-bold text-stone-800">
+              チャネルアクセストークンは「同じプロバイダー内の、各チャネルごとに1つ」
+            </h3>
+          </div>
+          <span className="inline-flex w-fit whitespace-nowrap rounded-full bg-white px-3 py-1 text-xs font-bold text-sky-700">
+            共通LINEのトークンをメイトLINEに使わない
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          {tokenRules.map((rule) => (
+            <div
+              key={rule.title}
+              className={`rounded-xl border bg-white p-4 shadow-sm ${
+                rule.tone === "emerald"
+                  ? "border-emerald-100"
+                  : rule.tone === "red"
+                    ? "border-red-100"
+                    : "border-stone-200"
+              }`}
+            >
+              <span
+                className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                  rule.tone === "emerald"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : rule.tone === "red"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-stone-100 text-stone-700"
+                }`}
+              >
+                {rule.label}
+              </span>
+              <h4 className="mt-3 font-bold text-stone-800">{rule.title}</h4>
+              <p className="mt-2 text-sm leading-6 text-stone-600">{rule.body}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 overflow-x-auto rounded-xl border border-white/80 bg-white p-3">
+          <div className="grid min-w-[780px] grid-cols-[1fr_auto_1fr] items-stretch gap-3 text-sm">
+            <div className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+              <p className="font-bold text-stone-800">共通Rutin公式LINEチャネル</p>
+              <p className="mt-2 leading-6 text-stone-600">
+                契約入口・契約変更・解約・フォールバック送信用。ここに表示されるトークンは共通LINE専用です。
+              </p>
+              <p className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-bold text-stone-600">
+                LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET
+              </p>
+            </div>
+            <div className="flex items-center justify-center px-1 text-lg font-bold text-sky-500">≠</div>
+            <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+              <p className="font-bold text-stone-800">メイト用公式LINEチャネル</p>
+              <p className="mt-2 leading-6 text-stone-600">
+                メイトLINEとして受信・返信するための専用チャネル。Routineにはこの画面のトークンを登録します。
+              </p>
+              <p className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-bold text-emerald-700">
+                /admin/line-accounts のチャネルアクセストークン / チャネルシークレット
+              </p>
+            </div>
           </div>
         </div>
       </div>
