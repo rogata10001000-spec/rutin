@@ -61,6 +61,12 @@ const WebhookIcon = () => (
     </svg>
 );
 
+const LineAccountIcon = () => (
+  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 3v-3z" />
+  </svg>
+);
+
 const TaxIcon = () => (
   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2zM10 8.5a.5.5 0 11-1 0 .5.5 0 011 0zm5 5a.5.5 0 11-1 0 .5.5 0 011 0z" />
@@ -132,6 +138,12 @@ const navItems: NavItem[] = [
     name: "精算",
     href: "/admin/settlements",
     icon: <SettlementIcon />,
+    roles: ["admin"],
+  },
+  {
+    name: "LINE公式アカウント",
+    href: "/admin/line-accounts",
+    icon: <LineAccountIcon />,
     roles: ["admin"],
   },
   {

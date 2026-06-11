@@ -1,5 +1,6 @@
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { pushTextMessage } from "@/lib/line";
+import { getSendAccountForEndUser } from "@/lib/line-accounts";
 import { sendEmail } from "@/lib/email";
 import { logger } from "@/lib/logger";
 
@@ -41,7 +42,8 @@ export async function notifyUser(
 
   if (user?.line_user_id && notification.lineText) {
     try {
-      await pushTextMessage(user.line_user_id, notification.lineText);
+      const sendAccount = await getSendAccountForEndUser(endUserId, supabase);
+      await pushTextMessage(sendAccount.credentials, user.line_user_id, notification.lineText);
       lineSent = true;
     } catch (err) {
       logger.error("notifyUser: LINE push failed", {

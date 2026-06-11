@@ -4,6 +4,8 @@ Replace `<APP_BASE_URL>` with your production domain (same value as `APP_BASE_UR
 
 ## LINE Messaging API
 
+### 共通(Routine)アカウント（契約導線・デフォルト）
+
 1. Open [LINE Developers Console](https://developers.line.biz/) → your **production** Messaging API channel.
 2. Set **Webhook URL**: `https://<APP_BASE_URL>/api/webhooks/line`
 3. Enable **Use webhook** and disable auto-reply if it conflicts with your flow.
@@ -11,6 +13,29 @@ Replace `<APP_BASE_URL>` with your production domain (same value as `APP_BASE_UR
 5. Issue **Channel access token** → `LINE_CHANNEL_ACCESS_TOKEN`
 6. Create two rich menus (未契約 / 契約済) with postback actions for check-in (◯/△/×) per requirements.
 7. Copy menu IDs → `RICH_MENU_ID_UNCONTRACTED`, `RICH_MENU_ID_CONTRACTED`
+
+> 共通アカウントは env の `LINE_CHANNEL_*` がデフォルト(フォールバック)として使われる。
+> 管理画面 `/admin/line-accounts` で `is_default=true` の行として登録することも可能（登録時はそちらが優先）。
+
+### メイト別LINE公式アカウント（運用フェーズ）
+
+メイトごとに個別の公式LINEを持たせ、契約後に友だち追加を案内して直接やり取りする。
+
+前提:
+- メイト個別アカウントは共通アカウントと **同一プロバイダー** 配下に作成する。
+  - ⚠️ 同一プロバイダーであれば `line_user_id` が全チャネル共通になり、既存 `end_user` と自動で本人連携できる。異なるプロバイダーでは本人解決できない。
+- token/secret 暗号化のため env に `LINE_TOKEN_ENC_KEY`（base64 32byte、`openssl rand -base64 32`）を設定する。
+
+手順（各メイトについて）:
+1. 同一プロバイダーに Messaging API チャネルを新規作成する。
+2. 管理画面 `/admin/line-accounts` で「アカウントを追加」→ 担当メイト・チャネルシークレット・チャネルアクセストークン・（任意で）リッチメニューID・友だち追加URLを登録する。
+3. 一覧に表示される **Webhook URL**（`https://<APP_BASE_URL>/api/webhooks/line/<accountId>`）をコピーし、そのチャネルの **Webhook URL** に設定して **Use webhook** を有効化する。
+4. 友だち追加URL（`https://lin.ee/...`）を登録しておくと、契約完了時・担当変更時に共通アカウントから自動で案内される。
+
+挙動:
+- メイトアカウントへ follow / メッセージが届くと、`line_user_id` で既存 `end_user` を解決し、会話アカウント（`primary_line_account_id`）を更新。契約者には契約済リッチメニューへ切り替える。
+- 管理画面からの返信は、ユーザーの担当メイトの公式LINE（未設定なら共通）から自動送信される。
+- メイトアカウント未登録時は共通アカウントで会話継続（無停止フォールバック）。
 8. 未契約リッチメニューの「メイトを選ぶ」ボタンは **リンク直指定ではなく postback** にする。
    - postback data: `action=manage_subscription`
    - display text: `メイトを選ぶ`
@@ -41,6 +66,9 @@ Replace `<APP_BASE_URL>` with your production domain (same value as `APP_BASE_UR
 - Send a test message from LINE → appears in admin Inbox
 - Postback check-in → row in `checkins` table
 - New friend → welcome flow (no duplicate errors in `webhook_events`)
+- メイト別チャネルからメッセージ送信 → Inbox / Chat に該当アカウント名バッジが表示される
+- 管理画面から返信 → 担当メイトの公式LINE（未設定なら共通）から届く
+- 契約完了 → 共通アカウントから担当メイトの友だち追加URLが案内される
 - 未契約リッチメニュー「メイトを選ぶ」（postback `action=manage_subscription`）→ トークに `/subscribe/cast?token=...` の案内が返信される
 - 実機 LINE でリッチメニュー「契約・プラン」（LIFFリンク） → ワンタップで `/account/plan` に本人の契約が表示される
 - Postback `action=manage_subscription`（契約者・フォールバック） → 契約管理ページのトークン付き URL が返信される

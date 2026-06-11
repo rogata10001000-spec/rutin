@@ -20,6 +20,7 @@ export type ChatSideInfo = {
   status: string;
   birthday: string | null;
   assignedCastName: string | null;
+  lineAccountName: string | null;
   pointBalance: number;
   pinnedMemos: { id: string; category: string; body: string }[];
   recentCheckins: { date: string; status: string }[];
@@ -109,8 +110,12 @@ export async function getChatThread(
       status,
       birthday,
       assigned_cast_id,
+      primary_line_account_id,
       staff_profiles!end_users_assigned_cast_id_fkey (
         display_name
+      ),
+      line_official_accounts!end_users_primary_line_account_id_fkey (
+        name
       )
     `)
     .eq("id", input.endUserId)
@@ -143,6 +148,7 @@ export async function getChatThread(
     .order("date", { ascending: false });
 
   const staffProfile = user?.staff_profiles as unknown as { display_name: string } | null;
+  const lineAccount = user?.line_official_accounts as unknown as { name: string } | null;
 
   return {
     ok: true,
@@ -156,6 +162,7 @@ export async function getChatThread(
         status: user?.status ?? "active",
         birthday: user?.birthday ?? null,
         assignedCastName: staffProfile?.display_name ?? null,
+        lineAccountName: lineAccount?.name ?? null,
         pointBalance,
         pinnedMemos: (pinnedMemos ?? []).map((m) => ({
           id: m.id,

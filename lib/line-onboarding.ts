@@ -1,5 +1,5 @@
 import { getLineProfile, pushTextMessage, switchRichMenu } from "@/lib/line";
-import { getServerEnv } from "@/lib/env";
+import type { ResolvedLineAccount } from "@/lib/line-accounts";
 import { logger } from "@/lib/logger";
 import type { createAdminSupabaseClient } from "@/lib/supabase/server";
 
@@ -17,15 +17,16 @@ const LINE_PROFILE_SYNC_INTERVAL_MS = 1000 * 60 * 60 * 24;
 
 /** 未契約ユーザー向け welcome + リッチメニュー（follow / 初回 message 共通） */
 export async function sendLineUncontractedOnboarding(
+  account: ResolvedLineAccount,
   lineUserId: string,
   welcomeMessage: string
 ): Promise<void> {
-  await pushTextMessage(lineUserId, welcomeMessage);
+  await pushTextMessage(account.credentials, lineUserId, welcomeMessage);
 
-  const richMenuId = getServerEnv().RICH_MENU_ID_UNCONTRACTED;
+  const richMenuId = account.richMenuUncontractedId;
   if (richMenuId) {
     try {
-      await switchRichMenu(lineUserId, richMenuId);
+      await switchRichMenu(account.credentials, lineUserId, richMenuId);
     } catch (err) {
       logger.error("LINE uncontracted rich menu switch failed", {
         lineUserId,
@@ -109,6 +110,7 @@ export async function ensureIncompleteEndUser(
  */
 export async function syncLineProfileToEndUser(
   supabase: SupabaseAdmin,
+  account: ResolvedLineAccount,
   params: {
     endUserId: string;
     lineUserId: string;
@@ -127,7 +129,7 @@ export async function syncLineProfileToEndUser(
   }
 
   try {
-    const profile = await getLineProfile(lineUserId);
+    const profile = await getLineProfile(account.credentials, lineUserId);
     const updates: {
       line_display_name: string;
       line_picture_url: string | null;

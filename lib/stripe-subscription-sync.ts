@@ -1,8 +1,8 @@
 import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
-import { switchRichMenu } from "@/lib/line";
+import { pushTextMessage, switchRichMenu } from "@/lib/line";
+import { getDefaultLineAccount, getLineAccountForCast } from "@/lib/line-accounts";
 import { logger } from "@/lib/logger";
-import { getServerEnv } from "@/lib/env";
 import { endUserNicknameFromLineId } from "@/lib/line-onboarding";
 import type { createAdminSupabaseClient } from "@/lib/supabase/server";
 
@@ -61,15 +61,42 @@ export async function syncNewSubscriptionSideEffects(
     });
   }
 
-  const richMenuId = getServerEnv().RICH_MENU_ID_CONTRACTED;
+  // 契約時点ではユーザーは共通(デフォルト)アカウントの友だち。
+  // 契約済リッチメニューは共通アカウント側で切り替える。
+  const defaultAccount = await getDefaultLineAccount(supabase);
+  const richMenuId = defaultAccount.richMenuContractedId;
   if (richMenuId) {
     try {
-      await switchRichMenu(params.lineUserId, richMenuId);
+      await switchRichMenu(defaultAccount.credentials, params.lineUserId, richMenuId);
     } catch (err) {
       logger.error("Stripe webhook rich menu switch failed", {
         lineUserId: params.lineUserId,
         error: err instanceof Error ? err.message : "unknown",
       });
     }
+  }
+
+  // 担当メイトの公式LINEがあれば、友だち追加を案内する（共通アカウントから送信）。
+  try {
+    const mateAccount = await getLineAccountForCast(params.castId, supabase);
+    if (mateAccount?.friendAddUrl) {
+      const { data: cast } = await supabase
+        .from("staff_profiles")
+        .select("display_name")
+        .eq("id", params.castId)
+        .maybeSingle();
+      const castName = cast?.display_name ?? "担当メイト";
+      await pushTextMessage(
+        defaultAccount.credentials,
+        params.lineUserId,
+        `ご契約ありがとうございます。\nこれからは ${castName} の公式LINEで直接やり取りができます。\n下記から友だち追加してください。\n${mateAccount.friendAddUrl}`
+      );
+    }
+  } catch (err) {
+    logger.error("Stripe webhook mate LINE invite failed", {
+      lineUserId: params.lineUserId,
+      castId: params.castId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
   }
 }

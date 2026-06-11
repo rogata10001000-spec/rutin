@@ -139,11 +139,16 @@ export function ChatContainer({
         <div className="flex items-center justify-between border-b border-stone-100 bg-stone-50/50 px-6 py-4">
           <div>
             <h2 className="font-bold text-stone-800 text-lg">{sideInfo.nickname}</h2>
-            <div className="flex items-center gap-3 mt-0.5">
+            <div className="flex flex-wrap items-center gap-3 mt-0.5">
               <p className="text-sm font-medium text-stone-500">
                 {sideInfo.planCode.charAt(0).toUpperCase() + sideInfo.planCode.slice(1)} ・{" "}
                 {sideInfo.assignedCastName ?? "担当未割当"}
               </p>
+              {sideInfo.lineAccountName && (
+                <span className="inline-flex items-center whitespace-nowrap rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+                  {sideInfo.lineAccountName}
+                </span>
+              )}
               <TodayProgressBar />
             </div>
           </div>

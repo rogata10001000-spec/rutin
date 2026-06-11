@@ -186,6 +186,11 @@ export function InboxList({ items, selectedUserId }: InboxListProps) {
                     <span className="whitespace-nowrap">
                       担当: {item.assignedCastName ?? "未割当"}
                     </span>
+                    {item.lineAccountName && (
+                      <span className="inline-flex items-center whitespace-nowrap rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                        {item.lineAccountName}
+                      </span>
+                    )}
                     {item.tags.length > 0 && (
                       <span className="truncate">
                         {item.tags.slice(0, 3).join(" / ")}

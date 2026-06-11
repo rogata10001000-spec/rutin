@@ -9,6 +9,8 @@ const serverEnvSchema = z.object({
   LINE_CHANNEL_SECRET: z.string().min(1),
   LINE_CHANNEL_ACCESS_TOKEN: z.string().min(1),
   LINE_USER_TOKEN_SECRET: z.string().min(32),
+  // メイト別LINE公式アカウントのtoken/secret暗号化鍵（base64 32byte）。DBアカウント作成時に必須。
+  LINE_TOKEN_ENC_KEY: z.string().optional(),
   // LIFF: IDトークン検証用のチャネルID（client_id）。未設定ならLIFF導線は無効。
   LINE_LIFF_CHANNEL_ID: z.string().optional(),
   STRIPE_SECRET_KEY: z.string().min(1),

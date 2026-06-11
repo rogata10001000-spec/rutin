@@ -57,6 +57,9 @@ export type AuditAction =
   | "TAX_RATE_CREATE"
   | "TAX_RATE_UPDATE"
   | "PLAN_SETTINGS_UPDATE"
+  // LINE公式アカウント
+  | "LINE_ACCOUNT_CREATE"
+  | "LINE_ACCOUNT_UPDATE"
   // スタッフ管理
   | "STAFF_PROFILE_UPDATE"
   | "CAST_ACCEPTING_TOGGLED"

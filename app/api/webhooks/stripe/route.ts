@@ -4,9 +4,9 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { withWebhookIdempotency } from "@/lib/webhook";
 import { writeAuditLog } from "@/lib/audit";
 import { switchRichMenu } from "@/lib/line";
+import { getSendAccountForEndUser } from "@/lib/line-accounts";
 import { checkRateLimit, requestKey } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
-import { getServerEnv } from "@/lib/env";
 import {
   endUserNicknameFromLineId,
   fetchStripeSubscription,
@@ -689,15 +689,19 @@ export async function POST(request: Request) {
         .eq("id", sub.end_user_id);
 
       const lineUserId = (sub.end_users as unknown as { line_user_id: string }).line_user_id;
-      const uncontractedMenuId = getServerEnv().RICH_MENU_ID_UNCONTRACTED;
-      if (lineUserId && uncontractedMenuId) {
-        try {
-          await switchRichMenu(lineUserId, uncontractedMenuId);
-        } catch (err) {
-          logger.error("Stripe webhook rich menu revert failed", {
-            lineUserId,
-            error: err instanceof Error ? err.message : "unknown",
-          });
+      if (lineUserId) {
+        // 会話が乗っているアカウント（担当メイト → 無ければ共通）の未契約メニューに戻す
+        const revertAccount = await getSendAccountForEndUser(sub.end_user_id, supabase);
+        const uncontractedMenuId = revertAccount.richMenuUncontractedId;
+        if (uncontractedMenuId) {
+          try {
+            await switchRichMenu(revertAccount.credentials, lineUserId, uncontractedMenuId);
+          } catch (err) {
+            logger.error("Stripe webhook rich menu revert failed", {
+              lineUserId,
+              error: err instanceof Error ? err.message : "unknown",
+            });
+          }
         }
       }
 

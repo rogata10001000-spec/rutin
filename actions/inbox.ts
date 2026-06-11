@@ -21,6 +21,7 @@ export type InboxItem = {
   status: "trial" | "active" | "past_due" | "paused" | "canceled" | "incomplete";
   assignedCastId: string | null;
   assignedCastName: string | null;
+  lineAccountName: string | null;
   tags: string[];
   priorityScore: number;
   hasRisk: boolean;
@@ -152,6 +153,9 @@ export async function getInboxItems(
       created_at,
       staff_profiles!end_users_assigned_cast_id_fkey (
         display_name
+      ),
+      line_official_accounts!end_users_primary_line_account_id_fkey (
+        name
       )
     `)
     .neq("status", "incomplete"); // 未契約は除外
@@ -396,6 +400,7 @@ export async function getInboxItems(
     });
 
     const staffProfile = user.staff_profiles as unknown as { display_name: string } | null;
+    const lineAccount = user.line_official_accounts as unknown as { name: string } | null;
 
     return {
       id: user.id,
@@ -407,6 +412,7 @@ export async function getInboxItems(
       status: user.status as InboxItem["status"],
       assignedCastId: user.assigned_cast_id,
       assignedCastName: staffProfile?.display_name ?? null,
+      lineAccountName: lineAccount?.name ?? null,
       tags: user.tags ?? [],
       priorityScore,
       hasRisk: !!riskFlag,

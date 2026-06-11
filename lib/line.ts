@@ -1,16 +1,16 @@
 import crypto from "crypto";
-import { getServerEnv } from "@/lib/env";
 import { fetchWithRetry } from "@/lib/http-client";
 import { logger } from "@/lib/logger";
 
 const LINE_API_BASE = "https://api.line.me/v2/bot";
 
-const getLineAccessToken = () => {
-  const token = getServerEnv().LINE_CHANNEL_ACCESS_TOKEN;
-  if (!token) {
-    throw new Error("LINE_CHANNEL_ACCESS_TOKEN is not set");
-  }
-  return token;
+/**
+ * LINE送受信に必要な資格情報。
+ * lib/line-accounts.ts の resolver が DB/env から解決して渡す。
+ */
+export type LineAccountCredentials = {
+  accessToken: string;
+  channelSecret: string;
 };
 
 export type LineProfile = {
@@ -20,27 +20,46 @@ export type LineProfile = {
   statusMessage: string | null;
 };
 
-export const verifyLineSignature = (signature: string | null, body: string) => {
-  const secret = getServerEnv().LINE_CHANNEL_SECRET;
-  if (!secret) {
-    throw new Error("LINE_CHANNEL_SECRET is not set");
+/**
+ * LINE署名検証（指定アカウントのチャネルシークレットで検証）
+ */
+export const verifyLineSignature = (
+  account: Pick<LineAccountCredentials, "channelSecret">,
+  signature: string | null,
+  body: string
+): boolean => {
+  if (!account.channelSecret) {
+    throw new Error("LINE channel secret is not set");
   }
   if (!signature) {
     return false;
   }
 
-  const expected = crypto.createHmac("sha256", secret).update(body).digest("base64");
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  const expected = crypto
+    .createHmac("sha256", account.channelSecret)
+    .update(body)
+    .digest("base64");
+
+  const signatureBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (signatureBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
 };
 
 /**
- * LINEにテキストメッセージを送信
+ * LINEにテキストメッセージを送信（指定アカウントのトークンで送信）
  */
-export const pushTextMessage = async (lineUserId: string, text: string) => {
+export const pushTextMessage = async (
+  account: Pick<LineAccountCredentials, "accessToken">,
+  lineUserId: string,
+  text: string
+): Promise<void> => {
   const res = await fetchWithRetry(`${LINE_API_BASE}/message/push`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${getLineAccessToken()}`,
+      Authorization: `Bearer ${account.accessToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -57,15 +76,18 @@ export const pushTextMessage = async (lineUserId: string, text: string) => {
 };
 
 /**
- * LINEプロフィールを取得
+ * LINEプロフィールを取得（指定アカウントのトークンで取得）
  */
-export const getLineProfile = async (lineUserId: string): Promise<LineProfile> => {
+export const getLineProfile = async (
+  account: Pick<LineAccountCredentials, "accessToken">,
+  lineUserId: string
+): Promise<LineProfile> => {
   const res = await fetchWithRetry(
     `${LINE_API_BASE}/profile/${encodeURIComponent(lineUserId)}`,
     {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${getLineAccessToken()}`,
+        Authorization: `Bearer ${account.accessToken}`,
       },
     }
   );
@@ -91,13 +113,20 @@ export const getLineProfile = async (lineUserId: string): Promise<LineProfile> =
 };
 
 /**
- * リッチメニューを切り替え
+ * リッチメニューを切り替え（指定アカウントのトークンで切替）
  */
-export const switchRichMenu = async (lineUserId: string, richMenuId: string) => {
-  const res = await fetchWithRetry(`${LINE_API_BASE}/user/${lineUserId}/richmenu/${richMenuId}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${getLineAccessToken()}` },
-  });
+export const switchRichMenu = async (
+  account: Pick<LineAccountCredentials, "accessToken">,
+  lineUserId: string,
+  richMenuId: string
+): Promise<void> => {
+  const res = await fetchWithRetry(
+    `${LINE_API_BASE}/user/${lineUserId}/richmenu/${richMenuId}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${account.accessToken}` },
+    }
+  );
 
   if (!res.ok) {
     throw new Error(`LINE rich menu switch failed: ${res.status}`);
@@ -105,9 +134,12 @@ export const switchRichMenu = async (lineUserId: string, richMenuId: string) => 
 };
 
 /**
- * Flex Messageでチェックインメニューを送信
+ * Flex Messageでチェックインメニューを送信（指定アカウントのトークンで送信）
  */
-export const sendCheckinFlexMessage = async (lineUserId: string) => {
+export const sendCheckinFlexMessage = async (
+  account: Pick<LineAccountCredentials, "accessToken">,
+  lineUserId: string
+): Promise<void> => {
   // JSTで今日の日付を取得
   const jstDate = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
 
@@ -172,7 +204,7 @@ export const sendCheckinFlexMessage = async (lineUserId: string) => {
   const res = await fetchWithRetry(`${LINE_API_BASE}/message/push`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${getLineAccessToken()}`,
+      Authorization: `Bearer ${account.accessToken}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({

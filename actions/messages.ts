@@ -7,6 +7,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { canSendMessage, requireAdminOrSupervisor } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { pushTextMessage } from "@/lib/line";
+import { getSendAccountForEndUser } from "@/lib/line-accounts";
 
 async function recordResponseMetric(
   endUserId: string,
@@ -123,9 +124,12 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
     };
   }
 
+  // 送信元アカウント解決（担当メイトの公式LINE → 無ければ共通）
+  const sendAccount = await getSendAccountForEndUser(user.id);
+
   // LINE送信
   try {
-    await pushTextMessage(user.line_user_id, parsed.data.body);
+    await pushTextMessage(sendAccount.credentials, user.line_user_id, parsed.data.body);
   } catch (err) {
     // LINE送信失敗は監査ログに記録して返す
     await writeAuditLog({
@@ -154,6 +158,7 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
       body: parsed.data.body,
       sent_by_staff_id: auth.id,
       sent_as_proxy: false,
+      line_account_id: sendAccount.id,
     })
     .select("id")
     .single();
@@ -235,9 +240,12 @@ export async function sendProxyMessage(
     };
   }
 
+  // 送信元アカウント解決（担当メイトの公式LINE → 無ければ共通）
+  const sendAccount = await getSendAccountForEndUser(user.id);
+
   // LINE送信
   try {
-    await pushTextMessage(user.line_user_id, parsed.data.body);
+    await pushTextMessage(sendAccount.credentials, user.line_user_id, parsed.data.body);
   } catch (err) {
     await writeAuditLog({
       action: "PROXY_SEND",
@@ -269,6 +277,7 @@ export async function sendProxyMessage(
       sent_by_staff_id: auth.id,
       sent_as_proxy: true,
       proxy_for_cast_id: user.assigned_cast_id,
+      line_account_id: sendAccount.id,
     })
     .select("id")
     .single();

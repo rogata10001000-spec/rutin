@@ -6,6 +6,9 @@ import { Result, toZodErrorMessage } from "./types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { requireAdminOrSupervisor, canAccessUser, getCurrentStaff } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
+import { pushTextMessage } from "@/lib/line";
+import { getLineAccountForCast, getSendAccountForEndUser } from "@/lib/line-accounts";
+import { logger } from "@/lib/logger";
 
 export type CastOption = {
   id: string;
@@ -178,7 +181,7 @@ export async function assignCast(input: AssignCastInput): Promise<AssignCastResu
   // end_user取得
   const { data: user } = await supabase
     .from("end_users")
-    .select("id, assigned_cast_id")
+    .select("id, assigned_cast_id, line_user_id, status, primary_line_account_id")
     .eq("id", parsed.data.endUserId)
     .single();
 
@@ -192,7 +195,7 @@ export async function assignCast(input: AssignCastInput): Promise<AssignCastResu
   // toCastが存在するか確認
   const { data: toCast } = await supabase
     .from("staff_profiles")
-    .select("id, role")
+    .select("id, role, display_name")
     .eq("id", parsed.data.toCastId)
     .single();
 
@@ -254,6 +257,34 @@ export async function assignCast(input: AssignCastInput): Promise<AssignCastResu
       { reason: parsed.data.reason }
     ),
   });
+
+  // 担当変更で新メイトの公式LINEがあり、まだその会話に乗っていない契約者には
+  // 新メイトの友だち追加を案内する（best-effort、現在会話中のアカウントから送信）。
+  if (user.line_user_id && !["incomplete", "canceled"].includes(user.status)) {
+    try {
+      const mateAccount = await getLineAccountForCast(parsed.data.toCastId);
+      if (
+        mateAccount?.friendAddUrl &&
+        mateAccount.id &&
+        mateAccount.id !== user.primary_line_account_id
+      ) {
+        const castName =
+          (toCast as { display_name?: string }).display_name ?? "新しい担当メイト";
+        const currentAccount = await getSendAccountForEndUser(user.id);
+        await pushTextMessage(
+          currentAccount.credentials,
+          user.line_user_id,
+          `担当メイトが ${castName} に変更になりました。\nこれからは ${castName} の公式LINEで直接やり取りができます。\n下記から友だち追加してください。\n${mateAccount.friendAddUrl}`
+        );
+      }
+    } catch (err) {
+      logger.error("Cast reassignment LINE invite failed", {
+        endUserId: user.id,
+        toCastId: parsed.data.toCastId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+  }
 
   revalidatePath("/inbox");
   revalidatePath("/users");

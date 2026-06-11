@@ -84,9 +84,28 @@ type EndUsersRow = {
   status: SubscriptionStatus;
   plan_code: string;
   assigned_cast_id: string | null;
+  primary_line_account_id: string | null;
   paused_priority_penalty: number;
   tags: string[];
   trial_end_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type LineOfficialAccountsRow = {
+  id: string;
+  cast_id: string | null;
+  is_default: boolean;
+  name: string;
+  channel_id: string | null;
+  bot_user_id: string | null;
+  channel_secret_encrypted: string | null;
+  channel_access_token_encrypted: string | null;
+  liff_id: string | null;
+  rich_menu_uncontracted_id: string | null;
+  rich_menu_contracted_id: string | null;
+  friend_add_url: string | null;
+  active: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -117,6 +136,7 @@ type MessagesRow = {
   direction: MessageDirection;
   body: string;
   line_message_id: string | null;
+  line_account_id: string | null;
   sent_by_staff_id: string | null;
   sent_as_proxy: boolean;
   proxy_for_cast_id: string | null;
@@ -458,13 +478,14 @@ export interface Database {
       };
       end_users: {
         Row: EndUsersRow;
-        Insert: Omit<EndUsersRow, "id" | "created_at" | "updated_at" | "paused_priority_penalty" | "tags" | "birthday" | "trial_end_at" | "assigned_cast_id" | "email" | "email_verified_at" | "phone" | "line_display_name" | "line_picture_url" | "line_profile_synced_at"> & {
+        Insert: Omit<EndUsersRow, "id" | "created_at" | "updated_at" | "paused_priority_penalty" | "tags" | "birthday" | "trial_end_at" | "assigned_cast_id" | "primary_line_account_id" | "email" | "email_verified_at" | "phone" | "line_display_name" | "line_picture_url" | "line_profile_synced_at"> & {
           id?: string;
           paused_priority_penalty?: number;
           tags?: string[];
           birthday?: string | null;
           trial_end_at?: string | null;
           assigned_cast_id?: string | null;
+          primary_line_account_id?: string | null;
           email?: string | null;
           email_verified_at?: string | null;
           phone?: string | null;
@@ -495,14 +516,50 @@ export interface Database {
       };
       messages: {
         Row: MessagesRow;
-        Insert: Omit<MessagesRow, "id" | "created_at" | "sent_as_proxy" | "line_message_id" | "proxy_for_cast_id" | "sent_by_staff_id"> & {
+        Insert: Omit<MessagesRow, "id" | "created_at" | "sent_as_proxy" | "line_message_id" | "line_account_id" | "proxy_for_cast_id" | "sent_by_staff_id"> & {
           id?: string;
           sent_as_proxy?: boolean;
           line_message_id?: string | null;
+          line_account_id?: string | null;
           proxy_for_cast_id?: string | null;
           sent_by_staff_id?: string | null;
         };
         Update: Record<string, never>;
+        Relationships: [];
+      };
+      line_official_accounts: {
+        Row: LineOfficialAccountsRow;
+        Insert: Omit<
+          LineOfficialAccountsRow,
+          | "id"
+          | "created_at"
+          | "updated_at"
+          | "is_default"
+          | "active"
+          | "channel_id"
+          | "bot_user_id"
+          | "channel_secret_encrypted"
+          | "channel_access_token_encrypted"
+          | "liff_id"
+          | "rich_menu_uncontracted_id"
+          | "rich_menu_contracted_id"
+          | "friend_add_url"
+          | "cast_id"
+        > & {
+          id?: string;
+          cast_id?: string | null;
+          is_default?: boolean;
+          active?: boolean;
+          channel_id?: string | null;
+          bot_user_id?: string | null;
+          channel_secret_encrypted?: string | null;
+          channel_access_token_encrypted?: string | null;
+          liff_id?: string | null;
+          rich_menu_uncontracted_id?: string | null;
+          rich_menu_contracted_id?: string | null;
+          friend_add_url?: string | null;
+        };
+        Update: Partial<Omit<LineOfficialAccountsRow, "id" | "created_at" | "updated_at">>;
         Relationships: [];
       };
       checkins: {
