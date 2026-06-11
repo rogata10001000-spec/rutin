@@ -13,6 +13,13 @@ const getLineAccessToken = () => {
   return token;
 };
 
+export type LineProfile = {
+  userId: string;
+  displayName: string;
+  pictureUrl: string | null;
+  statusMessage: string | null;
+};
+
 export const verifyLineSignature = (signature: string | null, body: string) => {
   const secret = getServerEnv().LINE_CHANNEL_SECRET;
   if (!secret) {
@@ -47,6 +54,40 @@ export const pushTextMessage = async (lineUserId: string, text: string) => {
     logger.error("LINE push failed", { status: res.status, lineUserId });
     throw new Error(`LINE push failed: ${res.status} - ${errorText.slice(0, 200)}`);
   }
+};
+
+/**
+ * LINEプロフィールを取得
+ */
+export const getLineProfile = async (lineUserId: string): Promise<LineProfile> => {
+  const res = await fetchWithRetry(
+    `${LINE_API_BASE}/profile/${encodeURIComponent(lineUserId)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${getLineAccessToken()}`,
+      },
+    }
+  );
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`LINE profile fetch failed: ${res.status} - ${errorText.slice(0, 200)}`);
+  }
+
+  const data = (await res.json()) as {
+    userId: string;
+    displayName: string;
+    pictureUrl?: string;
+    statusMessage?: string;
+  };
+
+  return {
+    userId: data.userId,
+    displayName: data.displayName,
+    pictureUrl: data.pictureUrl ?? null,
+    statusMessage: data.statusMessage ?? null,
+  };
 };
 
 /**

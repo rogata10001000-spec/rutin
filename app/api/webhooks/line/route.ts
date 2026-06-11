@@ -16,6 +16,7 @@ import { notifyStaffOfInboundMessage } from "@/lib/push-notifications";
 import {
   ensureIncompleteEndUser,
   sendLineUncontractedOnboarding,
+  syncLineProfileToEndUser,
 } from "@/lib/line-onboarding";
 import { buildAccountPlanUrl } from "@/lib/subscribe-paths";
 
@@ -125,26 +126,34 @@ export async function POST(request: Request) {
 
     if (event.type === "follow") {
       const result = await withWebhookIdempotency("line", eventId, "follow", async () => {
-        const { id: userId, isNew } = await ensureIncompleteEndUser(
+        const user = await ensureIncompleteEndUser(
           supabase,
           lineUserId,
           DEFAULT_PLAN_CODE
         );
 
-        if (isNew) {
+        if (user.isNew) {
           await writeAuditLog({
             action: "LINE_FOLLOW",
             targetType: "end_users",
-            targetId: userId,
+            targetId: user.id,
             success: true,
             metadata: { line_user_id: lineUserId },
             actorStaffId: null,
           });
         }
 
+        await syncLineProfileToEndUser(supabase, {
+          endUserId: user.id,
+          lineUserId,
+          nickname: user.nickname,
+          lastSyncedAt: user.lineProfileSyncedAt,
+          force: true,
+        });
+
         await sendLineUncontractedOnboarding(lineUserId, buildWelcomeMessage(lineUserId));
 
-        return { success: true, userId, isNew };
+        return { success: true, userId: user.id, isNew: user.isNew };
       });
 
       if (result.status === "error") {
@@ -159,36 +168,51 @@ export async function POST(request: Request) {
       const result = await withWebhookIdempotency("line", eventId, "message", async () => {
         const { data: user } = await supabase
           .from("end_users")
-          .select("id, status")
+          .select("id, status, nickname, line_profile_synced_at")
           .eq("line_user_id", lineUserId)
           .maybeSingle();
 
         if (!user) {
-          const { id: newUserId, isNew } = await ensureIncompleteEndUser(
+          const createdUser = await ensureIncompleteEndUser(
             supabase,
             lineUserId,
             DEFAULT_PLAN_CODE
           );
 
-          if (isNew) {
+          await syncLineProfileToEndUser(supabase, {
+            endUserId: createdUser.id,
+            lineUserId,
+            nickname: createdUser.nickname,
+            lastSyncedAt: createdUser.lineProfileSyncedAt,
+            force: createdUser.isNew,
+          });
+
+          if (createdUser.isNew) {
             await sendLineUncontractedOnboarding(lineUserId, buildWelcomeMessage(lineUserId));
           }
 
           const saved = await saveInboundMessage(
             supabase,
-            newUserId,
+            createdUser.id,
             messageId,
             messageText,
             "incomplete"
           );
 
           return {
-            userId: newUserId,
+            userId: createdUser.id,
             messageId: saved.messageId,
             duplicate: saved.duplicate,
             isNew: true,
           };
         }
+
+        await syncLineProfileToEndUser(supabase, {
+          endUserId: user.id,
+          lineUserId,
+          nickname: user.nickname,
+          lastSyncedAt: user.line_profile_synced_at,
+        });
 
         const saved = await saveInboundMessage(
           supabase,

@@ -30,10 +30,22 @@ function formatTime(dateStr: string | null): string {
 
 // 選択されていない行の左端アクセント色
 function getAccentClass(item: InboxItem): string {
+  if (item.hasUnread) return "bg-terracotta";
   if (item.hasRisk) return "bg-red-500";
   if (item.replyStatus === "unreplied") return "bg-red-400";
   if (item.replyStatus === "not_sent_today") return "bg-amber-400";
   return "bg-transparent";
+}
+
+function getPreviewText(item: InboxItem): string {
+  if (!item.lastMessageBody) return "メッセージはまだありません";
+  const prefix = item.lastMessageDirection === "out" ? "自分: " : "相手: ";
+  return `${prefix}${item.lastMessageBody.replace(/\s+/g, " ").trim()}`;
+}
+
+function getUnreadBadgeLabel(unreadCount: number): string {
+  if (unreadCount > 99) return "99+";
+  return String(unreadCount);
 }
 
 // 返信状態の小バッジ
@@ -88,29 +100,69 @@ export function InboxList({ items, selectedUserId }: InboxListProps) {
             >
               <div className="flex items-start gap-3">
                 {/* アバター */}
-                <div
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                    isSelected
-                      ? "bg-terracotta text-white"
-                      : "bg-stone-200 text-stone-600"
-                  }`}
-                >
-                  {item.nickname.charAt(0)}
-                </div>
+                {item.linePictureUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={item.linePictureUrl}
+                    alt={`${item.displayName}のプロフィール画像`}
+                    className="h-10 w-10 shrink-0 rounded-full border border-stone-200 object-cover"
+                  />
+                ) : (
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+                      isSelected
+                        ? "bg-terracotta text-white"
+                        : "bg-stone-200 text-stone-600"
+                    }`}
+                  >
+                    {item.displayName.charAt(0)}
+                  </div>
+                )}
 
                 <div className="min-w-0 flex-1">
                   {/* 1段目: 名前 + 時刻 */}
                   <div className="flex items-center justify-between gap-2">
-                    <span className="flex min-w-0 items-center gap-1 font-bold text-stone-800">
-                      <span className="truncate">{item.nickname}</span>
+                    <span
+                      className={`flex min-w-0 items-center gap-1 ${
+                        item.hasUnread ? "font-extrabold text-stone-900" : "font-bold text-stone-800"
+                      }`}
+                    >
+                      <span className="truncate">{item.displayName}</span>
                       {item.isBirthdayToday && <span aria-hidden>🎂</span>}
                     </span>
-                    <span className="shrink-0 whitespace-nowrap text-[11px] text-stone-400">
-                      {formatTime(item.lastUserMessageAt)}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span className="whitespace-nowrap text-[11px] text-stone-400">
+                        {formatTime(item.lastMessageAt ?? item.lastUserMessageAt)}
+                      </span>
+                      {item.hasUnread ? (
+                        <span className="inline-flex min-w-[1.35rem] items-center justify-center whitespace-nowrap rounded-full bg-terracotta px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          {getUnreadBadgeLabel(item.unreadCount)}
+                        </span>
+                      ) : (
+                        <span
+                          className={`h-2 w-2 rounded-full ${
+                            item.replyStatus === "unreplied"
+                              ? "bg-red-400"
+                              : item.replyStatus === "not_sent_today"
+                                ? "bg-amber-400"
+                                : "bg-transparent"
+                          }`}
+                          aria-hidden
+                        />
+                      )}
+                    </div>
                   </div>
 
-                  {/* 2段目: 状態バッジ */}
+                  {/* 2段目: 直近メッセージプレビュー */}
+                  <p
+                    className={`mt-1 truncate text-sm ${
+                      item.hasUnread ? "font-semibold text-stone-700" : "text-stone-500"
+                    }`}
+                  >
+                    {getPreviewText(item)}
+                  </p>
+
+                  {/* 3段目: 状態バッジ */}
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <ReplyDot status={item.replyStatus} />
                     <BadgePlan plan={item.planCode} />
@@ -129,7 +181,7 @@ export function InboxList({ items, selectedUserId }: InboxListProps) {
                     )}
                   </div>
 
-                  {/* 3段目: 担当・タグ */}
+                  {/* 4段目: 担当・タグ */}
                   <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-stone-400">
                     <span className="whitespace-nowrap">
                       担当: {item.assignedCastName ?? "未割当"}

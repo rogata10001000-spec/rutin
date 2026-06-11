@@ -5,6 +5,7 @@ import { getCurrentStaff } from "@/lib/auth";
 import { InboxList } from "@/components/inbox/InboxList";
 import { InboxFilters } from "@/components/inbox/InboxFilters";
 import { InboxAutoRefresh } from "@/components/inbox/InboxAutoRefresh";
+import { ThreadReadMarker } from "@/components/inbox/ThreadReadMarker";
 import { ChatContainer } from "@/components/chat/ChatContainer";
 import { ChatSidePanel } from "@/components/chat/ChatSidePanel";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -71,6 +72,9 @@ export default async function InboxPage({
   const items = result.ok ? result.data.items : [];
   const summary = result.ok ? result.data.summary : undefined;
   const availableTags = result.ok ? result.data.availableTags : [];
+  const selectedItem = selectedUserId
+    ? items.find((item) => item.id === selectedUserId) ?? null
+    : null;
 
   // 選択中ユーザーへ戻る/解除するリンク（フィルタ維持）
   const listOnlyParams = new URLSearchParams();
@@ -130,6 +134,11 @@ export default async function InboxPage({
         {selectedUserId && chatResult && chatResult.ok && staff ? (
           <>
             <div className="flex min-w-0 flex-1 flex-col">
+              <ThreadReadMarker
+                endUserId={selectedUserId}
+                unreadCount={selectedItem?.unreadCount ?? 0}
+                lastMessageAt={selectedItem?.lastMessageAt ?? null}
+              />
               {/* モバイル用: 一覧へ戻る */}
               <Link
                 href={backToListHref}

@@ -49,6 +49,15 @@ type StaffPushSubscriptionsRow = {
   updated_at: string;
 };
 
+type StaffThreadReadsRow = {
+  id: string;
+  staff_id: string;
+  end_user_id: string;
+  last_read_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
 type PlansRow = {
   plan_code: string;
   name: string;
@@ -65,6 +74,9 @@ type EndUsersRow = {
   id: string;
   line_user_id: string;
   nickname: string;
+  line_display_name: string | null;
+  line_picture_url: string | null;
+  line_profile_synced_at: string | null;
   birthday: string | null;
   email: string | null;
   email_verified_at: string | null;
@@ -429,6 +441,15 @@ export interface Database {
         Update: Partial<Omit<StaffPushSubscriptionsRow, "id" | "created_at" | "staff_id">>;
         Relationships: [];
       };
+      staff_thread_reads: {
+        Row: StaffThreadReadsRow;
+        Insert: Omit<StaffThreadReadsRow, "id" | "created_at" | "updated_at" | "last_read_at"> & {
+          id?: string;
+          last_read_at?: string;
+        };
+        Update: Partial<Omit<StaffThreadReadsRow, "id" | "created_at" | "staff_id" | "end_user_id">>;
+        Relationships: [];
+      };
       plans: {
         Row: PlansRow;
         Insert: PlansRow;
@@ -437,7 +458,7 @@ export interface Database {
       };
       end_users: {
         Row: EndUsersRow;
-        Insert: Omit<EndUsersRow, "id" | "created_at" | "updated_at" | "paused_priority_penalty" | "tags" | "birthday" | "trial_end_at" | "assigned_cast_id" | "email" | "email_verified_at" | "phone"> & {
+        Insert: Omit<EndUsersRow, "id" | "created_at" | "updated_at" | "paused_priority_penalty" | "tags" | "birthday" | "trial_end_at" | "assigned_cast_id" | "email" | "email_verified_at" | "phone" | "line_display_name" | "line_picture_url" | "line_profile_synced_at"> & {
           id?: string;
           paused_priority_penalty?: number;
           tags?: string[];
@@ -447,6 +468,9 @@ export interface Database {
           email?: string | null;
           email_verified_at?: string | null;
           phone?: string | null;
+          line_display_name?: string | null;
+          line_picture_url?: string | null;
+          line_profile_synced_at?: string | null;
         };
         Update: Partial<Omit<EndUsersRow, "id" | "created_at">>;
         Relationships: [];
