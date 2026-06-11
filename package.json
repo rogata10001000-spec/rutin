@@ -19,6 +19,7 @@
     "setup:stripe": "tsx scripts/setup-stripe.ts",
     "verify:stripe-checkout": "tsx scripts/verify-stripe-checkout.ts",
     "backfill:email": "tsx scripts/backfill-end-user-email.ts",
+    "sync:line-profiles": "tsx scripts/sync-line-profiles.ts",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --local > lib/supabase/database.types.ts",
     "mcp:stripe": "tsx mcp-servers/stripe-mcp.ts",
