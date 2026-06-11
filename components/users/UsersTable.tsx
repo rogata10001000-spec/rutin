@@ -36,6 +36,11 @@ export function UsersTable({ items }: UsersTableProps) {
                 <div className="mt-2 flex flex-wrap gap-2">
                   <BadgePlan plan={item.planCode as "light" | "standard" | "premium"} />
                   <BadgeStatus status={item.status as "trial" | "active" | "past_due" | "paused" | "canceled" | "incomplete"} />
+                  {item.cancelAtPeriodEnd && (
+                    <span className="inline-flex items-center whitespace-nowrap rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                      解約予定
+                    </span>
+                  )}
                 </div>
                 {item.assignedCastName && (
                   <p className="mt-2 text-xs font-medium text-stone-500">
@@ -49,7 +54,7 @@ export function UsersTable({ items }: UsersTableProps) {
       </div>
 
       {/* デスクトップ用テーブル */}
-      <table className="hidden min-w-full divide-y divide-stone-200 lg:table">
+      <table className="hidden min-w-[960px] divide-y divide-stone-200 lg:table">
         <thead className="bg-stone-50">
           <tr>
             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
@@ -58,10 +63,13 @@ export function UsersTable({ items }: UsersTableProps) {
             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
               プラン
             </th>
-            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
+            <th className="whitespace-nowrap px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
               状態
             </th>
-            <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
+            <th className="whitespace-nowrap px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
+              解約
+            </th>
+            <th className="whitespace-nowrap px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
               担当
             </th>
             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
@@ -92,6 +100,15 @@ export function UsersTable({ items }: UsersTableProps) {
               </td>
               <td className="whitespace-nowrap px-6 py-4">
                 <BadgeStatus status={item.status as "trial" | "active" | "past_due" | "paused" | "canceled" | "incomplete"} />
+              </td>
+              <td className="whitespace-nowrap px-6 py-4">
+                {item.cancelAtPeriodEnd ? (
+                  <span className="inline-flex items-center whitespace-nowrap rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                    解約予定
+                  </span>
+                ) : (
+                  <span className="text-sm text-stone-400">-</span>
+                )}
               </td>
               <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">
                 {item.assignedCastName ?? "-"}

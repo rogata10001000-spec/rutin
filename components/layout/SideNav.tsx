@@ -85,6 +85,18 @@ const PhotoIcon = () => (
   </svg>
 );
 
+const CancellationIcon = () => (
+  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+  </svg>
+);
+
+const RevenueIcon = () => (
+  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+  </svg>
+);
+
 const navItems: NavItem[] = [
   {
     name: "受信トレイ",
@@ -97,6 +109,12 @@ const navItems: NavItem[] = [
     href: "/users",
     icon: <UsersIcon />,
     roles: ["admin", "supervisor", "cast"],
+  },
+  {
+    name: "解約予定",
+    href: "/admin/cancellations",
+    icon: <CancellationIcon />,
+    roles: ["admin", "supervisor"],
   },
   {
     name: "プロフィール管理",
@@ -138,6 +156,12 @@ const navItems: NavItem[] = [
     name: "精算",
     href: "/admin/settlements",
     icon: <SettlementIcon />,
+    roles: ["admin"],
+  },
+  {
+    name: "売上",
+    href: "/admin/revenue",
+    icon: <RevenueIcon />,
     roles: ["admin"],
   },
   {

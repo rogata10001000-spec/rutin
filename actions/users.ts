@@ -16,6 +16,8 @@ export type UserListItem = {
   assignedCastName: string | null;
   tags: string[];
   createdAt: string;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
 };
 
 export type SearchUsersInput = {
@@ -24,6 +26,7 @@ export type SearchUsersInput = {
     planCodes?: string[];
     statuses?: string[];
     assignedCastId?: string;
+    cancelAtPeriodEnd?: boolean;
   };
 };
 
@@ -46,6 +49,18 @@ export async function searchUsers(
   const supabase = await createServerSupabaseClient();
   const { query, filters } = input;
 
+  const subscriptionSelect = input.filters?.cancelAtPeriodEnd
+    ? `subscriptions!inner (
+        cancel_at_period_end,
+        current_period_end,
+        status
+      )`
+    : `subscriptions (
+        cancel_at_period_end,
+        current_period_end,
+        status
+      )`;
+
   let dbQuery = supabase
     .from("end_users")
     .select(`
@@ -58,10 +73,17 @@ export async function searchUsers(
       created_at,
       staff_profiles!end_users_assigned_cast_id_fkey (
         display_name
-      )
+      ),
+      ${subscriptionSelect}
     `)
     .neq("status", "incomplete")
     .order("created_at", { ascending: false });
+
+  if (input.filters?.cancelAtPeriodEnd) {
+    dbQuery = dbQuery
+      .eq("subscriptions.cancel_at_period_end", true)
+      .not("subscriptions.status", "in", "(canceled,incomplete)");
+  }
 
   if (query) {
     dbQuery = dbQuery.ilike("nickname", `%${query}%`);
@@ -87,6 +109,11 @@ export async function searchUsers(
 
   const items: UserListItem[] = (users ?? []).map((user) => {
     const staffProfile = user.staff_profiles as unknown as { display_name: string } | null;
+    const subscriptions = user.subscriptions as unknown as
+      | { cancel_at_period_end: boolean; current_period_end: string | null; status: string }
+      | { cancel_at_period_end: boolean; current_period_end: string | null; status: string }[]
+      | null;
+    const subscription = Array.isArray(subscriptions) ? subscriptions[0] : subscriptions;
     return {
       id: user.id,
       nickname: user.nickname,
@@ -96,6 +123,8 @@ export async function searchUsers(
       assignedCastName: staffProfile?.display_name ?? null,
       tags: user.tags ?? [],
       createdAt: user.created_at,
+      cancelAtPeriodEnd: subscription?.cancel_at_period_end ?? false,
+      currentPeriodEnd: subscription?.current_period_end ?? null,
     };
   });
 

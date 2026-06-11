@@ -3,6 +3,7 @@ import { searchUsers } from "@/actions/users";
 import { UsersTable } from "@/components/users/UsersTable";
 import { UserSearchBar } from "@/components/users/UserSearchBar";
 import { UsersPageHeader } from "@/components/users/UsersPageHeader";
+import { UsersFilters } from "@/components/users/UsersFilters";
 import { TableSkeleton } from "@/components/common/LoadingSkeleton";
 import { EmptyState } from "@/components/common/EmptyState";
 
@@ -12,6 +13,7 @@ type SearchParams = {
   q?: string;
   plan?: string;
   status?: string;
+  cancelPending?: string;
 };
 
 export default async function UsersPage({
@@ -26,6 +28,7 @@ export default async function UsersPage({
     filters: {
       planCodes: params.plan ? params.plan.split(",") : undefined,
       statuses: params.status ? params.status.split(",") : undefined,
+      cancelAtPeriodEnd: params.cancelPending === "1" ? true : undefined,
     },
   });
 
@@ -36,6 +39,10 @@ export default async function UsersPage({
       <div className="mb-4">
         <UserSearchBar currentQuery={params.q ?? ""} />
       </div>
+
+      <Suspense fallback={null}>
+        <UsersFilters />
+      </Suspense>
 
       <div className="rounded-lg border bg-white">
         <Suspense fallback={<div className="p-4"><TableSkeleton rows={10} /></div>}>

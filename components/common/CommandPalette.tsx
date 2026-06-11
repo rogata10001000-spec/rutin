@@ -20,10 +20,12 @@ const defaultCommands: Command[] = [
   // ナビゲーション
   { id: "inbox", label: "インボックス", path: "/inbox", icon: "📥", keywords: ["inbox", "未返信", "対応"], roles: ["admin", "supervisor", "cast"] },
   { id: "users", label: "ユーザー一覧", path: "/users", icon: "👥", keywords: ["user", "ユーザー", "一覧"], roles: ["admin", "supervisor", "cast"] },
+  { id: "cancellations", label: "解約予定", path: "/admin/cancellations", icon: "⚠️", keywords: ["cancel", "解約", "解約予定"], roles: ["admin", "supervisor"] },
   { id: "audit", label: "監査ログ", path: "/admin/audit", icon: "📋", keywords: ["audit", "監査", "ログ"], roles: ["admin", "supervisor"] },
   { id: "staff", label: "メイト管理", path: "/admin/staff", icon: "👤", keywords: ["staff", "スタッフ", "メイト"], roles: ["admin", "supervisor"] },
   { id: "pricing", label: "価格設定", path: "/admin/pricing", icon: "💰", keywords: ["price", "価格", "料金"], roles: ["admin"] },
   { id: "settlements", label: "精算", path: "/admin/settlements", icon: "💵", keywords: ["settlement", "精算", "支払い"], roles: ["admin"] },
+  { id: "revenue", label: "売上ダッシュボード", path: "/admin/revenue", icon: "📈", keywords: ["revenue", "売上", "収益"], roles: ["admin"] },
   { id: "payout-rules", label: "配分ルール", path: "/admin/payout-rules", icon: "📊", keywords: ["payout", "配分", "ルール"], roles: ["admin"] },
   { id: "plans", label: "プラン管理", path: "/admin/plans", icon: "📝", keywords: ["plan", "プラン"], roles: ["admin"] },
   { id: "tax-rates", label: "税率管理", path: "/admin/tax-rates", icon: "🧾", keywords: ["tax", "税率"], roles: ["admin"] },
