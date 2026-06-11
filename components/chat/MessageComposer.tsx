@@ -5,7 +5,6 @@ import { AiDraftButton } from "./AiDraftButton";
 import { BirthdayWidget } from "./BirthdayWidget";
 import { TemplateSelector } from "./TemplateSelector";
 import { SaveStatus } from "@/components/common/SaveStatus";
-import { useKeyboardShortcut } from "@/hooks/useKeyboardShortcut";
 
 type MessageComposerProps = {
   onSend: (body: string) => Promise<void>;
@@ -83,8 +82,7 @@ export function MessageComposer({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [body]);
 
-  const handleSubmit = useCallback(async (e?: React.FormEvent) => {
-    e?.preventDefault();
+  const handleSubmit = useCallback(async () => {
     if (!body.trim() || sending) return;
 
     await onSend(body.trim());
@@ -94,22 +92,11 @@ export function MessageComposer({
     setSaveStatus("idle");
   }, [body, sending, onSend, endUserId]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
-  };
-
-  // Cmd/Ctrl + S で送信
-  useKeyboardShortcut("s", () => {
-    if (body.trim() && !sending) {
-      handleSubmit();
-    }
-  }, { meta: true, enableInInput: true });
-
   return (
-    <form onSubmit={handleSubmit} className="border-t border-stone-200 bg-white p-4">
+    <form
+      onSubmit={(e) => e.preventDefault()}
+      className="border-t border-stone-200 bg-white p-4"
+    >
       {/* Birthday Widget */}
       {showBirthdayWidget && (
         <BirthdayWidget
@@ -139,16 +126,16 @@ export function MessageComposer({
           ref={textareaRef}
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="メッセージを入力... (Shift+Enterで改行, Cmd+Sで送信)"
+          placeholder="メッセージを入力... (Enterで改行)"
           rows={2}
           className="flex-1 resize-none rounded-xl border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta transition-all"
           disabled={sending}
         />
         <button
-          type="submit"
+          type="button"
+          onClick={handleSubmit}
           disabled={!body.trim() || sending}
-          className={`rounded-xl px-6 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none ${
+          className={`inline-flex items-center justify-center whitespace-nowrap rounded-xl px-6 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none ${
             proxyMode
               ? "bg-purple-600 hover:bg-purple-700 focus:ring-purple-500"
               : "bg-terracotta hover:bg-[#d0694e] focus:ring-terracotta"
