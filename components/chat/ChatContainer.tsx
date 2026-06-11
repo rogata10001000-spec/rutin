@@ -6,7 +6,6 @@ import type { StaffRole } from "@/lib/supabase/types";
 import { sendMessage, sendProxyMessage } from "@/actions/messages";
 import { ChatHistory } from "./ChatHistory";
 import { MessageComposer } from "./MessageComposer";
-import { ChatSidePanel } from "./ChatSidePanel";
 import { TodayProgressBar } from "./TodayProgressBar";
 import { NextUserButton } from "./NextUserButton";
 import { useToast } from "@/components/common/Toast";
@@ -133,9 +132,9 @@ export function ChatContainer({
   };
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] gap-6">
+    <div className="flex h-full flex-col">
       {/* メインチャットエリア */}
-      <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-soft">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-soft">
         {/* ヘッダー */}
         <div className="flex items-center justify-between border-b border-stone-100 bg-stone-50/50 px-6 py-4">
           <div>
@@ -177,11 +176,6 @@ export function ChatContainer({
           proxyMode={proxyMode}
           endUserId={endUserId}
         />
-      </div>
-
-      {/* サイドパネル（デスクトップのみ） */}
-      <div className="hidden w-80 lg:block overflow-y-auto pr-1">
-        <ChatSidePanel sideInfo={sideInfo} endUserId={endUserId} />
       </div>
 
       {/* 代理返信確認ダイアログ */}

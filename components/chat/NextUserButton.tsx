@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getNextUnrepliedUser, type NextUnrepliedUser } from "@/actions/progress";
 
 type NextUserButtonProps = {
@@ -10,6 +10,7 @@ type NextUserButtonProps = {
 
 export function NextUserButton({ currentUserId }: NextUserButtonProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [nextUser, setNextUser] = useState<NextUnrepliedUser | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -24,9 +25,15 @@ export function NextUserButton({ currentUserId }: NextUserButtonProps) {
 
   if (!nextUser) return null;
 
+  const goNext = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("user", nextUser.id);
+    router.push(`/inbox?${params.toString()}`, { scroll: false });
+  };
+
   return (
     <button
-      onClick={() => router.push(`/chat/${nextUser.id}`)}
+      onClick={goNext}
       className="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 shadow-sm hover:bg-stone-50 hover:text-stone-800 transition-colors"
     >
       <span>次: {nextUser.nickname}</span>

@@ -35,7 +35,7 @@ export function UserDetailActions({ user, canManage }: UserDetailActionsProps) {
           </>
         )}
         <Link
-          href={`/chat/${user.id}`}
+          href={`/inbox?user=${user.id}`}
           className="rounded-xl bg-terracotta px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#d0694e] hover:shadow-md transition-all"
         >
           チャットを開く

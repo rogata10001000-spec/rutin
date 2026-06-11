@@ -16,7 +16,7 @@ export function UsersTable({ items }: UsersTableProps) {
   // ホバー時にプリフェッチ
   const handlePrefetch = useCallback((userId: string) => {
     router.prefetch(`/users/${userId}`);
-    router.prefetch(`/chat/${userId}`);
+    router.prefetch(`/inbox?user=${userId}`);
   }, [router]);
 
   return (
@@ -105,7 +105,7 @@ export function UsersTable({ items }: UsersTableProps) {
               </td>
               <td className="whitespace-nowrap px-6 py-4">
                 <Link
-                  href={`/chat/${item.id}`}
+                  href={`/inbox?user=${item.id}`}
                   className="text-sm font-medium text-terracotta hover:text-[#d0694e]"
                 >
                   チャット

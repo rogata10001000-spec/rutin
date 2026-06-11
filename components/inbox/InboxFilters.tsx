@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { InboxSummary } from "@/actions/inbox";
 
 type Cast = {
@@ -21,31 +21,24 @@ type InboxFiltersProps = {
     slaStatus?: "breached" | "warning" | "all";
     excludePaused?: boolean;
     todaySentZero?: boolean;
+    query?: string;
+    tags?: string[];
     sortBy?: "priority" | "last_message" | "nickname" | "unreplied_duration" | "today_sent_asc" | "last_reply_oldest";
   };
   casts?: Cast[];
   summary?: InboxSummary;
+  availableTags?: string[];
 };
 
-export function InboxFilters({ currentFilters, casts = [], summary }: InboxFiltersProps) {
+export function InboxFilters({ currentFilters, casts = [], summary, availableTags = [] }: InboxFiltersProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const updateFilter = useCallback(
-    (key: string, value: string | null) => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (value) {
-        params.set(key, value);
-      } else {
-        params.delete(key);
-      }
-      router.push(`/inbox?${params.toString()}`);
-    },
-    [router, searchParams]
-  );
+  // 検索ボックスはローカル state + デバウンスでURLに反映
+  const [searchInput, setSearchInput] = useState(currentFilters.query ?? "");
 
-  // 複数のフィルタを同時に更新するためのヘルパー
-  const updateMultipleFilters = useCallback(
+  // 選択中ユーザー(user)を維持したままURLを構築
+  const buildUrl = useCallback(
     (updates: Array<{ key: string; value: string | null }>) => {
       const params = new URLSearchParams(searchParams.toString());
       for (const { key, value } of updates) {
@@ -55,9 +48,25 @@ export function InboxFilters({ currentFilters, casts = [], summary }: InboxFilte
           params.delete(key);
         }
       }
-      router.push(`/inbox?${params.toString()}`);
+      const qs = params.toString();
+      return qs ? `/inbox?${qs}` : "/inbox";
     },
-    [router, searchParams]
+    [searchParams]
+  );
+
+  const updateFilter = useCallback(
+    (key: string, value: string | null) => {
+      router.push(buildUrl([{ key, value }]));
+    },
+    [router, buildUrl]
+  );
+
+  // 複数のフィルタを同時に更新するためのヘルパー
+  const updateMultipleFilters = useCallback(
+    (updates: Array<{ key: string; value: string | null }>) => {
+      router.push(buildUrl(updates));
+    },
+    [router, buildUrl]
   );
 
   const toggleFilter = useCallback(
@@ -65,6 +74,31 @@ export function InboxFilters({ currentFilters, casts = [], summary }: InboxFilte
       updateFilter(key, current ? null : "true");
     },
     [updateFilter]
+  );
+
+  // 検索デバウンス（外部からのquery変更にも追従）
+  useEffect(() => {
+    setSearchInput(currentFilters.query ?? "");
+  }, [currentFilters.query]);
+
+  useEffect(() => {
+    const current = currentFilters.query ?? "";
+    if (searchInput === current) return;
+    const timer = setTimeout(() => {
+      updateFilter("q", searchInput.trim() || null);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchInput, currentFilters.query, updateFilter]);
+
+  const selectedTags = useMemo(() => currentFilters.tags ?? [], [currentFilters.tags]);
+  const toggleTag = useCallback(
+    (tag: string) => {
+      const next = selectedTags.includes(tag)
+        ? selectedTags.filter((t) => t !== tag)
+        : [...selectedTags, tag];
+      updateFilter("tags", next.length ? next.join(",") : null);
+    },
+    [selectedTags, updateFilter]
   );
 
   const hasActiveFilters =
@@ -77,10 +111,39 @@ export function InboxFilters({ currentFilters, casts = [], summary }: InboxFilte
     currentFilters.hasUnassigned ||
     currentFilters.slaStatus ||
     currentFilters.excludePaused ||
-    currentFilters.todaySentZero;
+    currentFilters.todaySentZero ||
+    currentFilters.query ||
+    selectedTags.length > 0;
 
   return (
     <div className="space-y-4">
+      {/* 検索ボックス */}
+      <div className="relative">
+        <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-stone-400">
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+          </svg>
+        </span>
+        <input
+          type="text"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="名前で検索"
+          className="w-full rounded-xl border border-stone-200 bg-white py-2 pl-9 pr-9 text-sm text-stone-700 shadow-sm focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta"
+        />
+        {searchInput && (
+          <button
+            type="button"
+            onClick={() => setSearchInput("")}
+            aria-label="検索をクリア"
+            className="absolute inset-y-0 right-0 flex items-center pr-3 text-stone-400 hover:text-stone-600"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
       {/* サマリー表示 */}
       {summary && (
         <div className="space-y-3">
@@ -334,10 +397,28 @@ export function InboxFilters({ currentFilters, casts = [], summary }: InboxFilte
           今日0回
         </button>
 
-        {/* フィルタクリア */}
+        {/* フィルタクリア（選択中ユーザーは維持） */}
         {hasActiveFilters && (
           <button
-            onClick={() => router.push("/inbox")}
+            onClick={() =>
+              router.push(
+                buildUrl([
+                  { key: "plan", value: null },
+                  { key: "status", value: null },
+                  { key: "risk", value: null },
+                  { key: "unreported", value: null },
+                  { key: "reply", value: null },
+                  { key: "cast", value: null },
+                  { key: "unassigned", value: null },
+                  { key: "sort", value: null },
+                  { key: "sla", value: null },
+                  { key: "excludePaused", value: null },
+                  { key: "todaySentZero", value: null },
+                  { key: "q", value: null },
+                  { key: "tags", value: null },
+                ])
+              )
+            }
             className="flex items-center gap-1 text-sm font-medium text-stone-500 hover:text-stone-800 transition-colors px-2"
           >
             <svg
@@ -357,6 +438,30 @@ export function InboxFilters({ currentFilters, casts = [], summary }: InboxFilte
           </button>
         )}
       </div>
+
+      {/* タグ絞り込み */}
+      {availableTags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-xs font-medium text-stone-400">タグ:</span>
+          {availableTags.map((tag) => {
+            const active = selectedTags.includes(tag);
+            return (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => toggleTag(tag)}
+                className={`whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  active
+                    ? "border-terracotta bg-terracotta/10 text-terracotta"
+                    : "border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+                }`}
+              >
+                {tag}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

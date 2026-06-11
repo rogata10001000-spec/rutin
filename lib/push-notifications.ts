@@ -173,7 +173,7 @@ export async function notifyStaffOfInboundMessage(params: {
   const payload: PushPayload = {
     title: "新着メッセージ",
     body: truncateMessageBody(params.body),
-    url: `/chat/${params.endUserId}`,
+    url: `/inbox?user=${params.endUserId}`,
     tag: `message-${params.endUserId}`,
   };
 

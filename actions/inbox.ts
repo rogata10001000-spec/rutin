@@ -49,6 +49,8 @@ export type InboxFilters = {
   slaStatus?: "breached" | "warning" | "all";
   excludePaused?: boolean;
   todaySentZero?: boolean;
+  query?: string;
+  tags?: string[];
   sortBy?: "priority" | "last_message" | "nickname" | "unreplied_duration" | "today_sent_asc" | "last_reply_oldest";
 };
 
@@ -63,7 +65,11 @@ export type InboxSummary = {
   replied: number;
 };
 
-export type GetInboxItemsResult = Result<{ items: InboxItem[]; summary: InboxSummary }>;
+export type GetInboxItemsResult = Result<{
+  items: InboxItem[];
+  summary: InboxSummary;
+  availableTags: string[];
+}>;
 
 // プラン別SLA設定
 const planSlaConfig = {
@@ -142,6 +148,11 @@ export async function getInboxItems(
   if (filters?.hasUnassigned) {
     query = query.is("assigned_cast_id", null);
   }
+  if (filters?.query?.trim()) {
+    // ニックネーム部分一致検索（%・_ をエスケープ）
+    const escaped = filters.query.trim().replace(/[%_]/g, (m) => `\\${m}`);
+    query = query.ilike("nickname", `%${escaped}%`);
+  }
 
   const { data: users, error: usersError } = await query;
 
@@ -158,6 +169,7 @@ export async function getInboxItems(
       data: {
         items: [],
         summary: { total: 0, unreplied: 0, notSentToday: 0, replied: 0 },
+        availableTags: [],
       },
     };
   }
@@ -380,6 +392,11 @@ export async function getInboxItems(
     replied: items.filter((i) => i.replyStatus === "replied").length,
   };
 
+  // タグ絞り込み用の候補（タグフィルタ適用前の全件から集約）
+  const availableTags = Array.from(
+    new Set(items.flatMap((item) => item.tags))
+  ).sort((a, b) => a.localeCompare(b, "ja"));
+
   // フィルタ（クライアント側）
   let filteredItems = items;
   
@@ -427,6 +444,14 @@ export async function getInboxItems(
     filteredItems = filteredItems.filter((item) => item.todaySentCount === 0);
   }
 
+  // タグ絞り込み（指定タグをすべて含むユーザーのみ）
+  if (filters?.tags?.length) {
+    const requiredTags = filters.tags;
+    filteredItems = filteredItems.filter((item) =>
+      requiredTags.every((tag) => item.tags.includes(tag))
+    );
+  }
+
   // ソート
   const sortBy = filters?.sortBy ?? "priority";
   if (sortBy === "priority") {
@@ -451,5 +476,5 @@ export async function getInboxItems(
     });
   }
 
-  return { ok: true, data: { items: filteredItems, summary } };
+  return { ok: true, data: { items: filteredItems, summary, availableTags } };
 }

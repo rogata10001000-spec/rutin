@@ -263,7 +263,7 @@ export async function upsertMemo(input: UpsertMemoInput): Promise<UpsertMemoResu
   });
 
   revalidatePath(`/users/${parsed.data.endUserId}`);
-  revalidatePath(`/chat/${parsed.data.endUserId}`);
+  revalidatePath("/inbox");
 
   return { ok: true, data: { memoId } };
 }
@@ -330,7 +330,7 @@ export async function deleteMemo(input: DeleteMemoInput): Promise<DeleteMemoResu
   });
 
   revalidatePath(`/users/${memo.end_user_id}`);
-  revalidatePath(`/chat/${memo.end_user_id}`);
+  revalidatePath("/inbox");
 
   return { ok: true, data: { success: true } };
 }
