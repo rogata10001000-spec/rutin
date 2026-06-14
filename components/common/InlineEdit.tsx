@@ -74,7 +74,7 @@ export function InlineEdit({
     );
   }
 
-  const commonInputClasses = `w-full rounded border-2 border-blue-500 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-200 ${
+  const commonInputClasses = `w-full rounded border-2 border-terracotta px-2 py-1 focus:outline-none focus:ring-2 focus:ring-terracotta/30 ${
     saving ? "bg-stone-100" : "bg-white"
   } ${inputClassName} ${className}`;
 
@@ -173,7 +173,7 @@ export function InlineTagEdit({
       autoFocus
       {...inputProps}
       placeholder="タグをカンマ区切りで入力"
-      className={`w-full rounded border-2 border-blue-500 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 ${
+      className={`w-full rounded border-2 border-terracotta px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-terracotta/30 ${
         saving ? "bg-stone-100" : "bg-white"
       } ${className}`}
     />

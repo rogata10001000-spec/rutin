@@ -183,7 +183,7 @@ export function CommandPalette({ role, additionalCommands = [] }: CommandPalette
                 onMouseEnter={() => setSelectedIndex(index)}
                 className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
                   index === selectedIndex
-                    ? "bg-blue-50 text-blue-700"
+                    ? "bg-terracotta/10 text-terracotta"
                     : "text-stone-700 hover:bg-stone-50"
                 }`}
               >
@@ -195,7 +195,7 @@ export function CommandPalette({ role, additionalCommands = [] }: CommandPalette
                   )}
                 </div>
                 {index === selectedIndex && (
-                  <kbd className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-600">
+                  <kbd className="rounded bg-terracotta/15 px-2 py-0.5 text-xs text-terracotta">
                     enter
                   </kbd>
                 )}
