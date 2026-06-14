@@ -136,10 +136,12 @@ export function ChatContainer({
       {/* メインチャットエリア */}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-soft">
         {/* ヘッダー */}
-        <div className="flex items-center justify-between border-b border-stone-100 bg-stone-50/50 px-6 py-4">
-          <div>
-            <h2 className="font-bold text-stone-800 text-lg">{sideInfo.nickname}</h2>
-            <div className="flex flex-wrap items-center gap-3 mt-0.5">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-stone-100 bg-stone-50/50 px-4 py-3 sm:px-6 sm:py-4">
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-bold text-stone-800 sm:text-lg">
+              {sideInfo.nickname}
+            </h2>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
               <p className="text-sm font-medium text-stone-500">
                 {sideInfo.planCode.charAt(0).toUpperCase() + sideInfo.planCode.slice(1)} ・{" "}
                 {sideInfo.assignedCastName ?? "担当未割当"}
@@ -152,24 +154,24 @@ export function ChatContainer({
               <TodayProgressBar />
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <NextUserButton currentUserId={endUserId} />
             {canProxy && (
-              <label className="flex items-center gap-2 text-sm font-medium cursor-pointer bg-white px-3 py-1.5 rounded-lg border border-stone-200 shadow-sm hover:bg-stone-50 transition-colors">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition-colors hover:bg-stone-50">
                 <input
                   type="checkbox"
                   checked={proxyMode}
                   onChange={(e) => setProxyMode(e.target.checked)}
                   className="rounded border-stone-300 text-purple-600 focus:ring-purple-500"
                 />
-                <span className="text-stone-600">代理返信モード</span>
+                <span className="whitespace-nowrap text-stone-600">代理返信</span>
               </label>
             )}
           </div>
         </div>
 
         {/* メッセージ履歴 */}
-        <div className="flex-1 overflow-y-auto p-6 bg-stone-50/30">
+        <div className="flex-1 overflow-y-auto bg-stone-50/30 p-4 sm:p-6">
           <ChatHistory messages={messages} />
           <div ref={messagesEndRef} />
         </div>
