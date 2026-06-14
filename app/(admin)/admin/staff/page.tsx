@@ -1,6 +1,7 @@
 import { getStaffList } from "@/actions/admin/staff";
 import { StaffTable } from "@/components/admin/staff/StaffTable";
 import { getCurrentStaff } from "@/lib/auth";
+import { ErrorState } from "@/components/common/ErrorState";
 
 export const dynamic = "force-dynamic";
 
@@ -9,9 +10,7 @@ export default async function StaffPage() {
   const viewer = await getCurrentStaff();
 
   if (!result.ok) {
-    return (
-      <div className="p-4 text-center text-red-600">{result.error.message}</div>
-    );
+    return <ErrorState title="スタッフ一覧を読み込めませんでした" message={result.error.message} />;
   }
 
   const viewerRole = viewer?.role === "supervisor" ? "supervisor" : "admin";

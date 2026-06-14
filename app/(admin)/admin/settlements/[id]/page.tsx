@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getSettlementBatchDetail } from "@/actions/admin/settlements";
 import { SettlementDetailTable } from "@/components/admin/settlements/SettlementDetailTable";
 import { SettlementActions } from "@/components/admin/settlements/SettlementActions";
+import { ErrorState } from "@/components/common/ErrorState";
 import { format } from "date-fns";
 
 export const dynamic = "force-dynamic";
@@ -25,9 +26,7 @@ export default async function SettlementDetailPage({
     if (result.error.code === "NOT_FOUND" || result.error.code === "FORBIDDEN") {
       notFound();
     }
-    return (
-      <div className="p-4 text-center text-red-600">{result.error.message}</div>
-    );
+    return <ErrorState title="精算明細を読み込めませんでした" message={result.error.message} />;
   }
 
   const { batch, items } = result.data;

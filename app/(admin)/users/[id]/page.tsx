@@ -4,6 +4,7 @@ import { BadgePlan, BadgeStatus } from "@/components/common/Badge";
 import { UserDetailCards } from "@/components/users/UserDetailCards";
 import { UserDetailActions } from "@/components/users/UserDetailActions";
 import { getCurrentStaff } from "@/lib/auth";
+import { ErrorState } from "@/components/common/ErrorState";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +20,7 @@ export default async function UserDetailPage({
     if (result.error.code === "NOT_FOUND" || result.error.code === "FORBIDDEN") {
       notFound();
     }
-    return (
-      <div className="p-4 text-center text-red-600">{result.error.message}</div>
-    );
+    return <ErrorState title="ユーザー情報を読み込めませんでした" message={result.error.message} />;
   }
 
   const user = result.data;

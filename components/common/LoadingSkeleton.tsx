@@ -40,6 +40,33 @@ export function TableSkeleton({ rows = 5 }: { rows?: number }) {
 }
 
 /**
+ * 管理画面の一覧（表）ページ向けスケルトン。
+ * ヘッダー（タイトル＋説明＋任意のアクションボタン）＋テーブルスケルトンを表示する。
+ */
+export function AdminTablePageSkeleton({
+  rows = 8,
+  withAction = false,
+}: {
+  rows?: number;
+  withAction?: boolean;
+}) {
+  return (
+    <div>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <LoadingSkeleton className="h-8 w-40" />
+          <LoadingSkeleton className="mt-2 h-4 w-56" />
+        </div>
+        {withAction && <LoadingSkeleton className="h-10 w-28 rounded-xl" />}
+      </div>
+      <div className="overflow-hidden rounded-2xl border border-stone-200 bg-white p-4 shadow-soft">
+        <TableSkeleton rows={rows} />
+      </div>
+    </div>
+  );
+}
+
+/**
  * カード用スケルトン
  */
 export function CardSkeleton() {

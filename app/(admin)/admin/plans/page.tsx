@@ -1,5 +1,6 @@
 import { getPlansAdmin } from "@/actions/admin/plans";
 import { PlansTable } from "@/components/admin/plans/PlansTable";
+import { ErrorState } from "@/components/common/ErrorState";
 
 export const dynamic = "force-dynamic";
 
@@ -7,9 +8,7 @@ export default async function PlansPage() {
   const result = await getPlansAdmin();
 
   if (!result.ok) {
-    return (
-      <div className="p-4 text-center text-red-600">{result.error.message}</div>
-    );
+    return <ErrorState title="プランを読み込めませんでした" message={result.error.message} />;
   }
 
   return (

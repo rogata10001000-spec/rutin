@@ -1,6 +1,7 @@
 import { getSettlementBatches } from "@/actions/admin/settlements";
 import { SettlementsTable } from "@/components/admin/settlements/SettlementsTable";
 import { CreateBatchForm } from "@/components/admin/settlements/CreateBatchForm";
+import { ErrorState } from "@/components/common/ErrorState";
 
 export const dynamic = "force-dynamic";
 
@@ -8,9 +9,7 @@ export default async function SettlementsPage() {
   const result = await getSettlementBatches();
 
   if (!result.ok) {
-    return (
-      <div className="p-4 text-center text-red-600">{result.error.message}</div>
-    );
+    return <ErrorState title="精算データを読み込めませんでした" message={result.error.message} />;
   }
 
   return (
