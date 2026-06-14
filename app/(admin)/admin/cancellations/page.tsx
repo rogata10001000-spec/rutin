@@ -31,8 +31,8 @@ export default async function CancellationsPage({
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">解約予定</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-stone-900">解約予定</h1>
+        <p className="mt-1 text-sm text-stone-500">
           期間終了時に解約予定のユーザーを確認できます
         </p>
       </div>
@@ -40,19 +40,19 @@ export default async function CancellationsPage({
       {result.ok && (
         <div className="mb-6 grid gap-4 sm:grid-cols-3">
           <div className="rounded-lg border bg-white p-4">
-            <h3 className="text-sm font-medium text-gray-500">解約予定件数</h3>
-            <p className="mt-2 text-2xl font-bold text-gray-900">
+            <h3 className="text-sm font-medium text-stone-500">解約予定件数</h3>
+            <p className="mt-2 text-2xl font-bold text-stone-900">
               {result.data.summary.totalCount}
             </p>
           </div>
           <div className="rounded-lg border bg-white p-4">
-            <h3 className="text-sm font-medium text-gray-500">今月終了予定</h3>
+            <h3 className="text-sm font-medium text-stone-500">今月終了予定</h3>
             <p className="mt-2 text-2xl font-bold text-amber-600">
               {result.data.summary.endingThisMonthCount}
             </p>
           </div>
           <div className="rounded-lg border bg-white p-4">
-            <h3 className="text-sm font-medium text-gray-500">プラン別内訳</h3>
+            <h3 className="text-sm font-medium text-stone-500">プラン別内訳</h3>
             <div className="mt-2 flex flex-wrap gap-2 text-sm">
               {result.data.summary.planBreakdown.length > 0 ? (
                 result.data.summary.planBreakdown.map((p) => (

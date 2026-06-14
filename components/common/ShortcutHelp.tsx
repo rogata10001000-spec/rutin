@@ -52,12 +52,12 @@ export function ShortcutHelp() {
       <div className="fixed left-1/2 top-1/2 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-lg font-semibold text-stone-900">
             キーボードショートカット
           </h2>
           <button
             onClick={() => setOpen(false)}
-            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="rounded-md p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-600"
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -73,29 +73,29 @@ export function ShortcutHelp() {
 
             return (
               <div key={category} className="mb-4 last:mb-0">
-                <h3 className="mb-2 text-sm font-medium text-gray-500">
+                <h3 className="mb-2 text-sm font-medium text-stone-500">
                   {categoryLabels[category]}
                 </h3>
                 <div className="space-y-2">
                   {categoryShortcuts.map((shortcut, index) => (
                     <div
                       key={index}
-                      className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2"
+                      className="flex items-center justify-between rounded-md bg-stone-50 px-3 py-2"
                     >
-                      <span className="text-sm text-gray-700">
+                      <span className="text-sm text-stone-700">
                         {shortcut.description}
                       </span>
                       <div className="flex items-center gap-1">
                         {shortcut.keys.map((key, i) => (
                           <span key={i}>
-                            <kbd className="rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-700">
+                            <kbd className="rounded bg-stone-200 px-2 py-0.5 text-xs font-medium text-stone-700">
                               {key}
                             </kbd>
                             {i < shortcut.keys.length - 1 && shortcut.keys[i + 1] !== "/" && (
-                              <span className="mx-0.5 text-gray-400">+</span>
+                              <span className="mx-0.5 text-stone-400">+</span>
                             )}
                             {shortcut.keys[i + 1] === "/" && (
-                              <span className="mx-1 text-gray-400">/</span>
+                              <span className="mx-1 text-stone-400">/</span>
                             )}
                           </span>
                         ))}
@@ -109,8 +109,8 @@ export function ShortcutHelp() {
         </div>
 
         {/* Footer */}
-        <div className="border-t bg-gray-50 px-4 py-3 text-center text-xs text-gray-500">
-          <kbd className="rounded bg-gray-200 px-1.5 py-0.5">Esc</kbd> または背景をクリックして閉じる
+        <div className="border-t bg-stone-50 px-4 py-3 text-center text-xs text-stone-500">
+          <kbd className="rounded bg-stone-200 px-1.5 py-0.5">Esc</kbd> または背景をクリックして閉じる
         </div>
       </div>
     </div>

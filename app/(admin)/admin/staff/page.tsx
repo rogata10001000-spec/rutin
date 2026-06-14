@@ -18,8 +18,8 @@ export default async function StaffPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">メイト管理</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-stone-900">メイト管理</h1>
+        <p className="mt-1 text-sm text-stone-500">
           {viewerRole === "supervisor"
             ? "担当として割り当てられたメイトのユーザー向けプロフィールを編集できます"
             : "メイトの招待・情報編集を行います"}

@@ -64,31 +64,31 @@ export function UserDetailCards({ user, onUpdateUser }: UserDetailCardsProps) {
       <div className="grid gap-6 lg:grid-cols-2">
       {/* 契約情報カード */}
       <div className="rounded-lg border bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">契約情報</h2>
+        <h2 className="mb-4 text-lg font-semibold text-stone-900">契約情報</h2>
         <dl className="space-y-3">
           <div className="flex justify-between">
-            <dt className="text-sm text-gray-500">プラン</dt>
-            <dd className="text-sm font-medium text-gray-900">
+            <dt className="text-sm text-stone-500">プラン</dt>
+            <dd className="text-sm font-medium text-stone-900">
               {user.planCode.charAt(0).toUpperCase() + user.planCode.slice(1)}
             </dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-sm text-gray-500">状態</dt>
-            <dd className="text-sm font-medium text-gray-900">{user.status}</dd>
+            <dt className="text-sm text-stone-500">状態</dt>
+            <dd className="text-sm font-medium text-stone-900">{user.status}</dd>
           </div>
           {user.subscription && (
             <>
               <div className="flex justify-between">
-                <dt className="text-sm text-gray-500">次回更新日</dt>
-                <dd className="text-sm font-medium text-gray-900">
+                <dt className="text-sm text-stone-500">次回更新日</dt>
+                <dd className="text-sm font-medium text-stone-900">
                   {user.subscription.currentPeriodEnd
                     ? format(new Date(user.subscription.currentPeriodEnd), "yyyy/MM/dd")
                     : "-"}
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-sm text-gray-500">Stripe Customer</dt>
-                <dd className="font-mono text-xs text-gray-500">
+                <dt className="text-sm text-stone-500">Stripe Customer</dt>
+                <dd className="font-mono text-xs text-stone-500">
                   {user.subscription.stripeCustomerId.slice(0, 20)}...
                 </dd>
               </div>
@@ -100,8 +100,8 @@ export function UserDetailCards({ user, onUpdateUser }: UserDetailCardsProps) {
             </>
           )}
           <div className="flex justify-between">
-            <dt className="text-sm text-gray-500">登録日</dt>
-            <dd className="text-sm font-medium text-gray-900">
+            <dt className="text-sm text-stone-500">登録日</dt>
+            <dd className="text-sm font-medium text-stone-900">
               {format(new Date(user.createdAt), "yyyy/MM/dd")}
             </dd>
           </div>
@@ -110,7 +110,7 @@ export function UserDetailCards({ user, onUpdateUser }: UserDetailCardsProps) {
 
       {/* チェックインカード */}
       <div className="rounded-lg border bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">
+        <h2 className="mb-4 text-lg font-semibold text-stone-900">
           チェックイン（直近7日）
         </h2>
         {user.recentCheckins.length > 0 ? (
@@ -120,7 +120,7 @@ export function UserDetailCards({ user, onUpdateUser }: UserDetailCardsProps) {
                 key={i}
                 className="flex flex-col items-center rounded-md border p-2"
               >
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-stone-500">
                   {format(new Date(checkin.date), "M/d")}
                 </span>
                 <span className="text-2xl">
@@ -134,17 +134,17 @@ export function UserDetailCards({ user, onUpdateUser }: UserDetailCardsProps) {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-gray-400">チェックイン履歴なし</p>
+          <p className="text-sm text-stone-400">チェックイン履歴なし</p>
         )}
       </div>
 
       {/* プロフィールカード */}
       <div className="rounded-lg border bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">プロフィール</h2>
+        <h2 className="mb-4 text-lg font-semibold text-stone-900">プロフィール</h2>
         <dl className="space-y-3">
           <div className="flex items-center justify-between">
-            <dt className="text-sm text-gray-500">ニックネーム</dt>
-            <dd className="text-sm font-medium text-gray-900">
+            <dt className="text-sm text-stone-500">ニックネーム</dt>
+            <dd className="text-sm font-medium text-stone-900">
               {onUpdateUser ? (
                 <InlineEdit
                   value={currentNickname}
@@ -160,21 +160,21 @@ export function UserDetailCards({ user, onUpdateUser }: UserDetailCardsProps) {
             </dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-sm text-gray-500">誕生日</dt>
-            <dd className="text-sm font-medium text-gray-900">
+            <dt className="text-sm text-stone-500">誕生日</dt>
+            <dd className="text-sm font-medium text-stone-900">
               {user.birthday
                 ? format(new Date(user.birthday), "MM月dd日")
                 : "未設定"}
             </dd>
           </div>
           <div className="flex justify-between">
-            <dt className="text-sm text-gray-500">担当メイト</dt>
-            <dd className="text-sm font-medium text-gray-900">
+            <dt className="text-sm text-stone-500">担当メイト</dt>
+            <dd className="text-sm font-medium text-stone-900">
               {user.assignedCastName ?? "未割当"}
             </dd>
           </div>
           <div>
-            <dt className="mb-1 text-sm text-gray-500">タグ</dt>
+            <dt className="mb-1 text-sm text-stone-500">タグ</dt>
             <dd>
               {onUpdateUser ? (
                 <InlineTagEdit
@@ -189,13 +189,13 @@ export function UserDetailCards({ user, onUpdateUser }: UserDetailCardsProps) {
                     user.tags.map((tag, i) => (
                       <span
                         key={i}
-                        className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+                        className="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-700"
                       >
                         {tag}
                       </span>
                     ))
                   ) : (
-                    <span className="text-sm text-gray-400">タグなし</span>
+                    <span className="text-sm text-stone-400">タグなし</span>
                   )}
                 </div>
               )}
@@ -208,15 +208,15 @@ export function UserDetailCards({ user, onUpdateUser }: UserDetailCardsProps) {
       {/* 契約履歴 */}
       {user.subscriptionHistory.length > 0 && (
         <div className="rounded-lg border bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">契約履歴</h2>
+          <h2 className="mb-4 text-lg font-semibold text-stone-900">契約履歴</h2>
           <div className="space-y-3">
             {user.subscriptionHistory.map((sub) => (
-              <div key={sub.id} className="flex items-center justify-between rounded-lg bg-gray-50 p-3">
+              <div key={sub.id} className="flex items-center justify-between rounded-lg bg-stone-50 p-3">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="text-sm font-medium text-stone-900">
                     {sub.planCode.charAt(0).toUpperCase() + sub.planCode.slice(1)}プラン
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-stone-500">
                     {format(new Date(sub.createdAt), "yyyy/MM/dd")} 開始
                   </p>
                 </div>
@@ -224,7 +224,7 @@ export function UserDetailCards({ user, onUpdateUser }: UserDetailCardsProps) {
                   sub.status === "active"
                     ? "bg-green-100 text-green-800"
                     : sub.status === "canceled"
-                    ? "bg-gray-100 text-gray-600"
+                    ? "bg-stone-100 text-stone-600"
                     : "bg-yellow-100 text-yellow-800"
                 }`}>
                   {sub.status}

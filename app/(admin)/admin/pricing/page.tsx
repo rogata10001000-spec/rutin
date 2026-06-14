@@ -24,8 +24,8 @@ export default async function PricingPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">価格設定</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-stone-900">価格設定</h1>
+        <p className="mt-1 text-sm text-stone-500">
           プランの価格を管理できます
         </p>
       </div>

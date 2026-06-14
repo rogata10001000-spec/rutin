@@ -29,8 +29,8 @@ export default async function MyPhotosPage() {
     <div>
       {/* ページヘッダー */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">プロフィール管理</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-stone-900">プロフィール管理</h1>
+        <p className="mt-1 text-sm text-stone-500">
           伴走メイト選択画面に表示される写真とプロフィール文を管理します。
         </p>
       </div>

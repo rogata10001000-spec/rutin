@@ -9,7 +9,7 @@ import { format } from "date-fns";
 export const dynamic = "force-dynamic";
 
 const statusConfig = {
-  draft: { label: "下書き", className: "bg-gray-100 text-gray-700" },
+  draft: { label: "下書き", className: "bg-stone-100 text-stone-700" },
   approved: { label: "承認済", className: "bg-blue-100 text-blue-700" },
   paid: { label: "支払完了", className: "bg-green-100 text-green-700" },
 };
@@ -38,16 +38,16 @@ export default async function SettlementDetailPage({
       <div className="mb-6">
         <Link
           href="/admin/settlements"
-          className="mb-2 inline-flex items-center text-sm text-gray-500 hover:text-gray-700"
+          className="mb-2 inline-flex items-center text-sm text-stone-500 hover:text-stone-700"
         >
           ← 精算一覧に戻る
         </Link>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-2xl font-bold text-stone-900">
               精算バッチ詳細
             </h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-stone-500">
               {format(new Date(batch.periodFrom), "yyyy/MM/dd")} -{" "}
               {format(new Date(batch.periodTo), "yyyy/MM/dd")}
             </p>
@@ -66,20 +66,20 @@ export default async function SettlementDetailPage({
       {/* サマリーカード */}
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <div className="rounded-lg border bg-white p-4">
-          <p className="text-sm text-gray-500">合計金額</p>
-          <p className="text-2xl font-bold text-gray-900">
+          <p className="text-sm text-stone-500">合計金額</p>
+          <p className="text-2xl font-bold text-stone-900">
             ¥{batch.totalAmount.toLocaleString()}
           </p>
         </div>
         <div className="rounded-lg border bg-white p-4">
-          <p className="text-sm text-gray-500">メイト数</p>
-          <p className="text-2xl font-bold text-gray-900">
+          <p className="text-sm text-stone-500">メイト数</p>
+          <p className="text-2xl font-bold text-stone-900">
             {batch.castCount}人
           </p>
         </div>
         <div className="rounded-lg border bg-white p-4">
-          <p className="text-sm text-gray-500">作成日</p>
-          <p className="text-2xl font-bold text-gray-900">
+          <p className="text-sm text-stone-500">作成日</p>
+          <p className="text-2xl font-bold text-stone-900">
             {format(new Date(batch.createdAt), "yyyy/MM/dd")}
           </p>
         </div>
@@ -87,10 +87,10 @@ export default async function SettlementDetailPage({
 
       {/* タイムライン */}
       <div className="mb-6 rounded-lg border bg-white p-4">
-        <h2 className="mb-3 text-sm font-medium text-gray-700">ステータス履歴</h2>
+        <h2 className="mb-3 text-sm font-medium text-stone-700">ステータス履歴</h2>
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-gray-400" />
+            <span className="h-2 w-2 rounded-full bg-stone-400" />
             <span>作成: {format(new Date(batch.createdAt), "yyyy/MM/dd HH:mm")}</span>
           </div>
           {batch.approvedAt && (
@@ -111,7 +111,7 @@ export default async function SettlementDetailPage({
       {/* 明細テーブル */}
       <div className="rounded-lg border bg-white">
         <div className="border-b px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-lg font-semibold text-stone-900">
             メイト別明細
           </h2>
         </div>

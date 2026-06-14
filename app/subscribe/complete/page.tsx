@@ -19,8 +19,8 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
   if (!sessionId) {
     return (
       <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-12 text-center">
-        <h1 className="text-2xl font-bold text-gray-900">契約確認ができません</h1>
-        <p className="mt-3 text-sm text-gray-600">
+        <h1 className="text-2xl font-bold text-stone-900">契約確認ができません</h1>
+        <p className="mt-3 text-sm text-stone-600">
           決済完了後のURLからアクセスしてください。
         </p>
       </main>
@@ -40,8 +40,8 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
   if (!verified) {
     return (
       <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-12 text-center">
-        <h1 className="text-2xl font-bold text-gray-900">契約確認中です</h1>
-        <p className="mt-3 text-sm text-gray-600">
+        <h1 className="text-2xl font-bold text-stone-900">契約確認中です</h1>
+        <p className="mt-3 text-sm text-stone-600">
           決済情報を確認できませんでした。LINEに戻って、しばらくしてからお問い合わせください。
         </p>
       </main>
@@ -61,12 +61,12 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
           check_circle
         </span>
       </div>
-      <h1 className="text-2xl font-bold text-gray-900">{trialMessage.title}</h1>
-      <p className="mt-3 text-sm leading-relaxed text-gray-600">{trialMessage.body}</p>
-      <p className="mt-3 text-sm text-gray-600">
+      <h1 className="text-2xl font-bold text-stone-900">{trialMessage.title}</h1>
+      <p className="mt-3 text-sm leading-relaxed text-stone-600">{trialMessage.body}</p>
+      <p className="mt-3 text-sm text-stone-600">
         担当の伴走メイトからのメッセージをお待ちください。
       </p>
-      <p className="mt-1 text-sm text-gray-600">
+      <p className="mt-1 text-sm text-stone-600">
         スマホの方はLINEアプリに戻って、トークの確認をお願いします。
       </p>
       <a
@@ -75,7 +75,7 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
       >
         LINEに戻る
       </a>
-      <p className="mt-3 text-xs text-gray-500">
+      <p className="mt-3 text-xs text-stone-500">
         ※ PCでお手続きされた方は、お使いのスマホでLINEを開いてください。
       </p>
     </main>

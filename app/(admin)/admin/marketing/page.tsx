@@ -33,12 +33,12 @@ export default async function MarketingPage({
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">マーケ分析</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-stone-900">マーケ分析</h1>
+        <p className="mt-1 text-sm text-stone-500">
           解約率・クロージング率・プラン構成比・メイト別スコアを確認できます
         </p>
         {result.ok && (
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-stone-400">
             集計期間: {result.data.periodFrom} 〜 {result.data.periodTo}（JST）
           </p>
         )}

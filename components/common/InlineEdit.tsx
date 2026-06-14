@@ -66,16 +66,16 @@ export function InlineEdit({
       <div
         onDoubleClick={startEdit}
         onClick={startEdit}
-        className={`cursor-pointer rounded px-2 py-1 transition-colors hover:bg-gray-100 ${displayClassName} ${className}`}
+        className={`cursor-pointer rounded px-2 py-1 transition-colors hover:bg-stone-100 ${displayClassName} ${className}`}
         title="クリックして編集"
       >
-        {value || <span className="text-gray-400">{emptyText}</span>}
+        {value || <span className="text-stone-400">{emptyText}</span>}
       </div>
     );
   }
 
   const commonInputClasses = `w-full rounded border-2 border-blue-500 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-200 ${
-    saving ? "bg-gray-100" : "bg-white"
+    saving ? "bg-stone-100" : "bg-white"
   } ${inputClassName} ${className}`;
 
   if (multiline) {
@@ -148,20 +148,20 @@ export function InlineTagEdit({
       <div
         onDoubleClick={startEdit}
         onClick={startEdit}
-        className={`flex cursor-pointer flex-wrap gap-1 rounded px-1 py-0.5 transition-colors hover:bg-gray-100 ${className}`}
+        className={`flex cursor-pointer flex-wrap gap-1 rounded px-1 py-0.5 transition-colors hover:bg-stone-100 ${className}`}
         title="クリックして編集"
       >
         {tags.length > 0 ? (
           tags.map((tag, index) => (
             <span
               key={index}
-              className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+              className="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-700"
             >
               {tag}
             </span>
           ))
         ) : (
-          <span className="text-sm text-gray-400">タグなし</span>
+          <span className="text-sm text-stone-400">タグなし</span>
         )}
       </div>
     );
@@ -174,7 +174,7 @@ export function InlineTagEdit({
       {...inputProps}
       placeholder="タグをカンマ区切りで入力"
       className={`w-full rounded border-2 border-blue-500 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 ${
-        saving ? "bg-gray-100" : "bg-white"
+        saving ? "bg-stone-100" : "bg-white"
       } ${className}`}
     />
   );

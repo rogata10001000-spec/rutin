@@ -60,8 +60,8 @@ export default async function CastPhotosPage() {
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">メイト写真管理</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-stone-900">メイト写真管理</h1>
+          <p className="mt-1 text-sm text-stone-500">
             全メイトの写真登録状況を確認・管理できます
           </p>
         </div>
@@ -105,25 +105,25 @@ export default async function CastPhotosPage() {
       {/* 統計サマリー */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">総メイト数</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900">
+          <p className="text-sm font-medium text-stone-500">総メイト数</p>
+          <p className="mt-1 text-2xl font-bold text-stone-900">
             {castsWithPhotos.length}人
           </p>
         </div>
         <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">写真完備</p>
+          <p className="text-sm font-medium text-stone-500">写真完備</p>
           <p className="mt-1 text-2xl font-bold text-green-600">
             {castsWithPhotos.filter((c) => c.photoCount >= 3).length}人
           </p>
         </div>
         <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">写真不足</p>
+          <p className="text-sm font-medium text-stone-500">写真不足</p>
           <p className="mt-1 text-2xl font-bold text-amber-600">
             {castsNeedingPhotos.length}人
           </p>
         </div>
         <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <p className="text-sm font-medium text-gray-500">写真未登録</p>
+          <p className="text-sm font-medium text-stone-500">写真未登録</p>
           <p className="mt-1 text-2xl font-bold text-red-600">
             {castsWithPhotos.filter((c) => c.photoCount === 0).length}人
           </p>
@@ -132,12 +132,12 @@ export default async function CastPhotosPage() {
 
       {/* メイト一覧 */}
       <div className="rounded-xl border bg-white shadow-sm">
-        <div className="border-b border-gray-200 px-6 py-4">
-          <h2 className="text-lg font-bold text-gray-900">メイト一覧</h2>
+        <div className="border-b border-stone-200 px-6 py-4">
+          <h2 className="text-lg font-bold text-stone-900">メイト一覧</h2>
         </div>
 
         {sortedCasts.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">
+          <div className="p-12 text-center text-stone-500">
             メイトが登録されていません
           </div>
         ) : (
@@ -146,10 +146,10 @@ export default async function CastPhotosPage() {
               <Link
                 key={cast.id}
                 href={`/admin/staff/${cast.id}/photos`}
-                className="flex items-start gap-4 rounded-xl border border-gray-200 p-4 hover:border-primary hover:shadow-md transition-all"
+                className="flex items-start gap-4 rounded-xl border border-stone-200 p-4 hover:border-primary hover:shadow-md transition-all"
               >
                 {/* サムネイル */}
-                <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
+                <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl bg-stone-100">
                   {cast.firstPhotoUrl ? (
                     <Image
                       src={cast.firstPhotoUrl}
@@ -160,7 +160,7 @@ export default async function CastPhotosPage() {
                       sizes="80px"
                     />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center text-gray-400">
+                    <div className="flex h-full w-full items-center justify-center text-stone-400">
                       <svg
                         className="h-8 w-8"
                         fill="none"
@@ -181,11 +181,11 @@ export default async function CastPhotosPage() {
                 {/* 情報 */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="truncate font-bold text-gray-900">
+                    <h3 className="truncate font-bold text-stone-900">
                       {cast.displayName}
                     </h3>
                     {!cast.active && (
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+                      <span className="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">
                         無効
                       </span>
                     )}
@@ -213,7 +213,7 @@ export default async function CastPhotosPage() {
                         受付中
                       </span>
                     ) : (
-                      <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                      <span className="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-500">
                         受付停止
                       </span>
                     )}
@@ -228,7 +228,7 @@ export default async function CastPhotosPage() {
                 </div>
 
                 {/* 矢印 */}
-                <div className="flex-shrink-0 text-gray-400">
+                <div className="flex-shrink-0 text-stone-400">
                   <svg
                     className="h-5 w-5"
                     fill="none"

@@ -33,13 +33,13 @@ export function ErrorState({
           />
         </svg>
       </div>
-      <h3 className="text-lg font-medium text-gray-900">{title}</h3>
-      <p className="mt-1 max-w-md text-sm text-gray-500">{message}</p>
-      <div className="mt-4 flex gap-3">
+      <h3 className="text-lg font-medium text-stone-900">{title}</h3>
+      <p className="mt-1 max-w-md text-sm text-stone-500">{message}</p>
+      <div className="mt-5 flex gap-3">
         {retry && (
           <button
             onClick={retry}
-            className="rounded-md bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+            className="rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50"
           >
             再試行
           </button>
@@ -47,7 +47,7 @@ export function ErrorState({
         {action && (
           <button
             onClick={action.onClick}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            className="rounded-xl bg-terracotta px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#d0694e]"
           >
             {action.label}
           </button>

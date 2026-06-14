@@ -24,7 +24,7 @@ export function WebhookFilters() {
   return (
     <div className="flex flex-wrap gap-3">
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">
+        <label className="block text-xs font-medium text-stone-500 mb-1">
           プロバイダ
         </label>
         <Select
@@ -41,7 +41,7 @@ export function WebhookFilters() {
         />
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1">
+        <label className="block text-xs font-medium text-stone-500 mb-1">
           状態
         </label>
         <Select

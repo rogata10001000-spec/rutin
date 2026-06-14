@@ -6,7 +6,7 @@
 export function LoadingSkeleton({ className = "" }: { className?: string }) {
   return (
     <div
-      className={`animate-shimmer rounded bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 bg-[length:1000px_100%] ${className}`}
+      className={`animate-shimmer rounded bg-gradient-to-r from-stone-200 via-stone-100 to-stone-200 bg-[length:1000px_100%] ${className}`}
     />
   );
 }
@@ -112,7 +112,7 @@ export function MemoSkeleton({ count = 2 }: { count?: number }) {
   return (
     <div className="space-y-3">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="rounded-lg border bg-gray-50 p-3">
+        <div key={i} className="rounded-lg border bg-stone-50 p-3">
           <div className="mb-2 flex items-center justify-between">
             <LoadingSkeleton className="h-4 w-20" />
             <LoadingSkeleton className="h-4 w-12" />

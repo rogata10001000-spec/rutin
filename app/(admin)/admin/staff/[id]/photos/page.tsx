@@ -27,7 +27,7 @@ export default async function StaffPhotosPage({ params }: PageProps) {
   if (staff.role !== "cast") {
     return (
       <div className="p-4 text-center">
-        <p className="text-gray-600">
+        <p className="text-stone-600">
           メイトのみ写真管理が可能です。
         </p>
         <Link
@@ -49,23 +49,23 @@ export default async function StaffPhotosPage({ params }: PageProps) {
       <div className="mb-6 flex items-center gap-4">
         <Link
           href="/admin/staff"
-          className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
+          className="flex items-center gap-1 text-sm text-stone-500 hover:text-stone-700"
         >
           <span className="material-symbols-outlined text-[18px]">
             arrow_back
           </span>
           メイト一覧
         </Link>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm text-gray-700">{staff.displayName}</span>
-        <span className="text-gray-300">/</span>
-        <span className="text-sm text-gray-900">写真管理</span>
+        <span className="text-stone-300">/</span>
+        <span className="text-sm text-stone-700">{staff.displayName}</span>
+        <span className="text-stone-300">/</span>
+        <span className="text-sm text-stone-900">写真管理</span>
       </div>
 
       {/* ページヘッダー */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">写真管理</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-stone-900">写真管理</h1>
+        <p className="mt-1 text-sm text-stone-500">
           {staff.displayName}のプロフィール写真を管理します
         </p>
       </div>

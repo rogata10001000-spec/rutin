@@ -146,7 +146,7 @@ export function CommandPalette({ role, additionalCommands = [] }: CommandPalette
         <div className="border-b px-4 py-3">
           <div className="flex items-center gap-3">
             <svg
-              className="h-5 w-5 text-gray-400"
+              className="h-5 w-5 text-stone-400"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -165,9 +165,9 @@ export function CommandPalette({ role, additionalCommands = [] }: CommandPalette
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="ページを検索..."
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-gray-400"
+              className="flex-1 bg-transparent text-sm outline-none placeholder:text-stone-400"
             />
-            <kbd className="hidden rounded bg-gray-100 px-2 py-1 text-xs text-gray-500 sm:inline-block">
+            <kbd className="hidden rounded bg-stone-100 px-2 py-1 text-xs text-stone-500 sm:inline-block">
               esc
             </kbd>
           </div>
@@ -184,14 +184,14 @@ export function CommandPalette({ role, additionalCommands = [] }: CommandPalette
                 className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
                   index === selectedIndex
                     ? "bg-blue-50 text-blue-700"
-                    : "text-gray-700 hover:bg-gray-50"
+                    : "text-stone-700 hover:bg-stone-50"
                 }`}
               >
                 <span className="text-lg">{cmd.icon}</span>
                 <div className="flex-1">
                   <p className="text-sm font-medium">{cmd.label}</p>
                   {cmd.description && (
-                    <p className="text-xs text-gray-500">{cmd.description}</p>
+                    <p className="text-xs text-stone-500">{cmd.description}</p>
                   )}
                 </div>
                 {index === selectedIndex && (
@@ -202,28 +202,28 @@ export function CommandPalette({ role, additionalCommands = [] }: CommandPalette
               </button>
             ))
           ) : (
-            <div className="px-4 py-8 text-center text-sm text-gray-500">
+            <div className="px-4 py-8 text-center text-sm text-stone-500">
               「{query}」に一致するコマンドがありません
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="border-t bg-gray-50 px-4 py-2">
-          <div className="flex items-center justify-between text-xs text-gray-500">
+        <div className="border-t bg-stone-50 px-4 py-2">
+          <div className="flex items-center justify-between text-xs text-stone-500">
             <div className="flex gap-3">
               <span>
-                <kbd className="rounded bg-gray-200 px-1.5 py-0.5">↑↓</kbd> 移動
+                <kbd className="rounded bg-stone-200 px-1.5 py-0.5">↑↓</kbd> 移動
               </span>
               <span>
-                <kbd className="rounded bg-gray-200 px-1.5 py-0.5">enter</kbd> 選択
+                <kbd className="rounded bg-stone-200 px-1.5 py-0.5">enter</kbd> 選択
               </span>
               <span>
-                <kbd className="rounded bg-gray-200 px-1.5 py-0.5">esc</kbd> 閉じる
+                <kbd className="rounded bg-stone-200 px-1.5 py-0.5">esc</kbd> 閉じる
               </span>
             </div>
             <span>
-              <kbd className="rounded bg-gray-200 px-1.5 py-0.5">?</kbd> ショートカット一覧
+              <kbd className="rounded bg-stone-200 px-1.5 py-0.5">?</kbd> ショートカット一覧
             </span>
           </div>
         </div>

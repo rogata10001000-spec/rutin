@@ -29,10 +29,10 @@ export function AssignmentHistorySection({ endUserId }: AssignmentHistorySection
   if (loading) {
     return (
       <div className="rounded-lg border bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">担当変更履歴</h2>
+        <h2 className="mb-4 text-lg font-semibold text-stone-900">担当変更履歴</h2>
         <div className="animate-pulse space-y-3">
-          <div className="h-12 rounded bg-gray-100" />
-          <div className="h-12 rounded bg-gray-100" />
+          <div className="h-12 rounded bg-stone-100" />
+          <div className="h-12 rounded bg-stone-100" />
         </div>
       </div>
     );
@@ -41,7 +41,7 @@ export function AssignmentHistorySection({ endUserId }: AssignmentHistorySection
   return (
     <div className="rounded-lg border bg-white p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">担当変更履歴</h2>
+        <h2 className="text-lg font-semibold text-stone-900">担当変更履歴</h2>
         {history.length > 3 && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
@@ -57,25 +57,25 @@ export function AssignmentHistorySection({ endUserId }: AssignmentHistorySection
           {(isExpanded ? history : history.slice(0, 3)).map((item) => (
             <div
               key={item.id}
-              className="rounded-lg border bg-gray-50 p-3"
+              className="rounded-lg border bg-stone-50 p-3"
             >
               <div className="mb-2 flex items-center gap-2">
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-stone-600">
                   {item.fromCastName ?? "未割当"}
                 </span>
-                <span className="text-gray-400">→</span>
-                <span className="text-sm font-medium text-gray-900">
+                <span className="text-stone-400">→</span>
+                <span className="text-sm font-medium text-stone-900">
                   {item.toCastName}
                 </span>
               </div>
               
               {item.reason && (
-                <p className="mb-2 text-sm text-gray-600">
+                <p className="mb-2 text-sm text-stone-600">
                   理由: {item.reason}
                 </p>
               )}
 
-              <div className="flex items-center justify-between text-xs text-gray-400">
+              <div className="flex items-center justify-between text-xs text-stone-400">
                 <span>実行者: {item.createdByName}</span>
                 <span>
                   {format(new Date(item.createdAt), "yyyy/MM/dd HH:mm", { locale: ja })}
@@ -85,7 +85,7 @@ export function AssignmentHistorySection({ endUserId }: AssignmentHistorySection
           ))}
         </div>
       ) : (
-        <p className="text-sm text-gray-400">担当変更履歴はありません</p>
+        <p className="text-sm text-stone-400">担当変更履歴はありません</p>
       )}
     </div>
   );

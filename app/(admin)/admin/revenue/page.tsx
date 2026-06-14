@@ -42,12 +42,12 @@ export default async function RevenuePage({
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">売上ダッシュボード</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-stone-900">売上ダッシュボード</h1>
+        <p className="mt-1 text-sm text-stone-500">
           システム全体・メイト別・本部取り分の売上を確認できます
         </p>
         {result.ok && (
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-stone-400">
             集計期間: {result.data.periodFrom} 〜 {result.data.periodTo}（JST）
           </p>
         )}

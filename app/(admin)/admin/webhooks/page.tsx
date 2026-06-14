@@ -29,8 +29,8 @@ export default async function WebhooksPage({
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Webhook監視</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-stone-900">Webhook監視</h1>
+        <p className="mt-1 text-sm text-stone-500">
           LINE/StripeからのWebhookイベントを監視できます
         </p>
       </div>
@@ -39,8 +39,8 @@ export default async function WebhooksPage({
       {statsResult.ok && (
         <div className="mb-6 grid gap-4 sm:grid-cols-4">
           <div className="rounded-lg border bg-white p-4">
-            <h3 className="text-sm font-medium text-gray-500">今日の処理</h3>
-            <p className="mt-2 text-2xl font-bold text-gray-900">
+            <h3 className="text-sm font-medium text-stone-500">今日の処理</h3>
+            <p className="mt-2 text-2xl font-bold text-stone-900">
               {statsResult.data.totalToday}
             </p>
             <div className="mt-1 flex gap-2 text-sm">
@@ -55,8 +55,8 @@ export default async function WebhooksPage({
             </div>
           </div>
           <div className="rounded-lg border bg-white p-4">
-            <h3 className="text-sm font-medium text-gray-500">過去7日間</h3>
-            <p className="mt-2 text-2xl font-bold text-gray-900">
+            <h3 className="text-sm font-medium text-stone-500">過去7日間</h3>
+            <p className="mt-2 text-2xl font-bold text-stone-900">
               {statsResult.data.totalWeek}
             </p>
             <div className="mt-1 flex gap-2 text-sm">
@@ -71,8 +71,8 @@ export default async function WebhooksPage({
             </div>
           </div>
           <div className="rounded-lg border bg-white p-4">
-            <h3 className="text-sm font-medium text-gray-500">成功率（今週）</h3>
-            <p className="mt-2 text-2xl font-bold text-gray-900">
+            <h3 className="text-sm font-medium text-stone-500">成功率（今週）</h3>
+            <p className="mt-2 text-2xl font-bold text-stone-900">
               {statsResult.data.totalWeek > 0
                 ? Math.round((statsResult.data.successWeek / statsResult.data.totalWeek) * 100)
                 : 100}
@@ -80,13 +80,13 @@ export default async function WebhooksPage({
             </p>
           </div>
           <div className="rounded-lg border bg-white p-4">
-            <h3 className="text-sm font-medium text-gray-500">要対応</h3>
+            <h3 className="text-sm font-medium text-stone-500">要対応</h3>
             <p className={`mt-2 text-2xl font-bold ${
-              statsResult.data.needsAttention > 0 ? "text-red-600" : "text-gray-900"
+              statsResult.data.needsAttention > 0 ? "text-red-600" : "text-stone-900"
             }`}>
               {statsResult.data.needsAttention}
             </p>
-            <p className="mt-1 text-sm text-gray-500">失敗または再処理待ち</p>
+            <p className="mt-1 text-sm text-stone-500">失敗または再処理待ち</p>
           </div>
         </div>
       )}
@@ -101,11 +101,11 @@ export default async function WebhooksPage({
       {/* Events Table */}
       <div className="rounded-lg border bg-white">
         <div className="border-b px-6 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-lg font-semibold text-stone-900">
             イベント一覧
           </h2>
           {eventsResult.ok && (
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-stone-500">
               {eventsResult.data.total}件中 最新{eventsResult.data.items.length}件を表示
             </p>
           )}

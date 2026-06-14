@@ -132,7 +132,7 @@ export function BirthdayWidget({ endUserId, onInsertTemplate }: BirthdayWidgetPr
               <button
                 key={i}
                 onClick={() => handleInsertTemplate(template)}
-                className="block w-full rounded-md border border-pink-200 bg-white p-2 text-left text-sm text-gray-700 hover:bg-pink-100"
+                className="block w-full rounded-md border border-pink-200 bg-white p-2 text-left text-sm text-stone-700 hover:bg-pink-100"
               >
                 {template}
               </button>

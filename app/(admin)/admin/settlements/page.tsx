@@ -15,8 +15,8 @@ export default async function SettlementsPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">精算</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-stone-900">精算</h1>
+        <p className="mt-1 text-sm text-stone-500">
           メイトへの配分を精算します
         </p>
       </div>
@@ -25,7 +25,7 @@ export default async function SettlementsPage() {
         {/* バッチ作成フォーム */}
         <div className="lg:col-span-1">
           <div className="rounded-lg border bg-white p-6">
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">
+            <h2 className="mb-4 text-lg font-semibold text-stone-900">
               新規精算バッチ
             </h2>
             <CreateBatchForm />
@@ -36,7 +36,7 @@ export default async function SettlementsPage() {
         <div className="lg:col-span-2">
           <div className="rounded-lg border bg-white">
             <div className="border-b px-6 py-4">
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className="text-lg font-semibold text-stone-900">
                 精算バッチ一覧
               </h2>
             </div>

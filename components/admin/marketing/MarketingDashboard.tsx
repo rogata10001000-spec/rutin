@@ -26,9 +26,9 @@ function KpiCard({
 }) {
   return (
     <div className="rounded-lg border bg-white p-4">
-      <h3 className="text-sm font-medium text-gray-500">{label}</h3>
-      <p className="mt-2 text-2xl font-bold text-gray-900">{value}</p>
-      {note && <p className="mt-1 text-xs text-gray-500">{note}</p>}
+      <h3 className="text-sm font-medium text-stone-500">{label}</h3>
+      <p className="mt-2 text-2xl font-bold text-stone-900">{value}</p>
+      {note && <p className="mt-1 text-xs text-stone-500">{note}</p>}
     </div>
   );
 }

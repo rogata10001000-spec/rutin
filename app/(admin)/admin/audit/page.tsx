@@ -36,8 +36,8 @@ export default async function AuditPage({
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">監査ログ</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-stone-900">監査ログ</h1>
+        <p className="mt-1 text-sm text-stone-500">
           システムの操作履歴を確認できます
         </p>
       </div>

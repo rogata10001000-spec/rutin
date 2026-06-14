@@ -74,7 +74,7 @@ function SortablePhoto({
     <div
       ref={setNodeRef}
       style={style}
-      className="group relative aspect-square overflow-hidden rounded-xl border border-gray-200 bg-gray-50"
+      className="group relative aspect-square overflow-hidden rounded-xl border border-stone-200 bg-stone-50"
     >
       <Image
         src={photo.url}
@@ -112,7 +112,7 @@ function SortablePhoto({
               value={captionValue}
               onChange={(e) => setCaptionValue(e.target.value)}
               maxLength={200}
-              className="flex-1 rounded bg-white/90 px-2 py-1 text-sm text-gray-900"
+              className="flex-1 rounded bg-white/90 px-2 py-1 text-sm text-stone-900"
               placeholder="キャプションを入力..."
               autoFocus
               onKeyDown={(e) => {
@@ -278,10 +278,10 @@ export function PhotoEditor({
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold text-gray-900">
+          <h2 className="text-lg font-bold text-stone-900">
             {castName}の写真管理
           </h2>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-stone-500">
             最大{maxPhotos}枚まで登録できます（現在 {photos.length}枚）
           </p>
         </div>
@@ -298,7 +298,7 @@ export function PhotoEditor({
             htmlFor="photo-upload"
             className={`inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               photos.length >= maxPhotos || uploading
-                ? "cursor-not-allowed bg-gray-100 text-gray-400"
+                ? "cursor-not-allowed bg-stone-100 text-stone-400"
                 : "bg-primary text-white hover:bg-primary-dark"
             }`}
           >
@@ -335,7 +335,7 @@ export function PhotoEditor({
 
       {/* 写真グリッド */}
       {photos.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 p-12 text-gray-500">
+        <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-stone-300 p-12 text-stone-500">
           <span className="material-symbols-outlined mb-2 text-[48px]">
             photo_library
           </span>
@@ -368,7 +368,7 @@ export function PhotoEditor({
       )}
 
       {/* 説明 */}
-      <div className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
+      <div className="rounded-lg bg-stone-50 p-4 text-sm text-stone-600">
         <p className="font-medium">使い方</p>
         <ul className="mt-2 list-inside list-disc space-y-1">
           <li>ドラッグ&ドロップで写真の順序を変更できます</li>

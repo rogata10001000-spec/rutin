@@ -6,7 +6,7 @@ export default async function UserLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-stone-50">
       <UserHeader />
       <main className="py-6">
         <div className="mx-auto max-w-lg px-4">

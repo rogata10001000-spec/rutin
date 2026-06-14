@@ -33,7 +33,7 @@ export default async function UserDetailPage({
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-gray-900">{user.nickname}</h1>
+            <h1 className="text-2xl font-bold text-stone-900">{user.nickname}</h1>
             {user.birthday && isBirthdayToday(user.birthday) && (
               <span className="text-2xl">🎂</span>
             )}
@@ -42,7 +42,7 @@ export default async function UserDetailPage({
             <BadgePlan plan={user.planCode as "light" | "standard" | "premium"} />
             <BadgeStatus status={user.status as "trial" | "active" | "past_due" | "paused" | "canceled" | "incomplete"} />
             {user.assignedCastName && (
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-stone-500">
                 担当: {user.assignedCastName}
               </span>
             )}

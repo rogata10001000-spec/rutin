@@ -37,7 +37,7 @@ const statusConfig = {
         />
       </svg>
     ),
-    className: "text-gray-500",
+    className: "text-stone-500",
   },
   saved: {
     text: "保存しました",
