@@ -14,6 +14,7 @@ import {
 } from "@/actions/memos";
 import { MEMO_CATEGORIES } from "@/lib/memo-categories";
 import { useToast } from "@/components/common/Toast";
+import { Select } from "@/components/common/Select";
 import { SaveStatus } from "@/components/common/SaveStatus";
 import { useKeyboardShortcut } from "@/hooks/useKeyboardShortcut";
 
@@ -351,18 +352,15 @@ export function MemoSection({ endUserId }: MemoSectionProps) {
                   <label className="block text-sm font-bold text-stone-700">
                     カテゴリ
                   </label>
-                  <select
-                    value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value)}
-                    disabled={!!editingMemo}
-                    className="mt-1 block w-full rounded-xl border-stone-200 bg-white px-3 py-2 text-sm shadow-sm focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta disabled:bg-stone-100"
-                  >
-                    {MEMO_CATEGORIES.map((cat) => (
-                      <option key={cat.value} value={cat.value}>
-                        {cat.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="mt-1">
+                    <Select
+                      aria-label="メモカテゴリ"
+                      value={formCategory}
+                      onChange={setFormCategory}
+                      disabled={!!editingMemo}
+                      options={MEMO_CATEGORIES.map((cat) => ({ value: cat.value, label: cat.label }))}
+                    />
+                  </div>
                   {editingMemo && (
                     <p className="mt-1 text-xs text-stone-500">
                       カテゴリは変更できません

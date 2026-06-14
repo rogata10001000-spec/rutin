@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { upsertGiftCatalog, type GiftCatalogAdmin } from "@/actions/admin/gifts";
 import { useToast } from "@/components/common/Toast";
+import { Select } from "@/components/common/Select";
 
 const formSchema = z.object({
   name: z.string().min(1, "ギフト名を入力してください").max(100, "ギフト名は100文字以内で入力してください"),
@@ -41,6 +42,7 @@ export function UpsertGiftDialog({ open, gift, onClose }: UpsertGiftDialogProps)
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     watch,
@@ -199,23 +201,21 @@ export function UpsertGiftDialog({ open, gift, onClose }: UpsertGiftDialogProps)
                 >
                   カテゴリ <span className="text-terracotta">*</span>
                 </label>
-                <div className="relative mt-1.5">
-                  <select
-                    id="category"
-                    {...register("category")}
-                    className="block w-full appearance-none rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                  >
-                    {categoryOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
+                <div className="mt-1.5">
+                  <Controller
+                    control={control}
+                    name="category"
+                    render={({ field }) => (
+                      <Select
+                        id="category"
+                        aria-label="カテゴリ"
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="選択してください"
+                        options={categoryOptions.map((o) => ({ value: o.value, label: o.label }))}
+                      />
+                    )}
+                  />
                 </div>
                 {errors.category && (
                   <p className="mt-1.5 text-sm text-red-600 font-medium">{errors.category.message}</p>

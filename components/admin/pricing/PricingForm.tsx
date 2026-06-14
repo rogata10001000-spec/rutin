@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { upsertCastPlanPriceOverride, type CastListItem } from "@/actions/admin/pricing";
 import { pricingOverrideSchema } from "@/schemas/pricing";
 import { useToast } from "@/components/common/Toast";
+import { Select } from "@/components/common/Select";
 
 type PricingFormProps = {
   casts: CastListItem[];
@@ -87,29 +88,18 @@ export function PricingForm({ casts }: PricingFormProps) {
         <label className="block text-sm font-bold text-stone-700">
           メイト
         </label>
-        <div className="relative mt-1.5">
-          <select
+        <div className="mt-1.5">
+          <Select
+            aria-label="メイト"
             value={castId}
-            onChange={(e) => setCastId(e.target.value)}
-            className={`block w-full appearance-none rounded-xl border bg-stone-50 px-4 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-              errors.castId
-                ? "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500"
-                : "border-stone-200 text-stone-900 focus:border-terracotta focus:bg-white focus:ring-terracotta"
-            }`}
-            required
-          >
-            <option value="">選択してください</option>
-            {casts.map((cast) => (
-              <option key={cast.id} value={cast.id}>
-                {cast.displayName}
-              </option>
-            ))}
-          </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
+            onChange={setCastId}
+            placeholder="選択してください"
+            className={errors.castId ? "border-red-300 focus:border-red-500 focus:ring-red-500" : ""}
+            options={[
+              { value: "", label: "選択してください", disabled: true },
+              ...casts.map((cast) => ({ value: cast.id, label: cast.displayName })),
+            ]}
+          />
         </div>
         {errors.castId && (
           <p className="mt-1.5 text-xs text-red-600 font-medium">{errors.castId}</p>
@@ -120,21 +110,17 @@ export function PricingForm({ casts }: PricingFormProps) {
         <label className="block text-sm font-bold text-stone-700">
           プラン
         </label>
-        <div className="relative mt-1.5">
-          <select
+        <div className="mt-1.5">
+          <Select
+            aria-label="プラン"
             value={planCode}
-            onChange={(e) => setPlanCode(e.target.value as "light" | "standard" | "premium")}
-            className="block w-full appearance-none rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-          >
-            <option value="light">Light</option>
-            <option value="standard">Standard</option>
-            <option value="premium">Premium</option>
-          </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
+            onChange={(value) => setPlanCode(value as "light" | "standard" | "premium")}
+            options={[
+              { value: "light", label: "Light" },
+              { value: "standard", label: "Standard" },
+              { value: "premium", label: "Premium" },
+            ]}
+          />
         </div>
       </div>
 

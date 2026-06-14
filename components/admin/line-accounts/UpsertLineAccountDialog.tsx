@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -11,6 +11,7 @@ import {
   type CastOptionItem,
 } from "@/actions/admin/line-accounts";
 import { useToast } from "@/components/common/Toast";
+import { Select } from "@/components/common/Select";
 
 const formSchema = z.object({
   name: z.string().min(1, "表示名を入力してください").max(100),
@@ -53,6 +54,7 @@ export function UpsertLineAccountDialog({
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     watch,
@@ -219,24 +221,24 @@ export function UpsertLineAccountDialog({
                   <label htmlFor="castId" className="block text-sm font-bold text-stone-700">
                     担当メイト <span className="text-terracotta">*</span>
                   </label>
-                  <div className="relative mt-1.5">
-                    <select
-                      id="castId"
-                      {...register("castId")}
-                      className="block w-full appearance-none rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                    >
-                      <option value="">メイトを選択...</option>
-                      {castOptions.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.displayName}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
+                  <div className="mt-1.5">
+                    <Controller
+                      control={control}
+                      name="castId"
+                      render={({ field }) => (
+                        <Select
+                          id="castId"
+                          aria-label="担当メイト"
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder="メイトを選択..."
+                          options={[
+                            { value: "", label: "メイトを選択...", disabled: true },
+                            ...castOptions.map((c) => ({ value: c.id, label: c.displayName })),
+                          ]}
+                        />
+                      )}
+                    />
                   </div>
                 </div>
               )}

@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { createEndUser } from "@/actions/users";
 import { getCastOptions, type CastOption } from "@/actions/assignments";
 import { useToast } from "@/components/common/Toast";
+import { Select } from "@/components/common/Select";
 
 const formSchema = z.object({
   lineUserId: z.string().min(1, "LINE User IDを入力してください"),
@@ -38,6 +39,7 @@ export function CreateUserDialog({ open, onClose }: CreateUserDialogProps) {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -172,22 +174,19 @@ export function CreateUserDialog({ open, onClose }: CreateUserDialogProps) {
                 <label className="block text-sm font-bold text-stone-700">
                   プラン <span className="text-terracotta">*</span>
                 </label>
-                <div className="relative mt-1.5">
-                  <select
-                    {...register("planCode")}
-                    className="block w-full appearance-none rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                  >
-                    {PLAN_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
+                <div className="mt-1.5">
+                  <Controller
+                    control={control}
+                    name="planCode"
+                    render={({ field }) => (
+                      <Select
+                        aria-label="プラン"
+                        value={field.value}
+                        onChange={field.onChange}
+                        options={PLAN_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                      />
+                    )}
+                  />
                 </div>
               </div>
 
@@ -201,24 +200,25 @@ export function CreateUserDialog({ open, onClose }: CreateUserDialogProps) {
                     <div className="h-10 rounded-xl bg-stone-200" />
                   </div>
                 ) : (
-                  <div className="relative mt-1.5">
-                    <select
-                      {...register("assignedCastId")}
-                      className="block w-full appearance-none rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                    >
-                      <option value="">未割当</option>
-                      {casts.map((cast) => (
-                        <option key={cast.id} value={cast.id}>
-                          {cast.displayName} ({cast.assignedUserCount}
-                          {cast.capacityLimit ? `/${cast.capacityLimit}` : ""}人)
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
+                  <div className="mt-1.5">
+                    <Controller
+                      control={control}
+                      name="assignedCastId"
+                      render={({ field }) => (
+                        <Select
+                          aria-label="担当メイト"
+                          value={field.value ?? ""}
+                          onChange={field.onChange}
+                          options={[
+                            { value: "", label: "未割当" },
+                            ...casts.map((cast) => ({
+                              value: cast.id,
+                              label: `${cast.displayName} (${cast.assignedUserCount}${cast.capacityLimit ? `/${cast.capacityLimit}` : ""}人)`,
+                            })),
+                          ]}
+                        />
+                      )}
+                    />
                   </div>
                 )}
               </div>

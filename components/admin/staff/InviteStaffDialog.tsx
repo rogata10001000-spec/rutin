@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { createStaffAccount } from "@/actions/admin/staff";
 import { useToast } from "@/components/common/Toast";
+import { Select } from "@/components/common/Select";
 
 const formSchema = z.object({
   email: z.string().email("有効なメールアドレスを入力してください"),
@@ -42,6 +43,7 @@ export function InviteStaffDialog({ open, onClose }: InviteStaffDialogProps) {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -265,23 +267,20 @@ export function InviteStaffDialog({ open, onClose }: InviteStaffDialogProps) {
                 >
                   性別
                 </label>
-                <div className="relative mt-1.5">
-                  <select
-                    id="gender"
-                    {...register("gender")}
-                    className="block w-full appearance-none rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                  >
-                    {genderOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
+                <div className="mt-1.5">
+                  <Controller
+                    control={control}
+                    name="gender"
+                    render={({ field }) => (
+                      <Select
+                        id="gender"
+                        aria-label="性別"
+                        value={field.value ?? ""}
+                        onChange={field.onChange}
+                        options={genderOptions.map((o) => ({ value: o.value, label: o.label }))}
+                      />
+                    )}
+                  />
                 </div>
                 <p className="mt-1.5 text-xs text-stone-400">
                   ユーザーの伴走メイト選択画面で絞り込みに使われます

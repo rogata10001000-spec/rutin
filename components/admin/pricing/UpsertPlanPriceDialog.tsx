@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { upsertPlanPrice, type PlanPrice } from "@/actions/admin/plan-prices";
 import { useToast } from "@/components/common/Toast";
+import { Select } from "@/components/common/Select";
 
 const formSchema = z.object({
   planCode: z.enum(["light", "standard", "premium"]),
@@ -37,6 +38,7 @@ export function UpsertPlanPriceDialog({ open, editItem, onClose }: UpsertPlanPri
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -138,23 +140,20 @@ export function UpsertPlanPriceDialog({ open, editItem, onClose }: UpsertPlanPri
                 <label className="block text-sm font-bold text-stone-700">
                   プラン <span className="text-terracotta">*</span>
                 </label>
-                <div className="relative mt-1.5">
-                  <select
-                    {...register("planCode")}
-                    disabled={!!editItem}
-                    className="block w-full appearance-none rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta disabled:bg-stone-100"
-                  >
-                    {PLAN_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
+                <div className="mt-1.5">
+                  <Controller
+                    control={control}
+                    name="planCode"
+                    render={({ field }) => (
+                      <Select
+                        aria-label="プラン"
+                        value={field.value}
+                        onChange={field.onChange}
+                        disabled={!!editItem}
+                        options={PLAN_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+                      />
+                    )}
+                  />
                 </div>
               </div>
 

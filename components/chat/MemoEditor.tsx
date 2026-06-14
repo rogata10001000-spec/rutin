@@ -9,6 +9,7 @@ import {
 } from "@/actions/memos";
 import { MEMO_CATEGORIES } from "@/lib/memo-categories";
 import { useToast } from "@/components/common/Toast";
+import { Select } from "@/components/common/Select";
 
 type MemoEditorProps = {
   endUserId: string;
@@ -116,18 +117,15 @@ export function MemoEditor({ endUserId }: MemoEditorProps) {
           <div className="mb-3 rounded-xl border border-terracotta/20 bg-terracotta/5 p-3">
             <div className="space-y-2">
               <div className="flex gap-2">
-                <select
+                <Select
+                  aria-label="メモカテゴリ"
+                  size="sm"
+                  className="flex-1"
                   value={formCategory}
-                  onChange={(e) => setFormCategory(e.target.value)}
+                  onChange={setFormCategory}
                   disabled={!!editingMemo}
-                  className="flex-1 rounded-lg border-stone-200 bg-white px-2 py-1.5 text-sm shadow-sm focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta disabled:bg-stone-100"
-                >
-                  {MEMO_CATEGORIES.map((cat) => (
-                    <option key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </option>
-                  ))}
-                </select>
+                  options={MEMO_CATEGORIES.map((cat) => ({ value: cat.value, label: cat.label }))}
+                />
                 <label className="flex items-center gap-1.5 text-sm cursor-pointer">
                   <input
                     type="checkbox"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { Select } from "@/components/common/Select";
 
 export function WebhookFilters() {
   const router = useRouter();
@@ -26,29 +27,35 @@ export function WebhookFilters() {
         <label className="block text-xs font-medium text-gray-500 mb-1">
           プロバイダ
         </label>
-        <select
+        <Select
+          aria-label="プロバイダで絞り込み"
+          size="sm"
+          className="w-auto min-w-[8rem]"
           value={currentProvider}
-          onChange={(e) => updateFilter("provider", e.target.value)}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-        >
-          <option value="">すべて</option>
-          <option value="line">LINE</option>
-          <option value="stripe">Stripe</option>
-        </select>
+          onChange={(value) => updateFilter("provider", value)}
+          options={[
+            { value: "", label: "すべて" },
+            { value: "line", label: "LINE" },
+            { value: "stripe", label: "Stripe" },
+          ]}
+        />
       </div>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">
           状態
         </label>
-        <select
+        <Select
+          aria-label="状態で絞り込み"
+          size="sm"
+          className="w-auto min-w-[8rem]"
           value={currentSuccess}
-          onChange={(e) => updateFilter("success", e.target.value)}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-        >
-          <option value="">すべて</option>
-          <option value="true">成功のみ</option>
-          <option value="false">失敗のみ</option>
-        </select>
+          onChange={(value) => updateFilter("success", value)}
+          options={[
+            { value: "", label: "すべて" },
+            { value: "true", label: "成功のみ" },
+            { value: "false", label: "失敗のみ" },
+          ]}
+        />
       </div>
     </div>
   );

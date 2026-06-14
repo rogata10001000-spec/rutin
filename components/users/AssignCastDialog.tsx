@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { UserDetail } from "@/actions/users";
 import { getCastOptions, assignCast, type CastOption } from "@/actions/assignments";
 import { useToast } from "@/components/common/Toast";
+import { Select } from "@/components/common/Select";
 
 const formSchema = z.object({
   toCastId: z.string().uuid("メイトを選択してください"),
@@ -31,6 +32,7 @@ export function AssignCastDialog({ open, user, onClose }: AssignCastDialogProps)
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
@@ -151,39 +153,35 @@ export function AssignCastDialog({ open, user, onClose }: AssignCastDialogProps)
                     <div className="h-10 rounded-xl bg-stone-200" />
                   </div>
                 ) : (
-                  <div className="relative mt-1.5">
-                    <select
-                      id="toCastId"
-                      {...register("toCastId")}
-                      className="block w-full appearance-none rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                    >
-                      <option value="">メイトを選択...</option>
-                      {casts
-                        .filter((c) => c.id !== user.assignedCastId)
-                        .map((cast) => {
-                          const isAtCapacity =
-                            cast.capacityLimit !== null &&
-                            cast.assignedUserCount >= cast.capacityLimit;
-                          return (
-                            <option
-                              key={cast.id}
-                              value={cast.id}
-                              disabled={isAtCapacity}
-                            >
-                              {cast.displayName}
-                              {" "}({cast.assignedUserCount}
-                              {cast.capacityLimit ? `/${cast.capacityLimit}` : ""}人)
-                              {!cast.acceptingNewUsers && " [受付停止中]"}
-                              {isAtCapacity && " [上限到達]"}
-                            </option>
-                          );
-                        })}
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
+                  <div className="mt-1.5">
+                    <Controller
+                      control={control}
+                      name="toCastId"
+                      render={({ field }) => (
+                        <Select
+                          id="toCastId"
+                          aria-label="新しい担当メイト"
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder="メイトを選択..."
+                          options={[
+                            { value: "", label: "メイトを選択...", disabled: true },
+                            ...casts
+                              .filter((c) => c.id !== user.assignedCastId)
+                              .map((cast) => {
+                                const isAtCapacity =
+                                  cast.capacityLimit !== null &&
+                                  cast.assignedUserCount >= cast.capacityLimit;
+                                return {
+                                  value: cast.id,
+                                  disabled: isAtCapacity,
+                                  label: `${cast.displayName} (${cast.assignedUserCount}${cast.capacityLimit ? `/${cast.capacityLimit}` : ""}人)${!cast.acceptingNewUsers ? " [受付停止中]" : ""}${isAtCapacity ? " [上限到達]" : ""}`,
+                                };
+                              }),
+                          ]}
+                        />
+                      )}
+                    />
                   </div>
                 )}
                 {errors.toCastId && (

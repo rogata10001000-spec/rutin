@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { InboxSummary } from "@/actions/inbox";
+import { Select } from "@/components/common/Select";
 
 type Cast = {
   id: string;
@@ -208,147 +209,110 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
       <div className="overflow-x-auto pb-0.5 no-scrollbar">
       <div className="flex min-w-max flex-wrap items-center gap-2">
         {/* 返信状態フィルタ（新規） */}
-        <div className="relative">
-          <select
-            value={currentFilters.replyStatus ?? "all"}
-            onChange={(e) => updateFilter("reply", e.target.value === "all" ? null : e.target.value)}
-            className="appearance-none rounded-xl border border-stone-200 bg-white pl-4 pr-8 py-2 text-sm font-medium text-stone-700 shadow-sm focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta cursor-pointer hover:bg-stone-50 transition-colors"
-          >
-            <option value="all">全ての返信状態</option>
-            <option value="unreplied">未返信のみ</option>
-            <option value="not_sent_today">今日未送信のみ</option>
-          </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-stone-500">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-        </div>
+        <Select
+          aria-label="返信状態で絞り込み"
+          className="w-auto min-w-[10rem]"
+          value={currentFilters.replyStatus ?? "all"}
+          onChange={(value) => updateFilter("reply", value === "all" ? null : value)}
+          options={[
+            { value: "all", label: "全ての返信状態" },
+            { value: "unreplied", label: "未返信のみ" },
+            { value: "not_sent_today", label: "今日未送信のみ" },
+          ]}
+        />
 
         {/* プランフィルタ */}
-        <div className="relative">
-          <select
-            value={currentFilters.planCodes?.join(",") ?? ""}
-            onChange={(e) => updateFilter("plan", e.target.value || null)}
-            className="appearance-none rounded-xl border border-stone-200 bg-white pl-4 pr-8 py-2 text-sm font-medium text-stone-700 shadow-sm focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta cursor-pointer hover:bg-stone-50 transition-colors"
-          >
-            <option value="">全プラン</option>
-            <option value="premium">Premium</option>
-            <option value="standard">Standard</option>
-            <option value="light">Light</option>
-          </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-stone-500">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-        </div>
+        <Select
+          aria-label="プランで絞り込み"
+          className="w-auto min-w-[8rem]"
+          value={currentFilters.planCodes?.join(",") ?? ""}
+          onChange={(value) => updateFilter("plan", value || null)}
+          options={[
+            { value: "", label: "全プラン" },
+            { value: "premium", label: "Premium" },
+            { value: "standard", label: "Standard" },
+            { value: "light", label: "Light" },
+          ]}
+        />
 
         {/* 担当メイトフィルタ（新規） */}
-        <div className="relative">
-          <select
-            value={
-              currentFilters.hasUnassigned
-                ? "unassigned"
-                : currentFilters.assignedCastId ?? ""
+        <Select
+          aria-label="担当メイトで絞り込み"
+          className="w-auto min-w-[8rem]"
+          value={
+            currentFilters.hasUnassigned
+              ? "unassigned"
+              : currentFilters.assignedCastId ?? ""
+          }
+          onChange={(value) => {
+            if (value === "unassigned") {
+              updateMultipleFilters([
+                { key: "cast", value: null },
+                { key: "unassigned", value: "true" },
+              ]);
+            } else if (value === "") {
+              updateMultipleFilters([
+                { key: "cast", value: null },
+                { key: "unassigned", value: null },
+              ]);
+            } else {
+              updateMultipleFilters([
+                { key: "cast", value },
+                { key: "unassigned", value: null },
+              ]);
             }
-            onChange={(e) => {
-              const value = e.target.value;
-              if (value === "unassigned") {
-                updateMultipleFilters([
-                  { key: "cast", value: null },
-                  { key: "unassigned", value: "true" },
-                ]);
-              } else if (value === "") {
-                updateMultipleFilters([
-                  { key: "cast", value: null },
-                  { key: "unassigned", value: null },
-                ]);
-              } else {
-                updateMultipleFilters([
-                  { key: "cast", value },
-                  { key: "unassigned", value: null },
-                ]);
-              }
-            }}
-            className="appearance-none rounded-xl border border-stone-200 bg-white pl-4 pr-8 py-2 text-sm font-medium text-stone-700 shadow-sm focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta cursor-pointer hover:bg-stone-50 transition-colors"
-          >
-            <option value="">全担当</option>
-            <option value="unassigned">未割当</option>
-            {casts.map((cast) => (
-              <option key={cast.id} value={cast.id}>
-                {cast.displayName}
-              </option>
-            ))}
-          </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-stone-500">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-        </div>
+          }}
+          options={[
+            { value: "", label: "全担当" },
+            { value: "unassigned", label: "未割当" },
+            ...casts.map((cast) => ({ value: cast.id, label: cast.displayName })),
+          ]}
+        />
 
         {/* 状態フィルタ */}
-        <div className="relative">
-          <select
-            value={currentFilters.statuses?.join(",") ?? ""}
-            onChange={(e) => updateFilter("status", e.target.value || null)}
-            className="appearance-none rounded-xl border border-stone-200 bg-white pl-4 pr-8 py-2 text-sm font-medium text-stone-700 shadow-sm focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta cursor-pointer hover:bg-stone-50 transition-colors"
-          >
-            <option value="">全状態</option>
-            <option value="trial">トライアル</option>
-            <option value="active">契約中</option>
-            <option value="past_due">支払い遅延</option>
-            <option value="paused">一時停止</option>
-            <option value="canceled">解約済み</option>
-          </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-stone-500">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-        </div>
+        <Select
+          aria-label="契約状態で絞り込み"
+          className="w-auto min-w-[8rem]"
+          value={currentFilters.statuses?.join(",") ?? ""}
+          onChange={(value) => updateFilter("status", value || null)}
+          options={[
+            { value: "", label: "全状態" },
+            { value: "trial", label: "トライアル" },
+            { value: "active", label: "契約中" },
+            { value: "past_due", label: "支払い遅延" },
+            { value: "paused", label: "一時停止" },
+            { value: "canceled", label: "解約済み" },
+          ]}
+        />
 
         {/* SLAフィルタ */}
-        <div className="relative">
-          <select
-            value={currentFilters.slaStatus ?? "all"}
-            onChange={(e) => updateFilter("sla", e.target.value === "all" ? null : e.target.value)}
-            className="appearance-none rounded-xl border border-stone-200 bg-white pl-4 pr-8 py-2 text-sm font-medium text-stone-700 shadow-sm focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta cursor-pointer hover:bg-stone-50 transition-colors"
-          >
-            <option value="all">全SLA</option>
-            <option value="breached">SLA超過中</option>
-            <option value="warning">SLA警告圏内</option>
-          </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-stone-500">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-        </div>
+        <Select
+          aria-label="SLA状態で絞り込み"
+          className="w-auto min-w-[8rem]"
+          value={currentFilters.slaStatus ?? "all"}
+          onChange={(value) => updateFilter("sla", value === "all" ? null : value)}
+          options={[
+            { value: "all", label: "全SLA" },
+            { value: "breached", label: "SLA超過中" },
+            { value: "warning", label: "SLA警告圏内" },
+          ]}
+        />
 
         {/* ソート */}
-        <div className="relative">
-          <select
-            value={currentFilters.sortBy ?? "priority"}
-            onChange={(e) =>
-              updateFilter("sort", e.target.value === "priority" ? null : e.target.value)
-            }
-            className="appearance-none rounded-xl border border-stone-200 bg-white pl-4 pr-8 py-2 text-sm font-medium text-stone-700 shadow-sm focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta cursor-pointer hover:bg-stone-50 transition-colors"
-          >
-            <option value="priority">優先度順</option>
-            <option value="unreplied_duration">未返信時間が長い順</option>
-            <option value="today_sent_asc">今日の送信が少ない順</option>
-            <option value="last_reply_oldest">最終対応が古い順</option>
-            <option value="last_message">メッセージ日時順</option>
-            <option value="nickname">名前順</option>
-          </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-stone-500">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-        </div>
+        <Select
+          aria-label="並び順"
+          className="w-auto min-w-[10rem]"
+          value={currentFilters.sortBy ?? "priority"}
+          onChange={(value) => updateFilter("sort", value === "priority" ? null : value)}
+          options={[
+            { value: "priority", label: "優先度順" },
+            { value: "unreplied_duration", label: "未返信時間が長い順" },
+            { value: "today_sent_asc", label: "今日の送信が少ない順" },
+            { value: "last_reply_oldest", label: "最終対応が古い順" },
+            { value: "last_message", label: "メッセージ日時順" },
+            { value: "nickname", label: "名前順" },
+          ]}
+        />
 
         {/* 危険フラグ */}
         <button

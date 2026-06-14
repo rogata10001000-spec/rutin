@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -12,6 +12,7 @@ import {
   type SupervisorOption,
 } from "@/actions/admin/staff";
 import { useToast } from "@/components/common/Toast";
+import { Select } from "@/components/common/Select";
 
 const formSchema = z.object({
   displayName: z.string().min(1, "表示名を入力してください").max(50, "表示名は50文字以内で入力してください"),
@@ -55,6 +56,7 @@ export function EditStaffDialog({ open, staff, onClose, viewerRole }: EditStaffD
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     watch,
@@ -215,23 +217,20 @@ export function EditStaffDialog({ open, staff, onClose, viewerRole }: EditStaffD
                     >
                       ロール <span className="text-terracotta">*</span>
                     </label>
-                    <div className="relative mt-1.5">
-                      <select
-                        id="role"
-                        {...register("role")}
-                        className="block w-full appearance-none rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                      >
-                        {roleOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </div>
+                    <div className="mt-1.5">
+                      <Controller
+                        control={control}
+                        name="role"
+                        render={({ field }) => (
+                          <Select
+                            id="role"
+                            aria-label="ロール"
+                            value={field.value}
+                            onChange={field.onChange}
+                            options={roleOptions.map((o) => ({ value: o.value, label: o.label }))}
+                          />
+                        )}
+                      />
                     </div>
                   </div>
 
@@ -267,23 +266,20 @@ export function EditStaffDialog({ open, staff, onClose, viewerRole }: EditStaffD
                       >
                         性別
                       </label>
-                      <div className="relative mt-1.5">
-                        <select
-                          id="gender"
-                          {...register("gender")}
-                          className="block w-full appearance-none rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                        >
-                          {genderOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </div>
+                      <div className="mt-1.5">
+                        <Controller
+                          control={control}
+                          name="gender"
+                          render={({ field }) => (
+                            <Select
+                              id="gender"
+                              aria-label="性別"
+                              value={field.value ?? ""}
+                              onChange={field.onChange}
+                              options={genderOptions.map((o) => ({ value: o.value, label: o.label }))}
+                            />
+                          )}
+                        />
                       </div>
                       <p className="mt-1.5 text-xs text-stone-400">
                         ユーザーの伴走メイト選択画面で絞り込みに使われます
@@ -321,24 +317,23 @@ export function EditStaffDialog({ open, staff, onClose, viewerRole }: EditStaffD
                       >
                         担当スーパーバイザー
                       </label>
-                      <div className="relative mt-1.5">
-                        <select
-                          id="supervisorId"
-                          {...register("supervisorId")}
-                          className="block w-full appearance-none rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                        >
-                          <option value="">未割当</option>
-                          {supervisorChoices.map((sv) => (
-                            <option key={sv.id} value={sv.id}>
-                              {sv.displayName}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-stone-500">
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </div>
+                      <div className="mt-1.5">
+                        <Controller
+                          control={control}
+                          name="supervisorId"
+                          render={({ field }) => (
+                            <Select
+                              id="supervisorId"
+                              aria-label="担当スーパーバイザー"
+                              value={field.value ?? ""}
+                              onChange={field.onChange}
+                              options={[
+                                { value: "", label: "未割当" },
+                                ...supervisorChoices.map((sv) => ({ value: sv.id, label: sv.displayName })),
+                              ]}
+                            />
+                          )}
+                        />
                       </div>
                       <p className="mt-1.5 text-xs text-stone-400">
                         割り当てたスーパーバイザーは、このメイトのユーザー向けプロフィール文のみ編集できます。

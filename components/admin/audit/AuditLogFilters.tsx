@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
+import { Select } from "@/components/common/Select";
 
 type AuditLogFiltersProps = {
   actions: string[];
@@ -34,31 +35,29 @@ export function AuditLogFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <select
+      <Select
+        aria-label="アクションで絞り込み"
+        size="sm"
+        className="w-auto min-w-[10rem]"
         value={currentAction ?? ""}
-        onChange={(e) => updateFilter("action", e.target.value || null)}
-        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-      >
-        <option value="">全アクション</option>
-        {actions.map((action) => (
-          <option key={action} value={action}>
-            {action}
-          </option>
-        ))}
-      </select>
+        onChange={(value) => updateFilter("action", value || null)}
+        options={[
+          { value: "", label: "全アクション" },
+          ...actions.map((action) => ({ value: action, label: action })),
+        ]}
+      />
 
-      <select
+      <Select
+        aria-label="対象種別で絞り込み"
+        size="sm"
+        className="w-auto min-w-[10rem]"
         value={currentTargetType ?? ""}
-        onChange={(e) => updateFilter("targetType", e.target.value || null)}
-        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-      >
-        <option value="">全対象</option>
-        {targetTypes.map((targetType) => (
-          <option key={targetType} value={targetType}>
-            {targetType}
-          </option>
-        ))}
-      </select>
+        onChange={(value) => updateFilter("targetType", value || null)}
+        options={[
+          { value: "", label: "全対象" },
+          ...targetTypes.map((targetType) => ({ value: targetType, label: targetType })),
+        ]}
+      />
 
       {(currentAction || currentTargetType) && (
         <button
