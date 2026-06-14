@@ -217,7 +217,7 @@ export async function createSettlementBatch(
 
   const supabase = createAdminSupabaseClient();
 
-  const { data: batchId, error: batchError } = await (supabase as any).rpc(
+  const { data: batchId, error: batchError } = await supabase.rpc(
     "create_settlement_batch_atomic",
     {
       p_period_from: input.periodFrom,

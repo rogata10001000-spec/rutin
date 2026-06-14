@@ -841,6 +841,24 @@ export interface Database {
         Args: { p_cast_id: string };
         Returns: boolean;
       };
+      send_gift_atomic: {
+        Args: { p_line_user_id: string; p_gift_id: string };
+        Returns: {
+          gift_send_id: string;
+          revenue_event_id: string;
+          payout_id: string;
+          cost_points: number;
+          gift_name: string;
+          payout_percent: number;
+          tax_jpy: number;
+          amount_excl_tax: number;
+          amount_incl_tax: number;
+        }[];
+      };
+      create_settlement_batch_atomic: {
+        Args: { p_period_from: string; p_period_to: string; p_created_by: string };
+        Returns: string;
+      };
     };
     Enums: {
       [_ in never]: never;

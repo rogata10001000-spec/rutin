@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getClientEnv } from "@/lib/env";
 
 type Phase = "loading" | "redirecting" | "error" | "not_configured";
 
@@ -9,7 +10,7 @@ export function LiffMyPageClient() {
   const [message, setMessage] = useState<string>("");
 
   useEffect(() => {
-    const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+    const liffId = getClientEnv().NEXT_PUBLIC_LIFF_ID;
     if (!liffId) {
       setPhase("not_configured");
       return;

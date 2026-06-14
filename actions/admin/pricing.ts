@@ -6,22 +6,7 @@ import { Result, toZodErrorMessage } from "../types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
-import Stripe from "stripe";
-
-let stripeClient: Stripe | null = null;
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-
-const getStripeClient = () => {
-  if (!stripeSecretKey) {
-    throw new Error("STRIPE_SECRET_KEY is not set");
-  }
-  if (!stripeClient) {
-    stripeClient = new Stripe(stripeSecretKey, {
-      apiVersion: "2025-02-24.acacia",
-    });
-  }
-  return stripeClient;
-};
+import { stripe } from "@/lib/stripe";
 
 // =====================================
 // メイト別価格オーバーライド
@@ -244,16 +229,6 @@ export async function changeUserSubscriptionPrice(
     return {
       ok: false,
       error: { code: "NOT_FOUND", message: "適用可能な価格が見つかりません" },
-    };
-  }
-
-  let stripe: Stripe;
-  try {
-    stripe = getStripeClient();
-  } catch (err) {
-    return {
-      ok: false,
-      error: { code: "CONFIG_ERROR", message: "Stripeの設定が未完了です" },
     };
   }
 

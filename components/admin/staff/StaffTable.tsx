@@ -6,6 +6,7 @@ import Link from "next/link";
 import type { StaffMember } from "@/actions/admin/staff";
 import { resetStaffPassword, setCastAcceptingStatus } from "@/actions/admin/staff";
 import { useToast } from "@/components/common/Toast";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { calculateAge } from "@/lib/age";
 import { InviteStaffDialog } from "./InviteStaffDialog";
 import { EditStaffDialog } from "./EditStaffDialog";
@@ -32,6 +33,7 @@ export function StaffTable({ items, viewerRole }: StaffTableProps) {
   const { showToast, ToastContainer } = useToast();
   const [toggling, setToggling] = useState<string | null>(null);
   const [resettingPassword, setResettingPassword] = useState<string | null>(null);
+  const [pendingReset, setPendingReset] = useState<StaffMember | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
@@ -71,11 +73,9 @@ export function StaffTable({ items, viewerRole }: StaffTableProps) {
     setEditOpen(true);
   };
 
-  const handleResetPassword = async (staff: StaffMember) => {
-    const confirmed = window.confirm(
-      `${staff.displayName}さんのパスワードを再設定します。現在のパスワードは使えなくなります。よろしいですか？`
-    );
-    if (!confirmed) return;
+  const handleConfirmResetPassword = async () => {
+    if (!pendingReset) return;
+    const staff = pendingReset;
 
     setResettingPassword(staff.id);
     try {
@@ -94,6 +94,7 @@ export function StaffTable({ items, viewerRole }: StaffTableProps) {
       showToast("パスワードの再設定に失敗しました", "error");
     } finally {
       setResettingPassword(null);
+      setPendingReset(null);
     }
   };
 
@@ -262,7 +263,7 @@ export function StaffTable({ items, viewerRole }: StaffTableProps) {
                             <>
                               {viewerRole === "admin" && (
                                 <button
-                                  onClick={() => handleResetPassword(item)}
+                                  onClick={() => setPendingReset(item)}
                                   disabled={resettingPassword === item.id}
                                   className="rounded-lg px-3 py-1 text-xs font-bold text-stone-600 hover:bg-stone-100 disabled:opacity-50"
                                 >
@@ -292,6 +293,21 @@ export function StaffTable({ items, viewerRole }: StaffTableProps) {
       )}
 
       <ToastContainer />
+
+      <ConfirmDialog
+        open={pendingReset !== null}
+        title="パスワードを再設定しますか？"
+        description={
+          pendingReset
+            ? `${pendingReset.displayName}さんのパスワードを再設定します。現在のパスワードは使えなくなります。`
+            : ""
+        }
+        confirmLabel="再設定する"
+        variant="danger"
+        loading={resettingPassword !== null}
+        onConfirm={handleConfirmResetPassword}
+        onCancel={() => setPendingReset(null)}
+      />
 
       {/* Dialogs */}
       <InviteStaffDialog

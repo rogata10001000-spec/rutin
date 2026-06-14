@@ -210,12 +210,12 @@ export async function sendGift(input: SendGiftInput): Promise<SendGiftResult> {
   }
 
   const supabase = createAdminSupabaseClient();
-  const { data: rpcResult, error } = await (supabase as any).rpc("send_gift_atomic", {
+  const { data: rpcResult, error } = await supabase.rpc("send_gift_atomic", {
     p_line_user_id: lineUserId,
     p_gift_id: parsed.data.giftId,
   });
 
-  const rows = (rpcResult as any[]) ?? [];
+  const rows = rpcResult ?? [];
   if (error || !rows[0]) {
     const message = error?.message ?? "ギフト送信の処理に失敗しました";
     if (message.includes("INSUFFICIENT_BALANCE")) {
