@@ -54,12 +54,12 @@ export default async function SubscribeCastPage({ searchParams }: PageProps) {
 
         <main className="flex-1 pb-12">
           {showCanceledBanner && (
-            <div className="mx-4 mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-medium text-blue-800">
-              <div className="mb-1 flex items-center gap-2 font-bold">
+            <div className="mx-4 mt-4 rounded-2xl border border-terracotta/20 bg-terracotta/5 p-4 text-sm font-medium text-stone-700">
+              <div className="mb-1 flex items-center gap-2 font-bold text-terracotta">
                 <span className="material-symbols-outlined text-[20px]">info</span>
                 決済がキャンセルされました
               </div>
-              <p className="text-xs leading-relaxed text-blue-700">
+              <p className="text-xs leading-relaxed text-stone-600">
                 伴走メイトとプランを選び直して、再度お手続きください。
               </p>
             </div>
