@@ -1,5 +1,6 @@
 "use server";
 
+import { logger } from "@/lib/logger";
 import { revalidatePath } from "next/cache";
 import { memoSchema } from "@/schemas/memos";
 import { Result, toZodErrorMessage } from "./types";
@@ -242,7 +243,7 @@ export async function upsertMemo(input: UpsertMemoInput): Promise<UpsertMemoResu
   });
 
   if (revError) {
-    console.error("[Memo] Failed to create revision:", revError);
+    logger.error("memos: failed to create revision", { error: revError.message });
   }
 
   // 監査ログ

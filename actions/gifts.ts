@@ -103,7 +103,7 @@ export async function createPointCheckoutSession(
   // 商品取得
   const { data: product } = await supabase
     .from("point_products")
-    .select("*")
+    .select("id, stripe_price_id, points")
     .eq("id", parsed.data.productId)
     .eq("active", true)
     .single();

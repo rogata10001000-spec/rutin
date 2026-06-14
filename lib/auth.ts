@@ -21,7 +21,7 @@ export async function getCurrentStaff() {
 
   const { data: profile } = await supabase
     .from("staff_profiles")
-    .select("*")
+    .select("id, role, display_name, active")
     .eq("id", user.id)
     .single();
 

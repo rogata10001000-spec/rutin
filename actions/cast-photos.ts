@@ -1,5 +1,6 @@
 "use server";
 
+import { logger } from "@/lib/logger";
 import { revalidatePath } from "next/cache";
 import {
   getCastPhotosSchema,
@@ -55,7 +56,7 @@ export async function getCastPhotos(castId: string): Promise<GetCastPhotosResult
       .order("display_order");
 
     if (error) {
-      console.error("[CastPhotos] Failed to fetch photos:", error);
+      logger.error("castPhotos: failed to fetch photos", { error: error.message });
       return {
         ok: false,
         error: { code: "UNKNOWN", message: "写真の取得に失敗しました" },
@@ -71,7 +72,7 @@ export async function getCastPhotos(castId: string): Promise<GetCastPhotosResult
 
     return { ok: true, data: { photos: photosWithUrls } };
   } catch (error) {
-    console.error("[CastPhotos] Unexpected error fetching photos:", error);
+    logger.error("castPhotos: unexpected error fetching photos", { error: error instanceof Error ? error.message : String(error) });
     return {
       ok: false,
       error: { code: "UNKNOWN", message: "写真の取得に失敗しました" },
@@ -209,7 +210,7 @@ export async function uploadCastPhoto(
     });
 
   if (uploadError) {
-    console.error("[CastPhotos] Storage upload failed:", uploadError);
+    logger.error("castPhotos: storage upload failed", { error: uploadError.message });
     return {
       ok: false,
       error: { code: "UNKNOWN", message: "写真のアップロードに失敗しました" },
@@ -226,7 +227,7 @@ export async function uploadCastPhoto(
   });
 
   if (dbError) {
-    console.error("[CastPhotos] DB insert failed:", dbError);
+    logger.error("castPhotos: db insert failed", { error: dbError.message });
     // ストレージからも削除（ロールバック）
     await adminSupabase.storage.from(BUCKET_NAME).remove([storagePath]);
     return {
@@ -331,7 +332,7 @@ export async function deleteCastPhoto(photoId: string): Promise<DeleteCastPhotoR
     .remove([photo.storage_path]);
 
   if (storageError) {
-    console.error("[CastPhotos] Storage delete failed:", storageError);
+    logger.error("castPhotos: storage delete failed", { error: storageError.message });
   }
 
   // DBから削除（物理削除）
@@ -341,7 +342,7 @@ export async function deleteCastPhoto(photoId: string): Promise<DeleteCastPhotoR
     .eq("id", photoId);
 
   if (dbError) {
-    console.error("[CastPhotos] DB delete failed:", dbError);
+    logger.error("castPhotos: db delete failed", { error: dbError.message });
     return {
       ok: false,
       error: { code: "UNKNOWN", message: "写真の削除に失敗しました" },
@@ -432,7 +433,7 @@ export async function reorderCastPhotos(
       .eq("cast_id", castId);
 
     if (error) {
-      console.error("[CastPhotos] Reorder failed:", error);
+      logger.error("castPhotos: reorder failed", { error: error.message });
       return {
         ok: false,
         error: { code: "UNKNOWN", message: "並び順の更新に失敗しました" },
@@ -536,7 +537,7 @@ export async function updateCaption(
     .eq("id", photoId);
 
   if (error) {
-    console.error("[CastPhotos] Caption update failed:", error);
+    logger.error("castPhotos: caption update failed", { error: error.message });
     return {
       ok: false,
       error: { code: "UNKNOWN", message: "キャプションの更新に失敗しました" },

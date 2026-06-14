@@ -1,5 +1,6 @@
 "use server";
 
+import { logger } from "@/lib/logger";
 import { revalidatePath } from "next/cache";
 import { createStaffAccountSchema, resetStaffPasswordSchema, setCastAcceptingSchema, upsertStaffProfileSchema } from "@/schemas/staff";
 import { Result, toZodErrorMessage } from "../types";
@@ -122,34 +123,38 @@ export async function getStaffList(): Promise<GetStaffListResult> {
     };
   }
 
-  // 各メイトの担当ユーザー数を取得
-  const items: StaffMember[] = await Promise.all(
-    (data ?? []).map(async (row) => {
-      let assignedUserCount = 0;
-      if (row.role === "cast") {
-        const { count } = await supabase
-          .from("end_users")
-          .select("*", { count: "exact", head: true })
-          .eq("assigned_cast_id", row.id)
-          .neq("status", "incomplete");
-        assignedUserCount = count ?? 0;
+  // 各メイトの担当ユーザー数をまとめて1クエリで取得（N+1回避）
+  const castIds = (data ?? []).filter((row) => row.role === "cast").map((row) => row.id);
+  const assignedCountByCast = new Map<string, number>();
+  if (castIds.length > 0) {
+    const { data: assignedRows } = await supabase
+      .from("end_users")
+      .select("assigned_cast_id")
+      .in("assigned_cast_id", castIds)
+      .neq("status", "incomplete");
+    for (const r of assignedRows ?? []) {
+      if (r.assigned_cast_id) {
+        assignedCountByCast.set(
+          r.assigned_cast_id,
+          (assignedCountByCast.get(r.assigned_cast_id) ?? 0) + 1
+        );
       }
+    }
+  }
 
-      return {
-        id: row.id,
-        displayName: row.display_name,
-        role: row.role as "admin" | "supervisor" | "cast",
-        active: row.active,
-        capacityLimit: row.capacity_limit,
-        acceptingNewUsers: row.accepting_new_users,
-        gender: (row.gender as StaffGender | null) ?? null,
-        birthDate: row.birth_date ?? null,
-        publicProfile: row.public_profile ?? null,
-        supervisorId: row.supervisor_id ?? null,
-        assignedUserCount,
-      };
-    })
-  );
+  const items: StaffMember[] = (data ?? []).map((row) => ({
+    id: row.id,
+    displayName: row.display_name,
+    role: row.role as "admin" | "supervisor" | "cast",
+    active: row.active,
+    capacityLimit: row.capacity_limit,
+    acceptingNewUsers: row.accepting_new_users,
+    gender: (row.gender as StaffGender | null) ?? null,
+    birthDate: row.birth_date ?? null,
+    publicProfile: row.public_profile ?? null,
+    supervisorId: row.supervisor_id ?? null,
+    assignedUserCount: row.role === "cast" ? assignedCountByCast.get(row.id) ?? 0 : 0,
+  }));
 
   return { ok: true, data: { items } };
 }
@@ -569,7 +574,7 @@ export async function createStaffAccount(
           error: { code: "CONFLICT", message: "このメールアドレスは既に登録されています" },
         };
       }
-      console.error("Auth create user error:", authError);
+      logger.error("staff: auth create user error", { error: authError.message });
       return {
         ok: false,
         error: { code: "EXTERNAL_API_ERROR", message: "アカウントの作成に失敗しました" },
@@ -600,7 +605,7 @@ export async function createStaffAccount(
       });
 
     if (profileError) {
-      console.error("Profile insert error:", profileError);
+      logger.error("staff: profile insert error", { error: profileError.message });
       // ユーザーは作成されたがプロフィールの作成に失敗した場合
       // ユーザーを削除してロールバック
       await adminSupabase.auth.admin.deleteUser(authData.user.id);
@@ -637,7 +642,7 @@ export async function createStaffAccount(
       },
     };
   } catch (error) {
-    console.error("Staff account create unexpected error:", error);
+    logger.error("staff: account create unexpected error", { error: error instanceof Error ? error.message : String(error) });
     return {
       ok: false,
       error: { code: "UNKNOWN", message: "アカウントの作成に失敗しました" },
@@ -704,7 +709,7 @@ export async function resetStaffPassword(
     );
 
     if (authError) {
-      console.error("Auth password reset error:", authError);
+      logger.error("staff: auth password reset error", { error: authError.message });
       return {
         ok: false,
         error: { code: "EXTERNAL_API_ERROR", message: "パスワードの再設定に失敗しました" },
@@ -731,7 +736,7 @@ export async function resetStaffPassword(
       },
     };
   } catch (error) {
-    console.error("Staff password reset unexpected error:", error);
+    logger.error("staff: password reset unexpected error", { error: error instanceof Error ? error.message : String(error) });
     return {
       ok: false,
       error: { code: "UNKNOWN", message: "パスワードの再設定に失敗しました" },

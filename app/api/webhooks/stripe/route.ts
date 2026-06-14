@@ -494,7 +494,7 @@ export async function POST(request: Request) {
 
       if (!sub) {
         if (eventType !== "customer.subscription.created") {
-          console.warn(`[Stripe Webhook] Subscription not found: ${subscriptionId}`);
+          logger.warn("stripe webhook: subscription not found", { subscriptionId });
           return { skipped: true };
         }
 

@@ -1,5 +1,6 @@
 "use server";
 
+import { logger } from "@/lib/logger";
 import {
   createSubscriptionCheckoutSchema,
   listAvailableCastsSchema,
@@ -368,7 +369,7 @@ export async function createSubscriptionCheckoutSession(
 
     return { ok: true, data: { checkoutUrl: url } };
   } catch (err) {
-    console.error("[Subscription] Checkout creation failed:", err);
+    logger.error("subscriptions: checkout creation failed", { error: err instanceof Error ? err.message : String(err) });
     return {
       ok: false,
       error: { code: "EXTERNAL_API_ERROR", message: "決済ページの作成に失敗しました" },

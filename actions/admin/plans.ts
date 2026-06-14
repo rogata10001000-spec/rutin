@@ -41,7 +41,9 @@ export async function getPlansAdmin(): Promise<GetPlansAdminResult> {
 
   const { data, error } = await supabase
     .from("plans")
-    .select("*")
+    .select(
+      "plan_code, name, reply_sla_minutes, sla_warning_minutes, daily_checkin_enabled, weekly_review_enabled, priority_level, capacity_weight, active"
+    )
     .order("priority_level", { ascending: false });
 
   if (error) {

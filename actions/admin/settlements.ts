@@ -125,7 +125,7 @@ export async function getSettlementBatchDetail(
 
   const { data: batch, error: batchError } = await supabase
     .from("settlement_batches")
-    .select("*")
+    .select("id, period_from, period_to, status, total_amount_jpy, created_at, approved_at, paid_at")
     .eq("id", input.batchId)
     .single();
 

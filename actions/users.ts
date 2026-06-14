@@ -1,5 +1,6 @@
 "use server";
 
+import { logger } from "@/lib/logger";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentStaff, canAccessUser } from "@/lib/auth";
 import { Result } from "./types";
@@ -393,7 +394,7 @@ export async function updateEndUser(
     .eq("id", endUserId);
 
   if (updateError) {
-    console.error("[updateEndUser] Update failed:", updateError);
+    logger.error("updateEndUser: update failed", { error: updateError.message });
     return {
       ok: false,
       error: { code: "UNKNOWN", message: "更新に失敗しました" },
@@ -505,7 +506,7 @@ export async function createEndUser(
     .single();
 
   if (createError) {
-    console.error("[createEndUser] Create failed:", createError);
+    logger.error("createEndUser: create failed", { error: createError.message });
     if (createError.code === "23505") {
       return {
         ok: false,
