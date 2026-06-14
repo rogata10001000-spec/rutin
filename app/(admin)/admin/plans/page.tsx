@@ -20,7 +20,7 @@ export default async function PlansPage() {
         </p>
       </div>
 
-      <div className="rounded-lg border bg-white">
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
         <PlansTable items={result.data.items} />
       </div>
 

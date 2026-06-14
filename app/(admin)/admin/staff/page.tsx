@@ -26,7 +26,7 @@ export default async function StaffPage() {
         </p>
       </div>
 
-      <div className="rounded-lg border bg-white">
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
         <StaffTable items={result.data.items} viewerRole={viewerRole} />
       </div>
     </div>

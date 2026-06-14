@@ -24,7 +24,7 @@ export default async function SettlementsPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* バッチ作成フォーム */}
         <div className="lg:col-span-1">
-          <div className="rounded-lg border bg-white p-6">
+          <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-6">
             <h2 className="mb-4 text-lg font-semibold text-stone-900">
               新規精算バッチ
             </h2>
@@ -34,7 +34,7 @@ export default async function SettlementsPage() {
 
         {/* バッチ一覧 */}
         <div className="lg:col-span-2">
-          <div className="rounded-lg border bg-white">
+          <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
             <div className="border-b px-6 py-4">
               <h2 className="text-lg font-semibold text-stone-900">
                 精算バッチ一覧

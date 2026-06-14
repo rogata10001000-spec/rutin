@@ -39,19 +39,19 @@ export default async function CancellationsPage({
 
       {result.ok && (
         <div className="mb-6 grid gap-4 sm:grid-cols-3">
-          <div className="rounded-lg border bg-white p-4">
+          <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
             <h3 className="text-sm font-medium text-stone-500">解約予定件数</h3>
             <p className="mt-2 text-2xl font-bold text-stone-900">
               {result.data.summary.totalCount}
             </p>
           </div>
-          <div className="rounded-lg border bg-white p-4">
+          <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
             <h3 className="text-sm font-medium text-stone-500">今月終了予定</h3>
             <p className="mt-2 text-2xl font-bold text-amber-600">
               {result.data.summary.endingThisMonthCount}
             </p>
           </div>
-          <div className="rounded-lg border bg-white p-4">
+          <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
             <h3 className="text-sm font-medium text-stone-500">プラン別内訳</h3>
             <div className="mt-2 flex flex-wrap gap-2 text-sm">
               {result.data.summary.planBreakdown.length > 0 ? (
@@ -77,7 +77,7 @@ export default async function CancellationsPage({
         </Suspense>
       </div>
 
-      <div className="rounded-lg border bg-white">
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
         <Suspense fallback={<div className="p-4"><TableSkeleton rows={8} /></div>}>
           {result.ok ? (
             <CancellationTable items={result.data.items} />

@@ -53,7 +53,7 @@ export default async function MarketingPage({
       {result.ok ? (
         <MarketingDashboard summary={result.data} />
       ) : (
-        <div className="rounded-lg border bg-white p-4 text-center text-red-600">
+        <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4 text-center text-red-600">
           {result.error.message}
         </div>
       )}

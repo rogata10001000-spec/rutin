@@ -8,7 +8,7 @@ const formatYen = (amount: number) => `¥${amount.toLocaleString("ja-JP")}`;
 
 export function RevenueBreakdown({ breakdown }: RevenueBreakdownProps) {
   return (
-    <div className="rounded-lg border bg-white p-4">
+    <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
       <h3 className="text-sm font-medium text-stone-500">売上内訳（税込）</h3>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div className="rounded-md bg-stone-50 p-4">

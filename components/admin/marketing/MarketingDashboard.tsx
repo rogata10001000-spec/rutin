@@ -25,7 +25,7 @@ function KpiCard({
   note?: string;
 }) {
   return (
-    <div className="rounded-lg border bg-white p-4">
+    <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
       <h3 className="text-sm font-medium text-stone-500">{label}</h3>
       <p className="mt-2 text-2xl font-bold text-stone-900">{value}</p>
       {note && <p className="mt-1 text-xs text-stone-500">{note}</p>}
@@ -47,7 +47,7 @@ export function MarketingDashboard({ summary }: MarketingDashboardProps) {
         <KpiCard label="平均リードタイム" value={formatDays(summary.avgLeadTimeDays)} note="LINE追加 → 契約" />
       </div>
 
-      <div className="rounded-lg border bg-white p-5">
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-5">
         <div>
           <h2 className="text-sm font-bold text-stone-800">プラン構成比</h2>
           <p className="mt-0.5 text-xs text-stone-500">
@@ -67,7 +67,7 @@ export function MarketingDashboard({ summary }: MarketingDashboardProps) {
         </div>
       </div>
 
-      <div className="rounded-lg border bg-white">
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
         <div className="border-b px-5 py-4">
           <h2 className="text-sm font-bold text-stone-800">メイト別スコアカード</h2>
           <p className="mt-0.5 text-xs text-stone-500">

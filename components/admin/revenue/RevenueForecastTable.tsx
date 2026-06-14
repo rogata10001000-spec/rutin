@@ -9,7 +9,7 @@ const formatRate = (rate: number) => `${Math.round(rate * 100)}%`;
 
 export function RevenueForecastTable({ forecast }: RevenueForecastTableProps) {
   return (
-    <div className="rounded-lg border bg-white">
+    <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
       <div className="border-b px-5 py-4">
         <h2 className="text-sm font-bold text-stone-800">売上予測（試算）</h2>
         <p className="mt-0.5 text-xs text-stone-500">

@@ -44,7 +44,7 @@ export default async function UsersPage({
         <UsersFilters />
       </Suspense>
 
-      <div className="rounded-lg border bg-white">
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
         <Suspense fallback={<div className="p-4"><TableSkeleton rows={10} /></div>}>
           {result.ok ? (
             result.data.items.length > 0 ? (

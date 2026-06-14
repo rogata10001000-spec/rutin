@@ -71,7 +71,7 @@ export default async function StaffPhotosPage({ params }: PageProps) {
       </div>
 
       {/* 写真エディター */}
-      <div className="rounded-lg border bg-white p-6">
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-6">
         <PhotoEditor
           castId={id}
           castName={staff.displayName}

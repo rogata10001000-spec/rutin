@@ -65,19 +65,19 @@ export default async function SettlementDetailPage({
 
       {/* サマリーカード */}
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border bg-white p-4">
+        <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
           <p className="text-sm text-stone-500">合計金額</p>
           <p className="text-2xl font-bold text-stone-900">
             ¥{batch.totalAmount.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-lg border bg-white p-4">
+        <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
           <p className="text-sm text-stone-500">メイト数</p>
           <p className="text-2xl font-bold text-stone-900">
             {batch.castCount}人
           </p>
         </div>
-        <div className="rounded-lg border bg-white p-4">
+        <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
           <p className="text-sm text-stone-500">作成日</p>
           <p className="text-2xl font-bold text-stone-900">
             {format(new Date(batch.createdAt), "yyyy/MM/dd")}
@@ -86,7 +86,7 @@ export default async function SettlementDetailPage({
       </div>
 
       {/* タイムライン */}
-      <div className="mb-6 rounded-lg border bg-white p-4">
+      <div className="mb-6 rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
         <h2 className="mb-3 text-sm font-medium text-stone-700">ステータス履歴</h2>
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-2">
@@ -109,7 +109,7 @@ export default async function SettlementDetailPage({
       </div>
 
       {/* 明細テーブル */}
-      <div className="rounded-lg border bg-white">
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
         <div className="border-b px-6 py-4">
           <h2 className="text-lg font-semibold text-stone-900">
             メイト別明細

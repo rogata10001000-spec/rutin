@@ -38,7 +38,7 @@ export default async function WebhooksPage({
       {/* Stats Cards */}
       {statsResult.ok && (
         <div className="mb-6 grid gap-4 sm:grid-cols-4">
-          <div className="rounded-lg border bg-white p-4">
+          <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
             <h3 className="text-sm font-medium text-stone-500">今日の処理</h3>
             <p className="mt-2 text-2xl font-bold text-stone-900">
               {statsResult.data.totalToday}
@@ -54,7 +54,7 @@ export default async function WebhooksPage({
               )}
             </div>
           </div>
-          <div className="rounded-lg border bg-white p-4">
+          <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
             <h3 className="text-sm font-medium text-stone-500">過去7日間</h3>
             <p className="mt-2 text-2xl font-bold text-stone-900">
               {statsResult.data.totalWeek}
@@ -70,7 +70,7 @@ export default async function WebhooksPage({
               )}
             </div>
           </div>
-          <div className="rounded-lg border bg-white p-4">
+          <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
             <h3 className="text-sm font-medium text-stone-500">成功率（今週）</h3>
             <p className="mt-2 text-2xl font-bold text-stone-900">
               {statsResult.data.totalWeek > 0
@@ -79,7 +79,7 @@ export default async function WebhooksPage({
               %
             </p>
           </div>
-          <div className="rounded-lg border bg-white p-4">
+          <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
             <h3 className="text-sm font-medium text-stone-500">要対応</h3>
             <p className={`mt-2 text-2xl font-bold ${
               statsResult.data.needsAttention > 0 ? "text-red-600" : "text-stone-900"
@@ -99,7 +99,7 @@ export default async function WebhooksPage({
       </div>
 
       {/* Events Table */}
-      <div className="rounded-lg border bg-white">
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
         <div className="border-b px-6 py-4">
           <h2 className="text-lg font-semibold text-stone-900">
             イベント一覧

@@ -51,7 +51,7 @@ export default async function AuditPage({
         />
       </div>
 
-      <div className="rounded-lg border bg-white">
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
         <AuditLogTable items={logsResult.data.items} />
       </div>
     </div>

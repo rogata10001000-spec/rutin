@@ -13,7 +13,7 @@ export default function UsersLoading() {
       <div className="mb-4">
         <div className="h-10 w-full animate-pulse rounded-xl bg-stone-100" />
       </div>
-      <div className="rounded-lg border bg-white p-4">
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
         <TableSkeleton rows={10} />
       </div>
     </div>

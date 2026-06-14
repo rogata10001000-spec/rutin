@@ -65,12 +65,12 @@ export default async function RevenuePage({
           {forecastResult.ok ? (
             <RevenueForecastTable forecast={forecastResult.data} />
           ) : (
-            <div className="rounded-lg border bg-white p-4 text-center text-red-600">
+            <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4 text-center text-red-600">
               {forecastResult.error.message}
             </div>
           )}
           <RevenueBreakdown breakdown={result.data.summary.breakdown} />
-          <div className="rounded-lg border bg-white">
+          <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
             <div className="border-b px-5 py-4">
               <h2 className="text-sm font-bold text-stone-800">メイト別売上</h2>
               <p className="mt-0.5 text-xs text-stone-500">
@@ -81,7 +81,7 @@ export default async function RevenuePage({
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border bg-white p-4 text-center text-red-600">
+        <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4 text-center text-red-600">
           {result.error.message}
         </div>
       )}
