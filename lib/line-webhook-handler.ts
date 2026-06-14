@@ -64,6 +64,14 @@ type SupabaseAdmin = ReturnType<typeof createAdminSupabaseClient>;
 const DEFAULT_PLAN_CODE = getServerEnv().TRIAL_PLAN_CODE;
 const CONTRACTED_STATUSES_EXCLUDED = ["incomplete", "canceled"] as const;
 
+// リッチメニューのボタンが「テキスト送信」アクションの場合に届く定型文。
+// 会話ではなくナビゲーション操作として扱い、生URLを露出せず案内（Flex/管理リンク）で応答する。
+const MENU_SELECT_MATE_TEXTS = new Set([
+  "メイトを選ぶ",
+  "メイトを選んで始める",
+  "メイトを見る",
+]);
+
 function buildSubscribeUrl(lineUserId: string) {
   const token = generateUserToken(lineUserId);
   return `${getServerEnv().APP_BASE_URL}/subscribe/cast?token=${encodeURIComponent(token)}`;
@@ -288,6 +296,48 @@ export async function handleLineWebhook(
     if (event.type === "message" && event.message.type === "text") {
       const messageId = event.message.id;
       const messageText = event.message.text;
+
+      // リッチメニュー「メイトを選ぶ」等のテキスト送信ボタンはコマンドとして処理する。
+      // 会話としては保存・スタッフ通知せず、契約状態に応じた案内を返す（未契約はFlexカードでURLを隠す）。
+      if (MENU_SELECT_MATE_TEXTS.has(messageText.trim())) {
+        const cmd = await withWebhookIdempotency("line", eventId, "menu_select_mate", async () => {
+          const { data: menuUser } = await supabase
+            .from("end_users")
+            .select("status")
+            .eq("line_user_id", lineUserId)
+            .maybeSingle();
+
+          const isContracted =
+            menuUser && !CONTRACTED_STATUSES_EXCLUDED.includes(menuUser.status as never);
+
+          if (isContracted) {
+            await pushTextMessage(
+              account.credentials,
+              lineUserId,
+              `契約内容の確認・プラン変更・解約はこちらから行えます（リンクは30分間有効です）。\n${buildAccountPlanUrl(
+                generateUserToken(lineUserId)
+              )}`
+            );
+            return { contracted: true };
+          }
+
+          await sendSubscribeGuideFlexMessage(
+            account.credentials,
+            lineUserId,
+            buildSubscribeUrl(lineUserId),
+            getTrialPeriodDays()
+          );
+          return { contracted: false };
+        });
+
+        if (cmd.status === "error") {
+          logger.error("LINE webhook menu_select_mate error", {
+            message: cmd.message,
+            eventId,
+          });
+        }
+        continue;
+      }
 
       const result = await withWebhookIdempotency("line", eventId, "message", async () => {
         const { data: user } = await supabase
