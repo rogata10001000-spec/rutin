@@ -38,6 +38,7 @@ export function AuditLogFilters({
       <Select
         aria-label="アクションで絞り込み"
         size="sm"
+        fullWidth={false}
         className="w-auto min-w-[10rem]"
         value={currentAction ?? ""}
         onChange={(value) => updateFilter("action", value || null)}
@@ -50,6 +51,7 @@ export function AuditLogFilters({
       <Select
         aria-label="対象種別で絞り込み"
         size="sm"
+        fullWidth={false}
         className="w-auto min-w-[10rem]"
         value={currentTargetType ?? ""}
         onChange={(value) => updateFilter("targetType", value || null)}

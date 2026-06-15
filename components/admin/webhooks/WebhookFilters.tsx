@@ -30,6 +30,7 @@ export function WebhookFilters() {
         <Select
           aria-label="プロバイダで絞り込み"
           size="sm"
+          fullWidth={false}
           className="w-auto min-w-[8rem]"
           value={currentProvider}
           onChange={(value) => updateFilter("provider", value)}
@@ -47,6 +48,7 @@ export function WebhookFilters() {
         <Select
           aria-label="状態で絞り込み"
           size="sm"
+          fullWidth={false}
           className="w-auto min-w-[8rem]"
           value={currentSuccess}
           onChange={(value) => updateFilter("success", value)}

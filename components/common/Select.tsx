@@ -25,7 +25,7 @@ const sizeClasses: Record<Size, string> = {
 };
 
 const triggerBaseClass =
-  "inline-flex w-full items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white font-medium text-stone-700 shadow-sm transition-colors hover:bg-stone-50 focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white font-medium text-stone-700 shadow-sm transition-colors hover:bg-stone-50 focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta disabled:cursor-not-allowed disabled:opacity-50";
 
 function Chevron({ open }: { open: boolean }) {
   return (
@@ -114,6 +114,8 @@ export type SelectProps = {
   className?: string;
   id?: string;
   size?: Size;
+  /** 親要素いっぱいに広げる（既定: true）。インライン配置したい場合は false。 */
+  fullWidth?: boolean;
   "aria-label"?: string;
 };
 
@@ -126,6 +128,7 @@ export function Select({
   className = "",
   id,
   size = "md",
+  fullWidth = true,
   "aria-label": ariaLabel,
 }: SelectProps) {
   const [open, setOpen] = useState(false);
@@ -168,7 +171,7 @@ export function Select({
         aria-expanded={open}
         aria-label={ariaLabel}
         onClick={() => setOpen((v) => !v)}
-        className={`${triggerBaseClass} ${sizeClasses[size]} ${className}`}
+        className={`${triggerBaseClass} ${fullWidth ? "w-full" : ""} ${sizeClasses[size]} ${className}`}
       >
         <span className={`truncate ${selected ? "" : "text-stone-400"}`}>
           {selected ? selected.label : placeholder}
@@ -226,6 +229,7 @@ export type MultiSelectProps = {
   className?: string;
   id?: string;
   size?: Size;
+  fullWidth?: boolean;
   "aria-label"?: string;
 };
 
@@ -238,6 +242,7 @@ export function MultiSelect({
   className = "",
   id,
   size = "md",
+  fullWidth = true,
   "aria-label": ariaLabel,
 }: MultiSelectProps) {
   const [open, setOpen] = useState(false);
@@ -288,7 +293,7 @@ export function MultiSelect({
         aria-expanded={open}
         aria-label={ariaLabel}
         onClick={() => setOpen((v) => !v)}
-        className={`${triggerBaseClass} ${sizeClasses[size]} ${className}`}
+        className={`${triggerBaseClass} ${fullWidth ? "w-full" : ""} ${sizeClasses[size]} ${className}`}
       >
         <span className={`truncate ${selectedLabels.length > 0 ? "" : "text-stone-400"}`}>
           {selectedLabels.length === 0
