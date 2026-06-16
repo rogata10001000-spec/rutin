@@ -25,6 +25,7 @@ type CancelDeflectionModalProps = {
   renewalDateLabel: string | null;
   busy: boolean;
   onClose: () => void;
+  onPause: () => void;
   onDowngrade: () => void;
   onConfirmCancel: (reasonCode: ReasonCode | null, reasonDetail: string) => void;
 };
@@ -37,6 +38,7 @@ export function CancelDeflectionModal({
   renewalDateLabel,
   busy,
   onClose,
+  onPause,
   onDowngrade,
   onConfirmCancel,
 }: CancelDeflectionModalProps) {
@@ -76,6 +78,21 @@ export function CancelDeflectionModal({
             </div>
 
             <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+              <div className="rounded-2xl border border-sage/40 bg-sage/10 p-4">
+                <p className="text-sm font-bold text-stone-800">いったん「一時停止」できます</p>
+                <p className="mt-1 text-xs leading-relaxed text-stone-600">
+                  解約せずに請求だけストップ。落ち着いたら、いつでも同じ担当メイトで再開できます。今の記録やつながりはそのまま残ります。
+                </p>
+                <button
+                  type="button"
+                  onClick={onPause}
+                  disabled={busy}
+                  className="mt-3 inline-flex w-full items-center justify-center rounded-full bg-sage px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:brightness-95 disabled:opacity-50"
+                >
+                  {busy ? "処理中..." : "一時停止する"}
+                </button>
+              </div>
+
               {downgradeOption && (
                 <div className="rounded-2xl border border-terracotta/30 bg-terracotta/5 p-4">
                   <p className="text-sm font-bold text-stone-800">

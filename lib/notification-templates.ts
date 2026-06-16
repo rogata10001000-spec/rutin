@@ -38,13 +38,14 @@ function wrapHtml(bodyHtml: string): string {
 }
 
 /** 支払い失敗（past_due） */
-export function paymentFailedNotification(): UserNotification {
-  const url = planPageUrl();
+export function paymentFailedNotification(portalUrl?: string | null): UserNotification {
+  // 支払い方法を直接更新できるカスタマーポータルがあればそれを優先（復旧導線を最短化）
+  const url = portalUrl || planPageUrl();
   const lineText = [
     "お支払いの確認ができませんでした。",
-    "お手数ですが、お支払い方法をご確認のうえ、更新をお願いいたします。",
+    "サービスを止めないために、お手数ですが支払い方法のご確認・更新をお願いいたします。",
     "",
-    `確認はこちら: ${url}`,
+    `お支払い方法の更新はこちら: ${url}`,
   ].join("\n");
 
   return {
@@ -54,7 +55,8 @@ export function paymentFailedNotification(): UserNotification {
       text: lineText,
       html: wrapHtml(
         `<p>お支払いの確認ができませんでした。</p>
-         <p>お手数ですが、お支払い方法をご確認のうえ、更新をお願いいたします。</p>`
+         <p>サービスを止めないために、お手数ですが支払い方法のご確認・更新をお願いいたします。</p>
+         <p><a href="${url}">お支払い方法を更新する</a></p>`
       ),
     },
   };

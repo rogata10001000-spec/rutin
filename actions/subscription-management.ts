@@ -15,8 +15,12 @@ import {
 } from "@/lib/plan-pricing";
 import {
   setSubscriptionCancelAtPeriodEnd,
+  setSubscriptionPauseCollection,
+  createBillingPortalSession,
   updateSubscriptionPlanPrice,
+  toSubscriptionStatus,
 } from "@/lib/stripe";
+import { getServerEnv } from "@/lib/env";
 import { currentPeriodEndFromStripeSubscription } from "@/lib/stripe-subscription-sync";
 import { recordSubscriptionLifecycleEvent } from "@/lib/subscription-lifecycle";
 import {
@@ -63,6 +67,7 @@ type ResolvedContext = {
   subscription: {
     id: string;
     stripe_subscription_id: string;
+    stripe_customer_id: string | null;
     status: SubscriptionStatus;
     plan_code: string;
     applied_stripe_price_id: string;
@@ -116,7 +121,7 @@ async function resolveCurrentUserSubscription(
   const { data: subscription } = await supabase
     .from("subscriptions")
     .select(
-      "id, stripe_subscription_id, status, plan_code, applied_stripe_price_id, current_period_end, cancel_at_period_end"
+      "id, stripe_subscription_id, stripe_customer_id, status, plan_code, applied_stripe_price_id, current_period_end, cancel_at_period_end"
     )
     .eq("end_user_id", endUser.id)
     .order("created_at", { ascending: false })
@@ -137,6 +142,7 @@ async function resolveCurrentUserSubscription(
       subscription: {
         id: subscription.id,
         stripe_subscription_id: subscription.stripe_subscription_id,
+        stripe_customer_id: subscription.stripe_customer_id,
         status: subscription.status as SubscriptionStatus,
         plan_code: subscription.plan_code,
         applied_stripe_price_id: subscription.applied_stripe_price_id,
@@ -497,4 +503,166 @@ export async function resumeMySubscription(): Promise<ResumeMySubscriptionResult
   });
 
   return { ok: true, data: { resumed: true } };
+}
+
+export type PauseMySubscriptionResult = Result<{ paused: boolean }>;
+
+/**
+ * 請求を一時停止する（解約防止の代替策）。Stripe pause_collection(void) を設定。
+ * 権限: LINE 案内リンクから入った本人のみ
+ */
+export async function pauseMySubscription(): Promise<PauseMySubscriptionResult> {
+  const supabase = createAdminSupabaseClient();
+  const resolved = await resolveCurrentUserSubscription(supabase);
+  if (!resolved.ok) {
+    return { ok: false, error: { code: resolved.code, message: resolved.message } };
+  }
+
+  const { ctx } = resolved;
+  const { subscription } = ctx;
+
+  if (subscription.status === "paused") {
+    return { ok: true, data: { paused: true } };
+  }
+
+  if (!MANAGEABLE_STATUSES.includes(subscription.status)) {
+    return {
+      ok: false,
+      error: { code: "CONFLICT", message: "現在の契約状態では一時停止できません。" },
+    };
+  }
+
+  if (subscription.cancel_at_period_end) {
+    return {
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        message: "解約予定中は一時停止できません。先に解約予定を取り消してください。",
+      },
+    };
+  }
+
+  try {
+    await setSubscriptionPauseCollection(subscription.stripe_subscription_id, true);
+  } catch (err) {
+    logger.error("pauseMySubscription: stripe update failed", {
+      subscriptionId: subscription.stripe_subscription_id,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    return {
+      ok: false,
+      error: { code: "EXTERNAL_API_ERROR", message: "一時停止の処理に失敗しました。" },
+    };
+  }
+
+  await supabase.from("subscriptions").update({ status: "paused" }).eq("id", subscription.id);
+  await supabase.from("end_users").update({ status: "paused" }).eq("id", ctx.endUserId);
+
+  await writeAuditLog({
+    action: "SUBSCRIPTION_SYNC",
+    targetType: "subscriptions",
+    targetId: subscription.id,
+    success: true,
+    metadata: buildAuditMetadata({
+      line_user_id: ctx.lineUserId,
+      changed_by: "end_user_self",
+      operation: "pause_subscription",
+    }),
+    actorStaffId: null,
+  });
+
+  return { ok: true, data: { paused: true } };
+}
+
+export type ResumePausedSubscriptionResult = Result<{ status: SubscriptionStatus }>;
+
+/**
+ * 一時停止を解除して再開する。pause_collection を解除し、Stripe の最新ステータスに同期。
+ * 権限: LINE 案内リンクから入った本人のみ
+ */
+export async function resumeMyPausedSubscription(): Promise<ResumePausedSubscriptionResult> {
+  const supabase = createAdminSupabaseClient();
+  const resolved = await resolveCurrentUserSubscription(supabase);
+  if (!resolved.ok) {
+    return { ok: false, error: { code: resolved.code, message: resolved.message } };
+  }
+
+  const { ctx } = resolved;
+  const { subscription } = ctx;
+
+  let nextStatus: SubscriptionStatus = "active";
+  try {
+    const updated = await setSubscriptionPauseCollection(
+      subscription.stripe_subscription_id,
+      false
+    );
+    nextStatus = toSubscriptionStatus(updated.status);
+  } catch (err) {
+    logger.error("resumeMyPausedSubscription: stripe update failed", {
+      subscriptionId: subscription.stripe_subscription_id,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    return {
+      ok: false,
+      error: { code: "EXTERNAL_API_ERROR", message: "再開の処理に失敗しました。" },
+    };
+  }
+
+  await supabase.from("subscriptions").update({ status: nextStatus }).eq("id", subscription.id);
+  await supabase.from("end_users").update({ status: nextStatus }).eq("id", ctx.endUserId);
+
+  await writeAuditLog({
+    action: "SUBSCRIPTION_SYNC",
+    targetType: "subscriptions",
+    targetId: subscription.id,
+    success: true,
+    metadata: buildAuditMetadata({
+      line_user_id: ctx.lineUserId,
+      changed_by: "end_user_self",
+      operation: "resume_paused_subscription",
+      new_status: nextStatus,
+    }),
+    actorStaffId: null,
+  });
+
+  return { ok: true, data: { status: nextStatus } };
+}
+
+export type BillingPortalResult = Result<{ url: string }>;
+
+/**
+ * 支払い方法の更新などができる Stripe カスタマーポータルのURLを発行する（支払い失敗リカバリ）。
+ * 権限: LINE 案内リンクから入った本人のみ
+ */
+export async function createMyBillingPortalSession(): Promise<BillingPortalResult> {
+  const supabase = createAdminSupabaseClient();
+  const resolved = await resolveCurrentUserSubscription(supabase);
+  if (!resolved.ok) {
+    return { ok: false, error: { code: resolved.code, message: resolved.message } };
+  }
+
+  const { ctx } = resolved;
+  const customerId = ctx.subscription.stripe_customer_id;
+  if (!customerId) {
+    return {
+      ok: false,
+      error: { code: "NOT_FOUND", message: "お客様の決済情報が見つかりません。" },
+    };
+  }
+
+  try {
+    const url = await createBillingPortalSession(
+      customerId,
+      `${getServerEnv().APP_BASE_URL}/account/plan`
+    );
+    return { ok: true, data: { url } };
+  } catch (err) {
+    logger.error("createMyBillingPortalSession: stripe portal failed", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    return {
+      ok: false,
+      error: { code: "EXTERNAL_API_ERROR", message: "お支払い管理ページを開けませんでした。" },
+    };
+  }
 }

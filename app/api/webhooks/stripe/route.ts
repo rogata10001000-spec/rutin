@@ -1,5 +1,6 @@
 import Stripe from "stripe";
-import { verifyStripeSignature, toSubscriptionStatus } from "@/lib/stripe";
+import { verifyStripeSignature, toSubscriptionStatus, createBillingPortalSession } from "@/lib/stripe";
+import { getServerEnv } from "@/lib/env";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { withWebhookIdempotency } from "@/lib/webhook";
 import { writeAuditLog } from "@/lib/audit";
@@ -476,7 +477,10 @@ export async function POST(request: Request) {
 
     const result = await withWebhookIdempotency("stripe", eventId, eventType, async () => {
       const subscriptionId = subscription.id;
-      const newStatus = toSubscriptionStatus(subscription.status);
+      // pause_collection が設定されている場合はアプリ上のステータスを paused にする
+      // （Stripe の status は active のままのため、pause_collection の有無で判定する）
+      const isPaused = Boolean(subscription.pause_collection);
+      const newStatus = isPaused ? "paused" : toSubscriptionStatus(subscription.status);
       const currentPeriodEnd = currentPeriodEndFromStripeSubscription(subscription);
       const cancelAtPeriodEnd = subscription.cancel_at_period_end;
       const appliedStripePriceId = subscription.items.data[0]?.price?.id ?? null;
@@ -878,7 +882,7 @@ export async function POST(request: Request) {
 
       const { data: sub } = await supabase
         .from("subscriptions")
-        .select("id, end_user_id")
+        .select("id, end_user_id, stripe_customer_id")
         .eq("stripe_subscription_id", subscriptionId)
         .single();
 
@@ -897,8 +901,24 @@ export async function POST(request: Request) {
         .update({ status: "past_due" })
         .eq("id", sub.end_user_id);
 
+      // 支払い方法を更新できるカスタマーポータルのリンクを用意（best-effort）
+      let portalUrl: string | null = null;
+      if (sub.stripe_customer_id) {
+        try {
+          portalUrl = await createBillingPortalSession(
+            sub.stripe_customer_id,
+            `${getServerEnv().APP_BASE_URL}/account/plan`
+          );
+        } catch (err) {
+          logger.warn("invoice.payment_failed: billing portal link skipped", {
+            subscriptionId: sub.id,
+            error: err instanceof Error ? err.message : "unknown",
+          });
+        }
+      }
+
       // 支払い更新のお願いを LINE / メールで通知（best-effort）
-      await notifyUser(supabase, sub.end_user_id, paymentFailedNotification());
+      await notifyUser(supabase, sub.end_user_id, paymentFailedNotification(portalUrl));
 
       // 監査ログ
       await writeAuditLog({

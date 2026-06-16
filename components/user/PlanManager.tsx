@@ -12,6 +12,9 @@ import {
   changeMyPlan,
   cancelMySubscription,
   resumeMySubscription,
+  pauseMySubscription,
+  resumeMyPausedSubscription,
+  createMyBillingPortalSession,
   type MySubscriptionView,
   type ManagedPlanOption,
 } from "@/actions/subscription-management";
@@ -114,6 +117,53 @@ export function PlanManager({ subscription }: PlanManagerProps) {
     }
   }
 
+  async function handlePause() {
+    setBusy(true);
+    try {
+      const result = await pauseMySubscription();
+      if (result.ok) {
+        showToast("一時停止しました。いつでも再開できます", "success");
+        setCancelFlowOpen(false);
+        refresh();
+      } else {
+        showToast(result.error.message, "error");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleResumePause() {
+    setBusy(true);
+    try {
+      const result = await resumeMyPausedSubscription();
+      if (result.ok) {
+        showToast("利用を再開しました", "success");
+        refresh();
+      } else {
+        showToast(result.error.message, "error");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleUpdatePayment() {
+    setBusy(true);
+    try {
+      const result = await createMyBillingPortalSession();
+      if (result.ok) {
+        window.location.href = result.data.url;
+      } else {
+        showToast(result.error.message, "error");
+        setBusy(false);
+      }
+    } catch {
+      showToast("お支払い管理ページを開けませんでした", "error");
+      setBusy(false);
+    }
+  }
+
   async function handleResume() {
     setBusy(true);
     try {
@@ -198,6 +248,40 @@ export function PlanManager({ subscription }: PlanManagerProps) {
               className="mt-3 inline-flex items-center justify-center whitespace-nowrap rounded-full bg-stone-800 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-stone-700 disabled:opacity-50"
             >
               解約予定を取り消す
+            </button>
+          </div>
+        )}
+
+        {subscription.status === "paused" && (
+          <div className="mt-4 rounded-xl border border-sage/40 bg-sage/10 p-3 text-xs leading-relaxed text-stone-700">
+            <p className="font-bold text-stone-800">一時停止中です</p>
+            <p className="mt-1">
+              請求を停止しています。準備ができたら、同じ担当メイトでいつでも再開できます。
+            </p>
+            <button
+              type="button"
+              onClick={handleResumePause}
+              disabled={busy || isPending}
+              className="mt-3 inline-flex items-center justify-center whitespace-nowrap rounded-full bg-sage px-4 py-2 text-xs font-bold text-white transition-colors hover:brightness-95 disabled:opacity-50"
+            >
+              利用を再開する
+            </button>
+          </div>
+        )}
+
+        {subscription.status === "past_due" && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
+            <p className="font-bold text-amber-900">お支払いの確認が必要です</p>
+            <p className="mt-1">
+              カードのお支払いが完了していません。サービスを止めないため、支払い方法をご確認ください。
+            </p>
+            <button
+              type="button"
+              onClick={handleUpdatePayment}
+              disabled={busy || isPending}
+              className="mt-3 inline-flex items-center justify-center whitespace-nowrap rounded-full bg-amber-500 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-amber-600 disabled:opacity-50"
+            >
+              支払い方法を更新する
             </button>
           </div>
         )}
@@ -331,6 +415,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
         renewalDateLabel={renewalDate}
         busy={busy}
         onClose={() => setCancelFlowOpen(false)}
+        onPause={handlePause}
         onDowngrade={handleDowngradeToLight}
         onConfirmCancel={handleCancel}
       />

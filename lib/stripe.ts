@@ -147,6 +147,35 @@ export async function setSubscriptionCancelAtPeriodEnd(
 }
 
 /**
+ * サブスクの請求一時停止のオン/オフ。
+ * pause=true で pause_collection(void) を設定（請求を停止）、false で解除して再開。
+ * 注意: Stripe 側の status は paused にはならない（pause_collection の有無で判定する）。
+ */
+export async function setSubscriptionPauseCollection(
+  subscriptionId: string,
+  pause: boolean
+): Promise<Stripe.Subscription> {
+  return stripe.subscriptions.update(subscriptionId, {
+    pause_collection: pause ? { behavior: "void" } : "",
+  });
+}
+
+/**
+ * Stripe カスタマーポータルのセッションを作成（支払い方法の更新等に使用）。
+ * ポータルが未設定の場合は例外になるため、呼び出し側で握って best-effort に。
+ */
+export async function createBillingPortalSession(
+  customerId: string,
+  returnUrl: string
+): Promise<string> {
+  const session = await stripe.billingPortal.sessions.create({
+    customer: customerId,
+    return_url: returnUrl,
+  });
+  return session.url;
+}
+
+/**
  * Checkout Session作成（ポイント購入用）
  */
 export async function createPointCheckout(params: {
