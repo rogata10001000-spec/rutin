@@ -17,11 +17,11 @@ import {
   subscribeCheckoutSuccessUrl,
 } from "@/lib/subscribe-paths";
 import { calculateAge } from "@/lib/age";
+import { getTrialPeriodDaysForPlan } from "@/lib/trial";
 import type { StaffGender } from "@/lib/supabase/types";
 
 const serverEnv = getServerEnv();
 const APP_BASE_URL = serverEnv.APP_BASE_URL;
-const TRIAL_PERIOD_DAYS = serverEnv.TRIAL_PERIOD_DAYS;
 
 // デフォルト価格（plan_pricesテーブルから取得するべきだが、フォールバック用）
 const DEFAULT_PRICES: Record<string, number> = {
@@ -337,6 +337,9 @@ export async function createSubscriptionCheckoutSession(
     };
   }
 
+  // トライアル対象はスタンダード/プレミアムのみ。ライトは申込直後から課金。
+  const trialDays = getTrialPeriodDaysForPlan(parsed.data.planCode);
+
   try {
     const { url, sessionId } = await stripeCreateCheckout({
       lineUserId: parsed.data.lineUserId,
@@ -345,7 +348,7 @@ export async function createSubscriptionCheckoutSession(
       stripePriceId,
       successUrl: subscribeCheckoutSuccessUrl(),
       cancelUrl: subscribeCheckoutCancelUrl(),
-      trialPeriodDays: TRIAL_PERIOD_DAYS,
+      trialPeriodDays: trialDays,
     });
 
     if (!url) {
@@ -362,7 +365,7 @@ export async function createSubscriptionCheckoutSession(
         line_user_id: parsed.data.lineUserId,
         cast_id: parsed.data.castId,
         plan_code: parsed.data.planCode,
-        trial_days: TRIAL_PERIOD_DAYS,
+        trial_days: trialDays ?? 0,
       }),
       actorStaffId: null, // ユーザー操作
     });

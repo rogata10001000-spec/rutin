@@ -108,30 +108,3 @@ export function cancelScheduledNotification(periodEndIso: string | null): UserNo
     },
   };
 }
-
-/** トライアル終了予告 */
-export function trialWillEndNotification(trialEndIso: string | null): UserNotification {
-  const endDate = formatJaDate(trialEndIso);
-  const whenLine = endDate
-    ? `${endDate}に無料トライアルが終了します。`
-    : "まもなく無料トライアルが終了します。";
-
-  const lineText = [
-    whenLine,
-    "終了後は通常のプラン料金でのご利用となります。",
-    "プランの変更や解約は、契約・プランページからお手続きいただけます。",
-  ].join("\n");
-
-  return {
-    lineText,
-    email: {
-      subject: "【Rutin】まもなく無料トライアルが終了します",
-      text: lineText,
-      html: wrapHtml(
-        `<p>${whenLine}</p>
-         <p>終了後は通常のプラン料金でのご利用となります。</p>
-         <p>プランの変更や解約は、契約・プランページからお手続きいただけます。</p>`
-      ),
-    },
-  };
-}

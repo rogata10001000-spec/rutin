@@ -10,8 +10,8 @@ import {
   getCheckoutErrorMessage,
 } from "@/lib/subscribe-checkout-errors";
 import {
-  getPlanCheckoutButtonLabel,
-  getPlanPageTrialNotice,
+  getPlanCheckoutButtonLabelForPlan,
+  getPlanPageNotice,
   getTrialPeriodDays,
 } from "@/lib/trial";
 import { buildSubscribeCastUrl } from "@/lib/subscribe-paths";
@@ -172,7 +172,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
               担当: {cast.displayName}
             </div>
             <p className="text-sm leading-relaxed text-[#2D241E]">
-              {getPlanPageTrialNotice(trialDays, cast.prices.standard)}
+              {getPlanPageNotice("standard", trialDays, cast.prices.standard)}
             </p>
           </div>
         </div>
@@ -230,7 +230,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                 </div>
 
                 <p className="text-[11px] leading-relaxed text-[#6B5A51]">
-                  {getPlanPageTrialNotice(trialDays, monthlyPrice)}
+                  {getPlanPageNotice(planCode, trialDays, monthlyPrice)}
                 </p>
 
                 {!hasPriceId && (
@@ -252,7 +252,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                     }`}
                   >
                     {canCheckout
-                      ? getPlanCheckoutButtonLabel(trialDays)
+                      ? getPlanCheckoutButtonLabelForPlan(planCode, trialDays)
                       : "選択できません"}
                   </button>
                 </form>

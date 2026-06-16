@@ -1,5 +1,5 @@
 import { retrieveCheckoutSession } from "@/lib/stripe";
-import { getCompleteTrialMessage, getTrialPeriodDays } from "@/lib/trial";
+import { getCompleteMessage, getTrialPeriodDays } from "@/lib/trial";
 
 const DEFAULT_PLAN_PRICES: Record<string, number> = {
   light: 2980,
@@ -52,7 +52,7 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
     planCode && planCode in DEFAULT_PLAN_PRICES
       ? DEFAULT_PLAN_PRICES[planCode]
       : null;
-  const trialMessage = getCompleteTrialMessage(trialDays, monthlyPrice);
+  const trialMessage = getCompleteMessage(planCode ?? "", trialDays, monthlyPrice);
 
   return (
     <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-12 text-center">

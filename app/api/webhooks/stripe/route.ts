@@ -27,7 +27,6 @@ import {
   paymentFailedNotification,
   subscriptionCanceledNotification,
   cancelScheduledNotification,
-  trialWillEndNotification,
 } from "@/lib/notification-templates";
 
 type SupabaseAdmin = ReturnType<typeof createAdminSupabaseClient>;
@@ -846,34 +845,9 @@ export async function POST(request: Request) {
 
   // =====================================================
   // customer.subscription.trial_will_end - トライアル終了予告
+  // → 解約率増加につながるため、ユーザーへの「トライアル終了予告」通知は意図的に送らない。
+  //   （Stripe からイベントが届いても何もしない）
   // =====================================================
-  if (eventType === "customer.subscription.trial_will_end") {
-    const subscription = event.data.object as Stripe.Subscription;
-
-    const result = await withWebhookIdempotency("stripe", eventId, eventType, async () => {
-      const { data: sub } = await supabase
-        .from("subscriptions")
-        .select("id, end_user_id")
-        .eq("stripe_subscription_id", subscription.id)
-        .single();
-
-      if (!sub) {
-        return { skipped: true };
-      }
-
-      const trialEndIso = subscription.trial_end
-        ? new Date(subscription.trial_end * 1000).toISOString()
-        : null;
-
-      await notifyUser(supabase, sub.end_user_id, trialWillEndNotification(trialEndIso));
-
-      return { subscriptionId: sub.id };
-    });
-
-    if (result.status === "error") {
-      return stripeWebhookErrorResponse(eventType, eventId, result.message);
-    }
-  }
 
   // =====================================================
   // invoice.paid - サブスク売上認識・配分計算
