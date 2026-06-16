@@ -3,9 +3,11 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { CancelDeflectionModal } from "@/components/user/CancelDeflectionModal";
 import { useToast } from "@/components/common/Toast";
 import { BadgeStatus } from "@/components/common/Badge";
 import { SUBSCRIBE_PATHS } from "@/lib/subscribe-paths";
+import type { CancelSubscriptionInput } from "@/schemas/subscription-management";
 import {
   changeMyPlan,
   cancelMySubscription,
@@ -42,8 +44,15 @@ export function PlanManager({ subscription }: PlanManagerProps) {
 
   const [pendingPlan, setPendingPlan] = useState<PlanCode | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<ManagedPlanOption | null>(null);
-  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [cancelFlowOpen, setCancelFlowOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // 解約防止フロー用：ライトへの降格オプション（対象外なら null）
+  const lightOption = subscription.planOptions.find((p) => p.code === "light");
+  const downgradeOption =
+    lightOption && lightOption.available && !lightOption.isCurrent
+      ? { label: lightOption.label, monthlyPrice: lightOption.monthlyPrice }
+      : null;
 
   const renewalDate = formatJaDate(subscription.currentPeriodEnd);
   const trialEndDate = formatJaDate(subscription.trialEndAt);
@@ -70,19 +79,38 @@ export function PlanManager({ subscription }: PlanManagerProps) {
     }
   }
 
-  async function handleCancel() {
+  async function handleCancel(reasonCode: string | null, reasonDetail: string) {
     setBusy(true);
     try {
-      const result = await cancelMySubscription();
+      const result = await cancelMySubscription({
+        reasonCode: (reasonCode ?? undefined) as CancelSubscriptionInput["reasonCode"],
+        reasonDetail: reasonDetail.trim() || undefined,
+      });
       if (result.ok) {
         showToast("解約予定を受け付けました", "success");
+        setCancelFlowOpen(false);
         refresh();
       } else {
         showToast(result.error.message, "error");
       }
     } finally {
       setBusy(false);
-      setConfirmCancel(false);
+    }
+  }
+
+  async function handleDowngradeToLight() {
+    setBusy(true);
+    try {
+      const result = await changeMyPlan({ planCode: "light" });
+      if (result.ok) {
+        showToast("ライトプランに変更しました", "success");
+        setCancelFlowOpen(false);
+        refresh();
+      } else {
+        showToast(result.error.message, "error");
+      }
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -271,7 +299,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
           </p>
           <button
             type="button"
-            onClick={() => setConfirmCancel(true)}
+            onClick={() => setCancelFlowOpen(true)}
             disabled={disableActions}
             className="mt-3 inline-flex items-center justify-center whitespace-nowrap rounded-full border border-red-200 bg-white px-5 py-2.5 text-sm font-bold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
           >
@@ -297,20 +325,14 @@ export function PlanManager({ subscription }: PlanManagerProps) {
         onCancel={() => setConfirmTarget(null)}
       />
 
-      <ConfirmDialog
-        open={confirmCancel}
-        title="解約を申し込みますか？"
-        description={
-          renewalDate
-            ? `${renewalDate}にサービスが終了します。更新日まではご利用いただけ、それまでは解約予定を取り消せます。`
-            : "次回更新日にサービスが終了します。更新日まではご利用いただけ、それまでは解約予定を取り消せます。"
-        }
-        confirmLabel="解約を申し込む"
-        cancelLabel="やめる"
-        variant="danger"
-        loading={busy}
-        onConfirm={handleCancel}
-        onCancel={() => setConfirmCancel(false)}
+      <CancelDeflectionModal
+        open={cancelFlowOpen}
+        downgradeOption={downgradeOption}
+        renewalDateLabel={renewalDate}
+        busy={busy}
+        onClose={() => setCancelFlowOpen(false)}
+        onDowngrade={handleDowngradeToLight}
+        onConfirmCancel={handleCancel}
       />
     </div>
   );

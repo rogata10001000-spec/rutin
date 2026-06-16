@@ -19,7 +19,11 @@ import {
 } from "@/lib/stripe";
 import { currentPeriodEndFromStripeSubscription } from "@/lib/stripe-subscription-sync";
 import { recordSubscriptionLifecycleEvent } from "@/lib/subscription-lifecycle";
-import { changePlanSchema } from "@/schemas/subscription-management";
+import {
+  changePlanSchema,
+  cancelSubscriptionSchema,
+  type CancelSubscriptionInput,
+} from "@/schemas/subscription-management";
 import type { PlanCode, SubscriptionStatus } from "@/lib/supabase/types";
 
 // 操作可能なステータス（解約済み・未契約は不可）
@@ -323,7 +327,19 @@ export type CancelMySubscriptionResult = Result<{ currentPeriodEnd: string | nul
  * 期間終了時解約を申し込む（cancel_at_period_end = true）
  * 権限: LINE 案内リンクから入った本人のみ
  */
-export async function cancelMySubscription(): Promise<CancelMySubscriptionResult> {
+export async function cancelMySubscription(
+  input?: CancelSubscriptionInput
+): Promise<CancelMySubscriptionResult> {
+  const parsed = cancelSubscriptionSchema.safeParse(input ?? {});
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: { code: "ZOD_ERROR", message: toZodErrorMessage(parsed.error.issues[0]?.message) },
+    };
+  }
+  const reasonCode = parsed.data.reasonCode ?? null;
+  const reasonDetail = parsed.data.reasonDetail?.trim() || null;
+
   const supabase = createAdminSupabaseClient();
   const resolved = await resolveCurrentUserSubscription(supabase);
   if (!resolved.ok) {
@@ -383,6 +399,8 @@ export async function cancelMySubscription(): Promise<CancelMySubscriptionResult
       cancel_at_period_end: true,
       current_period_end: currentPeriodEnd,
       changed_by: "end_user_self",
+      cancel_reason_code: reasonCode,
+      cancel_reason_detail: reasonDetail,
     },
   });
 
@@ -396,6 +414,8 @@ export async function cancelMySubscription(): Promise<CancelMySubscriptionResult
       cancel_at_period_end: true,
       changed_by: "end_user_self",
       operation: "schedule_cancellation",
+      cancel_reason_code: reasonCode,
+      cancel_reason_detail: reasonDetail,
     }),
     actorStaffId: null,
   });
