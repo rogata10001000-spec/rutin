@@ -1,11 +1,6 @@
 import { retrieveCheckoutSession } from "@/lib/stripe";
 import { getCompleteMessage, getTrialPeriodDays } from "@/lib/trial";
-
-const DEFAULT_PLAN_PRICES: Record<string, number> = {
-  light: 2980,
-  standard: 6980,
-  premium: 14800,
-};
+import { DEFAULT_PLAN_PRICES } from "@/lib/plan-pricing";
 
 type PageProps = {
   searchParams?: Promise<{ session_id?: string }>;
@@ -50,7 +45,7 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
 
   const monthlyPrice =
     planCode && planCode in DEFAULT_PLAN_PRICES
-      ? DEFAULT_PLAN_PRICES[planCode]
+      ? DEFAULT_PLAN_PRICES[planCode as keyof typeof DEFAULT_PLAN_PRICES]
       : null;
   const trialMessage = getCompleteMessage(planCode ?? "", trialDays, monthlyPrice);
 

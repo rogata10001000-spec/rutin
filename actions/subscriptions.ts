@@ -18,24 +18,15 @@ import {
 } from "@/lib/subscribe-paths";
 import { calculateAge } from "@/lib/age";
 import { getTrialPeriodDaysForPlan } from "@/lib/trial";
+import { DEFAULT_PLAN_PRICES, defaultStripePriceIds } from "@/lib/plan-pricing";
 import type { StaffGender } from "@/lib/supabase/types";
 
 const serverEnv = getServerEnv();
 const APP_BASE_URL = serverEnv.APP_BASE_URL;
 
-// デフォルト価格（plan_pricesテーブルから取得するべきだが、フォールバック用）
-const DEFAULT_PRICES: Record<string, number> = {
-  light: 2980,
-  standard: 6980,
-  premium: 14800,
-};
-
-// デフォルトStripe Price ID（環境変数から取得）
-const DEFAULT_STRIPE_PRICE_IDS: Record<string, string> = {
-  light: serverEnv.STRIPE_PRICE_LIGHT ?? "",
-  standard: serverEnv.STRIPE_PRICE_STANDARD ?? "",
-  premium: serverEnv.STRIPE_PRICE_PREMIUM ?? "",
-};
+// 価格・Stripe Price ID のデフォルトは lib/plan-pricing.ts を単一ソースとする（設定の二重定義を防止）
+const DEFAULT_PRICES = DEFAULT_PLAN_PRICES;
+const DEFAULT_STRIPE_PRICE_IDS = defaultStripePriceIds();
 
 export type PlanCode = (typeof planCodeSchema)["_type"];
 

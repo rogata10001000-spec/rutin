@@ -59,10 +59,10 @@ export async function getAnalytics(
   const activeUsers = allUsers.filter((u) => u.status === "active").length;
   const trialUsers = allUsers.filter((u) => u.status === "trial").length;
 
-  // レスポンスメトリクス取得（期間内）
+  // レスポンスメトリクス取得（期間内）。集計に使う列のみ取得（全件取得を避ける）。
   const { data: metrics } = await supabase
     .from("response_metrics")
-    .select("*")
+    .select("staff_id, end_user_id, plan_code, response_minutes, sla_breached")
     .gte("created_at", periodStart.toISOString());
 
   const allMetrics = metrics ?? [];

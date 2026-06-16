@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
-import { getSendAccountForEndUser } from "@/lib/line-accounts";
+import { getDefaultLineAccount, getLineAccountById } from "@/lib/line-accounts";
 import { pushTextMessage } from "@/lib/line";
 import { logger } from "@/lib/logger";
 
@@ -33,6 +33,10 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
   const result: StepDeliveryResult = { processed: 0, sent: 0, failed: 0 };
   if (!steps || steps.length === 0) return result;
 
+  // 送信元アカウントは事前に既定アカウントを1回だけ解決し、個別アカウントはキャッシュ経由で解決する
+  // （従来はユーザー毎に primary_line_account_id を都度クエリしていたN+1を回避）。
+  const defaultAccount = await getDefaultLineAccount(supabase);
+
   for (const step of steps) {
     const cutoffIso = new Date(now - step.delay_hours * 3600 * 1000).toISOString();
 
@@ -44,7 +48,7 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
 
     const { data: users } = await supabase
       .from("end_users")
-      .select("id, line_user_id")
+      .select("id, line_user_id, primary_line_account_id")
       .eq("status", "incomplete")
       .not("line_user_id", "is", null)
       .not(anchorColumn, "is", null)
@@ -65,7 +69,9 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
       if (deliveredSet.has(user.id) || !user.line_user_id) continue;
       result.processed += 1;
       try {
-        const account = await getSendAccountForEndUser(user.id, supabase);
+        const account = user.primary_line_account_id
+          ? (await getLineAccountById(user.primary_line_account_id, supabase)) ?? defaultAccount
+          : defaultAccount;
         await pushTextMessage(account.credentials, user.line_user_id, step.body);
         await supabase
           .from("step_deliveries")
