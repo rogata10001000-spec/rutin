@@ -20,6 +20,11 @@ function formatDelay(hours: number): string {
   return `${days}日${rest}時間後`;
 }
 
+const TRIGGER_CONFIG: Record<StepMessage["trigger"], { label: string; className: string }> = {
+  follow: { label: "友だち追加", className: "bg-sage/20 text-sage-800" },
+  checkout_abandoned: { label: "カゴ落ち", className: "bg-amber-100 text-amber-700" },
+};
+
 type StepMessagesTableProps = {
   items: StepMessage[];
 };
@@ -88,6 +93,7 @@ export function StepMessagesTable({ items }: StepMessagesTableProps) {
             <table className="min-w-full divide-y divide-stone-200">
               <thead className="bg-stone-50">
                 <tr>
+                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-stone-500">トリガー</th>
                   <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-stone-500">順番</th>
                   <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-stone-500">送信タイミング</th>
                   <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-stone-500">ラベル</th>
@@ -99,6 +105,13 @@ export function StepMessagesTable({ items }: StepMessagesTableProps) {
               <tbody className="divide-y divide-stone-100 bg-white">
                 {items.map((item) => (
                   <tr key={item.id} className="transition-colors hover:bg-stone-50/50">
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${TRIGGER_CONFIG[item.trigger].className}`}
+                      >
+                        {TRIGGER_CONFIG[item.trigger].label}
+                      </span>
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-bold text-stone-800">{item.stepOrder}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-stone-600">{formatDelay(item.delayHours)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-stone-600">{item.title ?? "-"}</td>

@@ -6,8 +6,14 @@ import {
   upsertStepMessage,
   type StepMessage,
 } from "@/actions/admin/step-messages";
-import { upsertStepMessageSchema } from "@/schemas/step-messages";
+import { upsertStepMessageSchema, type StepTrigger } from "@/schemas/step-messages";
 import { useToast } from "@/components/common/Toast";
+import { Select } from "@/components/common/Select";
+
+const TRIGGER_OPTIONS = [
+  { value: "follow", label: "友だち追加から（通常のステップ配信）" },
+  { value: "checkout_abandoned", label: "カゴ落ち（決済開始後・未完了）から" },
+] as const;
 
 type UpsertStepMessageDialogProps = {
   open: boolean;
@@ -30,6 +36,7 @@ export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepM
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
 
+  const [trigger, setTrigger] = useState<StepTrigger>("follow");
   const [stepOrder, setStepOrder] = useState("1");
   const [delayHours, setDelayHours] = useState("24");
   const [title, setTitle] = useState("");
@@ -41,12 +48,14 @@ export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepM
       document.body.style.overflow = "hidden";
       setErrors({});
       if (editItem) {
+        setTrigger(editItem.trigger);
         setStepOrder(String(editItem.stepOrder));
         setDelayHours(String(editItem.delayHours));
         setTitle(editItem.title ?? "");
         setBody(editItem.body);
         setActive(editItem.active);
       } else {
+        setTrigger("follow");
         setStepOrder("1");
         setDelayHours("24");
         setTitle("");
@@ -69,6 +78,7 @@ export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepM
 
     const input = {
       id: editItem?.id,
+      trigger,
       stepOrder: stepOrder ? parseInt(stepOrder, 10) : NaN,
       delayHours: delayHours ? parseInt(delayHours, 10) : NaN,
       title: title.trim() || undefined,
@@ -124,6 +134,25 @@ export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepM
 
           <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
             <div className="flex-1 space-y-5 overflow-y-auto px-6 py-6">
+              <div>
+                <label className="block text-sm font-bold text-stone-700">
+                  配信トリガー <span className="text-terracotta">*</span>
+                </label>
+                <div className="mt-1.5">
+                  <Select
+                    aria-label="配信トリガー"
+                    value={trigger}
+                    onChange={(v) => setTrigger(v as StepTrigger)}
+                    options={TRIGGER_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                  />
+                </div>
+                <p className="mt-1.5 text-xs text-stone-400">
+                  {trigger === "checkout_abandoned"
+                    ? "決済を開始したのに完了しなかった人へ、決済開始からの経過時間で送ります。"
+                    : "友だち追加した未契約の人へ、追加からの経過時間で送ります。"}
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-bold text-stone-700">

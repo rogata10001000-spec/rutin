@@ -5,10 +5,15 @@ import { Result, toZodErrorMessage } from "../types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
-import { upsertStepMessageSchema, type UpsertStepMessageInput } from "@/schemas/step-messages";
+import {
+  upsertStepMessageSchema,
+  type UpsertStepMessageInput,
+  type StepTrigger,
+} from "@/schemas/step-messages";
 
 export type StepMessage = {
   id: string;
+  trigger: StepTrigger;
   stepOrder: number;
   delayHours: number;
   title: string | null;
@@ -28,7 +33,8 @@ export async function getStepMessages(): Promise<GetStepMessagesResult> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("step_messages")
-    .select("id, step_order, delay_hours, title, body, active")
+    .select("id, trigger, step_order, delay_hours, title, body, active")
+    .order("trigger", { ascending: true })
     .order("step_order", { ascending: true })
     .order("delay_hours", { ascending: true });
 
@@ -41,6 +47,7 @@ export async function getStepMessages(): Promise<GetStepMessagesResult> {
     data: {
       items: (data ?? []).map((r) => ({
         id: r.id,
+        trigger: r.trigger,
         stepOrder: r.step_order,
         delayHours: r.delay_hours,
         title: r.title,
@@ -72,6 +79,7 @@ export async function upsertStepMessage(
 
   const supabase = await createServerSupabaseClient();
   const payload = {
+    trigger: parsed.data.trigger,
     step_order: parsed.data.stepOrder,
     delay_hours: parsed.data.delayHours,
     title: parsed.data.title?.trim() || null,

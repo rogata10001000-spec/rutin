@@ -26,7 +26,7 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
 
   const { data: steps } = await supabase
     .from("step_messages")
-    .select("id, delay_hours, body")
+    .select("id, trigger, delay_hours, body")
     .eq("active", true)
     .order("step_order", { ascending: true });
 
@@ -36,13 +36,19 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
   for (const step of steps) {
     const cutoffIso = new Date(now - step.delay_hours * 3600 * 1000).toISOString();
 
+    // トリガー種別で起点列を切り替える。
+    // follow=友だち追加(line_followed_at) / checkout_abandoned=決済開始(checkout_started_at)。
+    // いずれも status=incomplete（＝未契約・カゴ落ち）のみが対象。契約すれば自動で対象外。
+    const anchorColumn =
+      step.trigger === "checkout_abandoned" ? "checkout_started_at" : "line_followed_at";
+
     const { data: users } = await supabase
       .from("end_users")
       .select("id, line_user_id")
       .eq("status", "incomplete")
       .not("line_user_id", "is", null)
-      .not("line_followed_at", "is", null)
-      .lte("line_followed_at", cutoffIso)
+      .not(anchorColumn, "is", null)
+      .lte(anchorColumn, cutoffIso)
       .limit(MAX_USERS_PER_STEP);
 
     if (!users || users.length === 0) continue;

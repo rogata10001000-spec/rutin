@@ -355,6 +355,13 @@ export async function createSubscriptionCheckoutSession(
       throw new Error("Checkout URL is null");
     }
 
+    // カゴ落ちリカバリ配信の起点を記録（未契約=incomplete のみ。決済完了で status が変わり対象外になる）
+    await supabase
+      .from("end_users")
+      .update({ checkout_started_at: new Date().toISOString() })
+      .eq("line_user_id", parsed.data.lineUserId)
+      .eq("status", "incomplete");
+
     // 監査ログ
     await writeAuditLog({
       action: "SUBSCRIPTION_CHECKOUT_CREATE",
