@@ -296,16 +296,47 @@ export async function changeMyPlan(input: {
     };
   }
 
-  // DB を即時反映（Webhook でも再同期される）
-  await supabase
+  // DB を即時反映（Webhook でも再同期される）。
+  // Stripe は更新済みのため、ここでの書込失敗は致命的にせず警告ログのみ（Webhook が後追いで整合させる）。
+  const { error: subUpdateError } = await supabase
     .from("subscriptions")
     .update({ plan_code: newPlan, applied_stripe_price_id: newPriceId })
     .eq("id", subscription.id);
+  if (subUpdateError) {
+    logger.warn("changeMyPlan: subscriptions DB反映に失敗（Webhookで再同期予定）", {
+      subscriptionId: subscription.id,
+      error: subUpdateError.message,
+    });
+  }
 
-  await supabase
+  const { error: userUpdateError } = await supabase
     .from("end_users")
     .update({ plan_code: newPlan })
     .eq("id", ctx.endUserId);
+  if (userUpdateError) {
+    logger.warn("changeMyPlan: end_users DB反映に失敗（Webhookで再同期予定）", {
+      endUserId: ctx.endUserId,
+      error: userUpdateError.message,
+    });
+  }
+
+  // プラン変更のライフサイクルイベントを記録。
+  // 自己解決の変更はDBを先に更新するため Webhook 側の差分検知が空振りする。
+  // ここで明示記録し、ファネル分析の計上漏れを防ぐ（source_ref で冪等）。
+  await recordSubscriptionLifecycleEvent(supabase, {
+    endUserId: ctx.endUserId,
+    castId: ctx.assignedCastId,
+    eventType: "plan_change",
+    planCode: newPlan,
+    sourceRefType: "self:plan_change",
+    sourceRefId: `${subscription.id}:${new Date().toISOString()}`,
+    metadata: {
+      line_user_id: ctx.lineUserId,
+      previous_plan_code: subscription.plan_code,
+      new_plan_code: newPlan,
+      changed_by: "end_user_self",
+    },
+  });
 
   await writeAuditLog({
     action: "CHANGE_SUBSCRIPTION_PRICE",

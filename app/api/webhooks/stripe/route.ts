@@ -109,6 +109,50 @@ async function resolveSubscriptionPayoutRule(
   return null;
 }
 
+/**
+ * 初回割当後にキャスト定員超過を検知し、ログ＋監査ログで運用に可視化する（best-effort）。
+ * 同時申込レースで稀に定員を超えるケースがあるが、決済済みのため割当は honored とし、
+ * ここでは「検知して通知する」ことで運用側が再配置できるようにする。失敗しても本処理は止めない。
+ */
+async function warnIfCastOverCapacity(supabase: SupabaseAdmin, castId: string): Promise<void> {
+  try {
+    const { data: cast } = await supabase
+      .from("staff_profiles")
+      .select("capacity_limit")
+      .eq("id", castId)
+      .maybeSingle();
+    if (!cast || cast.capacity_limit === null) return;
+
+    const { count } = await supabase
+      .from("end_users")
+      .select("*", { count: "exact", head: true })
+      .eq("assigned_cast_id", castId)
+      .not("status", "in", '("incomplete","canceled")');
+
+    const assigned = count ?? 0;
+    if (assigned > cast.capacity_limit) {
+      logger.warn("cast capacity exceeded after assignment", {
+        castId,
+        assigned,
+        capacityLimit: cast.capacity_limit,
+      });
+      await writeAuditLog({
+        action: "CAST_CAPACITY_EXCEEDED",
+        targetType: "staff_profiles",
+        targetId: castId,
+        success: true,
+        metadata: { assigned, capacity_limit: cast.capacity_limit },
+        actorStaffId: null,
+      });
+    }
+  } catch (err) {
+    logger.warn("warnIfCastOverCapacity failed", {
+      castId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+  }
+}
+
 export type RevenueRecognitionResult =
   | { skipped: true; reason: string }
   | { revenueEventId: string; payoutAmount: number };
@@ -547,6 +591,9 @@ export async function handleCheckoutSessionCompleted(
       trialEndAt,
     });
 
+    // 同時申込レースでの定員超過を検知（決済済みのため割当は維持、運用へ通知）
+    await warnIfCastOverCapacity(supabase, castId);
+
     // 監査ログ
     await writeAuditLog({
       action: "SUBSCRIPTION_SYNC",
@@ -718,6 +765,9 @@ export async function handleSubscriptionUpsert(
       castId,
       trialEndAt,
     });
+
+    // 同時申込レースでの定員超過を検知（決済済みのため割当は維持、運用へ通知）
+    await warnIfCastOverCapacity(supabase, castId);
 
     await writeAuditLog({
       action: "SUBSCRIPTION_SYNC",
