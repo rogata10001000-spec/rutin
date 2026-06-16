@@ -178,6 +178,12 @@ const navItems: NavItem[] = [
     roles: ["admin"],
   },
   {
+    name: "ファネル分析",
+    href: "/admin/funnel",
+    icon: <RevenueIcon />,
+    roles: ["admin", "supervisor"],
+  },
+  {
     name: "LINE公式アカウント",
     href: "/admin/line-accounts",
     icon: <LineAccountIcon />,
