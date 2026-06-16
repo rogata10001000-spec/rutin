@@ -25,6 +25,9 @@ export function CastList({ casts }: CastListProps) {
           const mainPhoto = cast.photos[0]?.url;
           const photoCount = cast.photos.length;
           const genderText = cast.gender ? GENDER_LABEL[cast.gender] : null;
+          const remainingSlots =
+            cast.capacityLimit !== null ? Math.max(0, cast.capacityLimit - cast.assignedCount) : null;
+          const isScarce = remainingSlots !== null && remainingSlots <= 5;
 
           return (
             <button
@@ -59,6 +62,16 @@ export function CastList({ casts }: CastListProps) {
                   </span>
                 )}
               </div>
+
+              {/* 残り枠（希少性） */}
+              {isScarce && (
+                <div className="absolute right-3 top-3 z-10">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-red-500/90 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm backdrop-blur-sm">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                    残り{remainingSlots}枠
+                  </span>
+                </div>
+              )}
 
               {/* 下部: 名前と年齢（グラデーション付き） */}
               <div className="absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-black/70 via-black/40 to-transparent px-4 pb-4 pt-10">

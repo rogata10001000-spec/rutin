@@ -70,13 +70,16 @@ export function CastDetailModal({ cast, isOpen, onClose }: CastDetailModalProps)
   const hasMultiplePhotos = photos.length > 1;
   const genderText = cast.gender ? GENDER_LABEL[cast.gender] : null;
   const lowestPrice = Math.min(cast.prices.light, cast.prices.standard, cast.prices.premium);
+  const remainingSlots =
+    cast.capacityLimit !== null ? Math.max(0, cast.capacityLimit - cast.assignedCount) : null;
+  const isScarce = remainingSlots !== null && remainingSlots <= 5;
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={`${cast.displayName}の詳細`}
-      className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4"
     >
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -84,9 +87,9 @@ export function CastDetailModal({ cast, isOpen, onClose }: CastDetailModalProps)
         aria-hidden="true"
       />
 
-      <div className="relative z-10 flex max-h-[92vh] w-full max-w-[480px] flex-col overflow-hidden rounded-t-3xl bg-background-light shadow-2xl sm:max-h-[90vh] sm:rounded-3xl">
-        {/* 写真エリア（縦長固定比率だと画面を占有しすぎるため、vh上限で高さを抑える） */}
-        <div className="relative h-[min(34vh,17.5rem)] w-full shrink-0 overflow-hidden bg-warm-border/40 sm:h-[min(38vh,22rem)]">
+      <div className="relative z-10 flex max-h-[92vh] w-full max-w-[480px] flex-col overflow-hidden rounded-3xl bg-background-light shadow-2xl">
+        {/* 写真エリア（中央モーダル・大きめ表示。縦長写真も object-contain で全体が見える） */}
+        <div className="relative h-[min(48vh,27rem)] w-full shrink-0 overflow-hidden bg-warm-border/40">
           {hasPhotos ? (
             <Swiper
               modules={[Navigation, Pagination, Keyboard]}
@@ -187,6 +190,12 @@ export function CastDetailModal({ cast, isOpen, onClose }: CastDetailModalProps)
               {cast.age !== null && (
                 <span className="rounded-full bg-warm-border/40 px-2.5 py-0.5 text-[11px] font-bold text-[#6B5A51]">
                   {cast.age}歳
+                </span>
+              )}
+              {isScarce && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-[11px] font-bold text-red-700">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
+                  残り{remainingSlots}枠
                 </span>
               )}
             </div>
