@@ -184,6 +184,12 @@ const navItems: NavItem[] = [
     roles: ["admin"],
   },
   {
+    name: "ステップ配信",
+    href: "/admin/step-messages",
+    icon: <MarketingIcon />,
+    roles: ["admin"],
+  },
+  {
     name: "Webhook監視",
     href: "/admin/webhooks",
     icon: <WebhookIcon />,

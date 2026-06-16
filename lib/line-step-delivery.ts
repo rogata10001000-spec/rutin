@@ -1,0 +1,80 @@
+import "server-only";
+
+import { createAdminSupabaseClient } from "@/lib/supabase/server";
+import { getSendAccountForEndUser } from "@/lib/line-accounts";
+import { pushTextMessage } from "@/lib/line";
+import { logger } from "@/lib/logger";
+
+const MAX_USERS_PER_STEP = 300;
+
+export type StepDeliveryResult = {
+  processed: number;
+  sent: number;
+  failed: number;
+};
+
+/**
+ * ステップ配信ジョブ本体。
+ * - 対象: status="incomplete"（未契約フォロワー）のみ。契約したら以降は配信しない。
+ * - 起点: end_users.line_followed_at。各ステップの delay_hours 経過で対象化。
+ * - 冪等: step_deliveries の (end_user_id, step_message_id) UNIQUE で二重送信を防止。
+ *   送信成功時のみ記録し、失敗はログのみ（次回再試行）。
+ */
+export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
+  const supabase = createAdminSupabaseClient();
+  const now = Date.now();
+
+  const { data: steps } = await supabase
+    .from("step_messages")
+    .select("id, delay_hours, body")
+    .eq("active", true)
+    .order("step_order", { ascending: true });
+
+  const result: StepDeliveryResult = { processed: 0, sent: 0, failed: 0 };
+  if (!steps || steps.length === 0) return result;
+
+  for (const step of steps) {
+    const cutoffIso = new Date(now - step.delay_hours * 3600 * 1000).toISOString();
+
+    const { data: users } = await supabase
+      .from("end_users")
+      .select("id, line_user_id")
+      .eq("status", "incomplete")
+      .not("line_user_id", "is", null)
+      .not("line_followed_at", "is", null)
+      .lte("line_followed_at", cutoffIso)
+      .limit(MAX_USERS_PER_STEP);
+
+    if (!users || users.length === 0) continue;
+
+    const userIds = users.map((u) => u.id);
+    const { data: delivered } = await supabase
+      .from("step_deliveries")
+      .select("end_user_id")
+      .eq("step_message_id", step.id)
+      .in("end_user_id", userIds);
+    const deliveredSet = new Set((delivered ?? []).map((d) => d.end_user_id));
+
+    for (const user of users) {
+      if (deliveredSet.has(user.id) || !user.line_user_id) continue;
+      result.processed += 1;
+      try {
+        const account = await getSendAccountForEndUser(user.id, supabase);
+        await pushTextMessage(account.credentials, user.line_user_id, step.body);
+        await supabase
+          .from("step_deliveries")
+          .insert({ end_user_id: user.id, step_message_id: step.id, status: "sent" });
+        result.sent += 1;
+      } catch (err) {
+        result.failed += 1;
+        logger.warn("line step delivery failed", {
+          endUserId: user.id,
+          stepId: step.id,
+          error: err instanceof Error ? err.message : "unknown",
+        });
+      }
+    }
+  }
+
+  return result;
+}

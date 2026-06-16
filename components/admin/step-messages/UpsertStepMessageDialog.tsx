@@ -1,0 +1,233 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  upsertStepMessage,
+  type StepMessage,
+} from "@/actions/admin/step-messages";
+import { upsertStepMessageSchema } from "@/schemas/step-messages";
+import { useToast } from "@/components/common/Toast";
+
+type UpsertStepMessageDialogProps = {
+  open: boolean;
+  editItem: StepMessage | null;
+  onClose: () => void;
+};
+
+type FieldErrors = {
+  stepOrder?: string;
+  delayHours?: string;
+  body?: string;
+};
+
+const inputClass =
+  "mt-1.5 block w-full rounded-xl border border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta";
+
+export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepMessageDialogProps) {
+  const router = useRouter();
+  const { showToast, ToastContainer } = useToast();
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<FieldErrors>({});
+
+  const [stepOrder, setStepOrder] = useState("1");
+  const [delayHours, setDelayHours] = useState("24");
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [active, setActive] = useState(true);
+
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+      setErrors({});
+      if (editItem) {
+        setStepOrder(String(editItem.stepOrder));
+        setDelayHours(String(editItem.delayHours));
+        setTitle(editItem.title ?? "");
+        setBody(editItem.body);
+        setActive(editItem.active);
+      } else {
+        setStepOrder("1");
+        setDelayHours("24");
+        setTitle("");
+        setBody("");
+        setActive(true);
+      }
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open, editItem]);
+
+  if (!open) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrors({});
+
+    const input = {
+      id: editItem?.id,
+      stepOrder: stepOrder ? parseInt(stepOrder, 10) : NaN,
+      delayHours: delayHours ? parseInt(delayHours, 10) : NaN,
+      title: title.trim() || undefined,
+      body,
+      active,
+    };
+
+    const parsed = upsertStepMessageSchema.safeParse(input);
+    if (!parsed.success) {
+      const fieldErrors: FieldErrors = {};
+      for (const issue of parsed.error.issues) {
+        const field = issue.path[0] as keyof FieldErrors;
+        if (field && !fieldErrors[field]) fieldErrors[field] = issue.message;
+      }
+      setErrors(fieldErrors);
+      showToast("入力内容を確認してください", "error");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const result = await upsertStepMessage(parsed.data);
+      if (result.ok) {
+        showToast(editItem ? "更新しました" : "作成しました", "success");
+        router.refresh();
+        onClose();
+      } else {
+        showToast(result.error.message, "error");
+      }
+    } catch {
+      showToast("保存に失敗しました", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const delayDays = Number(delayHours) > 0 ? Math.round((Number(delayHours) / 24) * 10) / 10 : 0;
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-stone-900/20 backdrop-blur-sm" onClick={onClose} />
+        <div
+          className="relative z-50 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-soft-lg ring-1 ring-stone-900/5"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="flex-shrink-0 border-b border-stone-100 bg-stone-50/50 px-6 py-4">
+            <h3 className="text-lg font-bold text-stone-800">
+              {editItem ? "ステップを編集" : "ステップを追加"}
+            </h3>
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-hidden">
+            <div className="flex-1 space-y-5 overflow-y-auto px-6 py-6">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-bold text-stone-700">
+                    配信順 <span className="text-terracotta">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={stepOrder}
+                    onChange={(e) => setStepOrder(e.target.value)}
+                    className={inputClass}
+                  />
+                  {errors.stepOrder && (
+                    <p className="mt-1.5 text-xs font-medium text-red-600">{errors.stepOrder}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-stone-700">
+                    送信タイミング（時間） <span className="text-terracotta">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={delayHours}
+                    onChange={(e) => setDelayHours(e.target.value)}
+                    className={inputClass}
+                  />
+                  <p className="mt-1.5 text-xs text-stone-400">
+                    登録から{delayDays > 0 ? `約${delayDays}日後` : "即時"}に送信
+                  </p>
+                  {errors.delayHours && (
+                    <p className="mt-1.5 text-xs font-medium text-red-600">{errors.delayHours}</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-stone-700">管理用ラベル（任意）</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="例: 登録翌日のフォロー"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-stone-700">
+                  本文 <span className="text-terracotta">*</span>
+                </label>
+                <textarea
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  rows={5}
+                  placeholder="LINEで送信するメッセージ本文"
+                  className={`${inputClass} resize-none`}
+                />
+                <p className="mt-1.5 text-xs text-stone-400">{body.length} / 2000</p>
+                {errors.body && (
+                  <p className="mt-1.5 text-xs font-medium text-red-600">{errors.body}</p>
+                )}
+              </div>
+
+              <label className="flex items-center justify-between rounded-xl border border-stone-200 bg-stone-50/50 p-4">
+                <div>
+                  <span className="block text-sm font-bold text-stone-700">有効</span>
+                  <span className="mt-0.5 block text-xs text-stone-500">
+                    オフにすると配信されません
+                  </span>
+                </div>
+                <span className="relative inline-flex cursor-pointer items-center">
+                  <input
+                    type="checkbox"
+                    checked={active}
+                    onChange={(e) => setActive(e.target.checked)}
+                    className="peer sr-only"
+                  />
+                  <span className="peer h-6 w-11 rounded-full bg-stone-200 transition-colors after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-stone-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-sage peer-checked:after:translate-x-full peer-checked:after:border-white" />
+                </span>
+              </label>
+            </div>
+
+            <div className="flex flex-shrink-0 justify-end gap-3 border-t border-stone-100 bg-stone-50/50 px-6 py-4">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={submitting}
+                className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-medium text-stone-600 hover:bg-stone-50 disabled:opacity-50"
+              >
+                キャンセル
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="rounded-xl bg-terracotta px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-[#d0694e] focus:outline-none focus:ring-2 focus:ring-terracotta focus:ring-offset-2 disabled:opacity-50"
+              >
+                {submitting ? "保存中..." : "保存"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <ToastContainer />
+    </>
+  );
+}

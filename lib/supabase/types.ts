@@ -164,6 +164,25 @@ type CheckinsRow = {
   updated_at: string;
 };
 
+type StepMessageRow = {
+  id: string;
+  step_order: number;
+  delay_hours: number;
+  title: string | null;
+  body: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type StepDeliveryRow = {
+  id: string;
+  end_user_id: string;
+  step_message_id: string;
+  status: "sent" | "failed";
+  created_at: string;
+};
+
 type MemosRow = {
   id: string;
   end_user_id: string;
@@ -810,6 +829,25 @@ export interface Database {
           is_global?: boolean;
         };
         Update: Partial<Omit<MessageTemplatesRow, "id" | "created_at">>;
+        Relationships: [];
+      };
+      step_messages: {
+        Row: StepMessageRow;
+        Insert: Omit<StepMessageRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<StepMessageRow, "id" | "created_at">>;
+        Relationships: [];
+      };
+      step_deliveries: {
+        Row: StepDeliveryRow;
+        Insert: Omit<StepDeliveryRow, "id" | "created_at"> & {
+          id?: string;
+          created_at?: string;
+        };
+        Update: Partial<Omit<StepDeliveryRow, "id" | "created_at">>;
         Relationships: [];
       };
     };

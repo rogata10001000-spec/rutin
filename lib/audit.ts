@@ -30,6 +30,9 @@ export type AuditAction =
   // 価格
   | "UPSERT_CAST_PLAN_PRICE"
   | "CHANGE_SUBSCRIPTION_PRICE"
+  // ステップ配信
+  | "UPSERT_STEP_MESSAGE"
+  | "DELETE_STEP_MESSAGE"
   // ポイント/ギフト
   | "POINT_CHECKOUT_CREATE"
   | "POINT_PURCHASE_CONFIRMED"
