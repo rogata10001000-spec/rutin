@@ -45,8 +45,9 @@ export async function getFunnelAnalytics(input?: {
     return { ok: false, error: { code: "FORBIDDEN", message: "権限がありません" } };
   }
 
-  const days = ALLOWED_DAYS.includes((input?.days ?? 30) as (typeof ALLOWED_DAYS)[number])
-    ? (input?.days as number)
+  const requestedDays = input?.days ?? 30;
+  const days = ALLOWED_DAYS.includes(requestedDays as (typeof ALLOWED_DAYS)[number])
+    ? requestedDays
     : 30;
   const since = new Date(Date.now() - days * 86400000).toISOString();
 
