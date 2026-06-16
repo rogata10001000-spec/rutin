@@ -263,6 +263,597 @@ export async function recognizeSubscriptionRevenue(
   return { revenueEventId, payoutAmount };
 }
 
+// invoice.payment_failed: past_due へ更新し、支払い方法更新リンク付きで通知
+export async function handleInvoicePaymentFailed(
+  supabase: SupabaseAdmin,
+  invoice: Stripe.Invoice,
+  eventType: string
+) {
+  const subscriptionId = subscriptionIdFromInvoice(invoice);
+  if (!subscriptionId) {
+    return { skipped: true };
+  }
+
+  const { data: sub } = await supabase
+    .from("subscriptions")
+    .select("id, end_user_id, stripe_customer_id")
+    .eq("stripe_subscription_id", subscriptionId)
+    .single();
+
+  if (!sub) {
+    return { skipped: true };
+  }
+
+  // past_dueに更新
+  await supabase.from("subscriptions").update({ status: "past_due" }).eq("id", sub.id);
+  await supabase.from("end_users").update({ status: "past_due" }).eq("id", sub.end_user_id);
+
+  // 支払い方法を更新できるカスタマーポータルのリンクを用意（best-effort）
+  let portalUrl: string | null = null;
+  if (sub.stripe_customer_id) {
+    try {
+      portalUrl = await createBillingPortalSession(
+        sub.stripe_customer_id,
+        `${getServerEnv().APP_BASE_URL}/account/plan`
+      );
+    } catch (err) {
+      logger.warn("invoice.payment_failed: billing portal link skipped", {
+        subscriptionId: sub.id,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+  }
+
+  // 支払い更新のお願いを LINE / メールで通知（best-effort）
+  await notifyUser(supabase, sub.end_user_id, paymentFailedNotification(portalUrl));
+
+  await writeAuditLog({
+    action: "SUBSCRIPTION_SYNC",
+    targetType: "subscriptions",
+    targetId: sub.id,
+    success: true,
+    metadata: { event: eventType, new_status: "past_due" },
+    actorStaffId: null,
+  });
+
+  return { subscriptionId: sub.id };
+}
+
+// charge.refunded: ポイント/ギフトはMVP対象外のため返金台帳処理は行わない
+export function handleChargeRefunded(charge: Stripe.Charge) {
+  const metadata = charge.metadata ?? {};
+  return { skipped: true, reason: `${metadata.type ?? "unknown"} refund disabled for MVP` };
+}
+
+// customer.subscription.deleted: 解約確定（status=canceled）・リッチメニュー復帰・通知・履歴記録
+export async function handleSubscriptionDeleted(
+  supabase: SupabaseAdmin,
+  subscription: Stripe.Subscription,
+  eventType: string,
+  eventId: string
+) {
+  const subscriptionId = subscription.id;
+
+  const { data: sub } = await supabase
+    .from("subscriptions")
+    .select("id, end_user_id, plan_code, end_users!inner(line_user_id, assigned_cast_id)")
+    .eq("stripe_subscription_id", subscriptionId)
+    .single();
+
+  if (!sub) {
+    return { skipped: true };
+  }
+
+  await supabase.from("subscriptions").update({ status: "canceled" }).eq("id", sub.id);
+  await supabase
+    .from("end_users")
+    .update({ status: "canceled", trial_end_at: null, canceled_at: new Date().toISOString() })
+    .eq("id", sub.end_user_id);
+
+  const endUser = sub.end_users as unknown as {
+    line_user_id: string;
+    assigned_cast_id: string | null;
+  };
+  const lineUserId = endUser.line_user_id;
+  if (lineUserId) {
+    // 契約変更・解約導線は共通Rutin公式LINEのリッチメニューで管理する。
+    const defaultAccount = await getDefaultLineAccount(supabase);
+    const uncontractedMenuId = defaultAccount.richMenuUncontractedId;
+    if (uncontractedMenuId) {
+      try {
+        await switchRichMenu(defaultAccount.credentials, lineUserId, uncontractedMenuId);
+      } catch (err) {
+        logger.error("Stripe webhook rich menu revert failed", {
+          lineUserId,
+          error: err instanceof Error ? err.message : "unknown",
+        });
+      }
+    }
+  }
+
+  // 解約完了を LINE / メールで通知（best-effort）
+  await notifyUser(supabase, sub.end_user_id, subscriptionCanceledNotification());
+
+  await recordSubscriptionLifecycleEvent(supabase, {
+    endUserId: sub.end_user_id,
+    castId: endUser.assigned_cast_id,
+    eventType: "cancel",
+    planCode: sub.plan_code,
+    sourceRefType: `stripe:${eventType}`,
+    sourceRefId: eventId,
+    metadata: {
+      stripe_subscription_id: subscriptionId,
+      new_status: "canceled",
+    },
+  });
+
+  await writeAuditLog({
+    action: "SUBSCRIPTION_SYNC",
+    targetType: "subscriptions",
+    targetId: sub.id,
+    success: true,
+    metadata: { event: eventType, new_status: "canceled" },
+    actorStaffId: null,
+  });
+
+  return { subscriptionId: sub.id };
+}
+
+// checkout.session.completed: サブスク購入完了の同期（end_user/subscription 作成・更新、副作用集約）
+export async function handleCheckoutSessionCompleted(
+  supabase: SupabaseAdmin,
+  session: Stripe.Checkout.Session
+) {
+  const metadata = session.metadata ?? {};
+  const type = metadata.type;
+
+  // --------------------------------------------------
+  // サブスクリプション購入完了
+  // --------------------------------------------------
+  if (type === "subscription" && session.subscription) {
+    const lineUserId = metadata.line_user_id;
+    const castId = metadata.cast_id;
+    const planCode = metadata.plan_code;
+    const customerId = session.customer as string;
+    const subscriptionId =
+      typeof session.subscription === "string"
+        ? session.subscription
+        : session.subscription.id;
+
+    if (!lineUserId || !castId || !planCode) {
+      logger.warn("checkout.session.completed: missing subscription metadata", {
+        sessionId: session.id,
+      });
+      return { skipped: true, reason: "missing subscription metadata" };
+    }
+
+    const stripeSubscription = await fetchStripeSubscription(subscriptionId);
+    const trialEndAt = trialEndAtFromSubscription(stripeSubscription);
+    const currentPeriodEnd = currentPeriodEndFromStripeSubscription(stripeSubscription);
+    const subscriptionStatus = toSubscriptionStatus(stripeSubscription.status);
+    const subscriptionStartedAt = new Date(
+      (stripeSubscription.created ?? session.created ?? Math.floor(Date.now() / 1000)) * 1000
+    ).toISOString();
+
+    // Checkout で入力された顧客メールを LINE 非依存の連絡先として取り込む
+    const checkoutEmail = normalizeEmail(
+      session.customer_details?.email ?? session.customer_email
+    );
+
+    // end_user取得または作成
+    let { data: user } = await supabase
+      .from("end_users")
+      .select("id, status, email")
+      .eq("line_user_id", lineUserId)
+      .single();
+
+    if (!user) {
+      const { data: newUser, error } = await supabase
+        .from("end_users")
+        .insert({
+          line_user_id: lineUserId,
+          nickname: endUserNicknameFromLineId(lineUserId),
+          status: subscriptionStatus,
+          plan_code: planCode,
+          assigned_cast_id: castId,
+          trial_end_at: trialEndAt,
+          line_followed_at: subscriptionStartedAt,
+          ...(subscriptionStatus === "trial"
+            ? { trial_started_at: subscriptionStartedAt }
+            : { subscribed_at: subscriptionStartedAt }),
+        })
+        .select("id")
+        .single();
+
+      if (error) {
+        throw new Error(`Failed to create end_user: ${error.message}`);
+      }
+      user = { id: newUser.id, status: subscriptionStatus, email: null };
+    } else {
+      await supabase
+        .from("end_users")
+        .update({
+          status: subscriptionStatus,
+          plan_code: planCode,
+          assigned_cast_id: castId,
+          trial_end_at: trialEndAt,
+          ...(subscriptionStatus === "trial"
+            ? { trial_started_at: subscriptionStartedAt }
+            : { subscribed_at: subscriptionStartedAt }),
+        })
+        .eq("id", user.id);
+    }
+
+    // メール取り込みは best-effort（未登録時のみ・衝突時は無視）。
+    // サブスク同期本体をメール一意制約違反で失敗させない。
+    if (checkoutEmail && !user.email) {
+      const { error: emailErr } = await supabase
+        .from("end_users")
+        .update({ email: checkoutEmail })
+        .eq("id", user.id)
+        .is("email", null);
+      if (emailErr) {
+        logger.warn("checkout.session.completed: email capture skipped", {
+          endUserId: user.id,
+          message: emailErr.message,
+        });
+      }
+    }
+
+    const { error: subError } = await supabase.from("subscriptions").insert({
+      end_user_id: user.id,
+      stripe_customer_id: customerId,
+      stripe_subscription_id: subscriptionId,
+      status: subscriptionStatus,
+      plan_code: planCode,
+      applied_stripe_price_id: metadata.stripe_price_id ?? "",
+      current_period_end: currentPeriodEnd,
+    });
+
+    if (subError && subError.code !== "23505") {
+      throw new Error(`Failed to create subscription: ${subError.message}`);
+    } else if (subError?.code === "23505") {
+      await supabase
+        .from("subscriptions")
+        .update({
+          status: subscriptionStatus,
+          applied_stripe_price_id: metadata.stripe_price_id ?? "",
+          ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
+        })
+        .eq("stripe_subscription_id", subscriptionId);
+    }
+
+    await recordSubscriptionLifecycleEvent(supabase, {
+      endUserId: user.id,
+      castId,
+      eventType: subscriptionStatus === "trial" ? "trial_start" : "subscribe",
+      planCode,
+      occurredAt: subscriptionStartedAt,
+      sourceRefType: "stripe:subscription_initial",
+      sourceRefId: subscriptionId,
+      metadata: {
+        stripe_checkout_session_id: session.id,
+        stripe_subscription_id: subscriptionId,
+        stripe_customer_id: customerId,
+        status: subscriptionStatus,
+        trial_end_at: trialEndAt,
+      },
+    });
+
+    await syncNewSubscriptionSideEffects(supabase, {
+      endUserId: user.id,
+      lineUserId,
+      castId,
+      trialEndAt,
+    });
+
+    // 監査ログ
+    await writeAuditLog({
+      action: "SUBSCRIPTION_SYNC",
+      targetType: "subscriptions",
+      targetId: subscriptionId,
+      success: true,
+      metadata: {
+        event: "checkout.session.completed",
+        line_user_id: lineUserId,
+        cast_id: castId,
+        plan_code: planCode,
+      },
+      actorStaffId: null,
+    });
+
+    return { type: "subscription", userId: user.id };
+  }
+
+  // --------------------------------------------------
+  // ポイント購入完了
+  // --------------------------------------------------
+  if (type === "point_purchase") {
+    return { skipped: true, reason: "point purchase disabled for MVP" };
+  }
+
+  return { type: "unknown" };
+}
+
+// customer.subscription.created / updated: 状態同期（pause反映・新規フォールバック作成・解約予約/トライアル転換/プラン変更の記録）
+export async function handleSubscriptionUpsert(
+  supabase: SupabaseAdmin,
+  subscription: Stripe.Subscription,
+  eventType: string,
+  eventId: string
+) {
+  const subscriptionId = subscription.id;
+  // pause_collection が設定されている場合はアプリ上のステータスを paused にする
+  // （Stripe の status は active のままのため、pause_collection の有無で判定する）
+  const isPaused = Boolean(subscription.pause_collection);
+  const newStatus = isPaused ? "paused" : toSubscriptionStatus(subscription.status);
+  const currentPeriodEnd = currentPeriodEndFromStripeSubscription(subscription);
+  const cancelAtPeriodEnd = subscription.cancel_at_period_end;
+  const appliedStripePriceId = subscription.items.data[0]?.price?.id ?? null;
+  const subscriptionStartedAt = new Date(
+    (subscription.created ?? Math.floor(Date.now() / 1000)) * 1000
+  ).toISOString();
+
+  // サブスクリプションを検索
+  const { data: sub } = await supabase
+    .from("subscriptions")
+    .select("id, end_user_id, status, plan_code, cancel_at_period_end, end_users!inner(assigned_cast_id)")
+    .eq("stripe_subscription_id", subscriptionId)
+    .single();
+
+  if (!sub) {
+    if (eventType !== "customer.subscription.created") {
+      logger.warn("stripe webhook: subscription not found", { subscriptionId });
+      return { skipped: true };
+    }
+
+    const metadata = subscription.metadata ?? {};
+    const lineUserId = metadata.line_user_id;
+    const castId = metadata.cast_id;
+    const planCode = metadata.plan_code;
+    const customerId =
+      typeof subscription.customer === "string"
+        ? subscription.customer
+        : subscription.customer?.id;
+
+    if (!lineUserId || !castId || !planCode || !customerId || !appliedStripePriceId) {
+      logger.warn("customer.subscription.created: missing metadata", {
+        subscriptionId,
+      });
+      return { skipped: true, reason: "missing subscription metadata" };
+    }
+
+    let { data: user } = await supabase
+      .from("end_users")
+      .select("id")
+      .eq("line_user_id", lineUserId)
+      .single();
+
+    const trialEndAt = trialEndAtFromSubscription(subscription);
+
+    if (!user) {
+      const { data: newUser, error: userCreateError } = await supabase
+        .from("end_users")
+        .insert({
+          line_user_id: lineUserId,
+          nickname: endUserNicknameFromLineId(lineUserId),
+          status: newStatus,
+          plan_code: planCode,
+          assigned_cast_id: castId,
+          trial_end_at: trialEndAt,
+          line_followed_at: subscriptionStartedAt,
+          ...(newStatus === "trial"
+            ? { trial_started_at: subscriptionStartedAt }
+            : { subscribed_at: subscriptionStartedAt }),
+        })
+        .select("id")
+        .single();
+
+      if (userCreateError) {
+        throw new Error(`Failed to create end_user: ${userCreateError.message}`);
+      }
+      user = { id: newUser.id };
+    } else {
+      await supabase
+        .from("end_users")
+        .update({
+          status: newStatus,
+          plan_code: planCode,
+          assigned_cast_id: castId,
+          trial_end_at: trialEndAt,
+          ...(newStatus === "trial"
+            ? { trial_started_at: subscriptionStartedAt }
+            : { subscribed_at: subscriptionStartedAt }),
+        })
+        .eq("id", user.id);
+    }
+
+    const { error: insertError } = await supabase.from("subscriptions").insert({
+      end_user_id: user.id,
+      stripe_customer_id: customerId,
+      stripe_subscription_id: subscriptionId,
+      status: newStatus,
+      plan_code: planCode,
+      applied_stripe_price_id: appliedStripePriceId,
+      current_period_end: currentPeriodEnd,
+      cancel_at_period_end: cancelAtPeriodEnd,
+    });
+
+    if (insertError && insertError.code !== "23505") {
+      throw new Error(`Failed to create subscription: ${insertError.message}`);
+    }
+
+    if (insertError?.code === "23505") {
+      await supabase
+        .from("subscriptions")
+        .update({
+          status: newStatus,
+          cancel_at_period_end: cancelAtPeriodEnd,
+          applied_stripe_price_id: appliedStripePriceId,
+          ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
+        })
+        .eq("stripe_subscription_id", subscriptionId);
+    }
+
+    await recordSubscriptionLifecycleEvent(supabase, {
+      endUserId: user.id,
+      castId,
+      eventType: newStatus === "trial" ? "trial_start" : "subscribe",
+      planCode,
+      occurredAt: subscriptionStartedAt,
+      sourceRefType: "stripe:subscription_initial",
+      sourceRefId: subscriptionId,
+      metadata: {
+        stripe_event_id: eventId,
+        stripe_subscription_id: subscriptionId,
+        status: newStatus,
+        trial_end_at: trialEndAt,
+        synced_from: "subscription.created",
+      },
+    });
+
+    await syncNewSubscriptionSideEffects(supabase, {
+      endUserId: user.id,
+      lineUserId,
+      castId,
+      trialEndAt,
+    });
+
+    await writeAuditLog({
+      action: "SUBSCRIPTION_SYNC",
+      targetType: "subscriptions",
+      targetId: subscriptionId,
+      success: true,
+      metadata: {
+        event: eventType,
+        new_status: newStatus,
+        synced_from: "subscription.created",
+      },
+      actorStaffId: null,
+    });
+
+    return { subscriptionId, newStatus, created: true };
+  }
+
+  const previousStatus = sub.status;
+  const trialEndAt = trialEndAtFromSubscription(subscription);
+
+  // plan_code 同期: Stripe メタデータ優先、無ければ price ID から逆引き
+  const metadataPlanCode = subscription.metadata?.plan_code;
+  let planCodeToSync: string | null =
+    metadataPlanCode && PLAN_CODES.includes(metadataPlanCode as (typeof PLAN_CODES)[number])
+      ? metadataPlanCode
+      : null;
+
+  if (!planCodeToSync && appliedStripePriceId) {
+    const { data: euForPlan } = await supabase
+      .from("end_users")
+      .select("assigned_cast_id")
+      .eq("id", sub.end_user_id)
+      .maybeSingle();
+    const pricing = await resolveCastPlanPricing(supabase, euForPlan?.assigned_cast_id ?? null);
+    planCodeToSync = planCodeFromStripePriceId(pricing, appliedStripePriceId);
+  }
+
+  const planChanged = Boolean(planCodeToSync && planCodeToSync !== sub.plan_code);
+  const trialConverted = previousStatus === "trial" && newStatus === "active";
+
+  await supabase
+    .from("subscriptions")
+    .update({
+      status: newStatus,
+      cancel_at_period_end: cancelAtPeriodEnd,
+      ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
+      ...(appliedStripePriceId ? { applied_stripe_price_id: appliedStripePriceId } : {}),
+      ...(planCodeToSync ? { plan_code: planCodeToSync } : {}),
+    })
+    .eq("id", sub.id);
+
+  const endUser = sub.end_users as unknown as { assigned_cast_id: string | null };
+  const castId = endUser.assigned_cast_id;
+  const lifecycleUserUpdate = {
+    status: newStatus,
+    ...(trialEndAt ? { trial_end_at: trialEndAt } : {}),
+    ...(trialConverted ? { subscribed_at: new Date().toISOString() } : {}),
+    ...(planCodeToSync ? { plan_code: planCodeToSync } : {}),
+  };
+
+  await supabase.from("end_users").update(lifecycleUserUpdate).eq("id", sub.end_user_id);
+
+  // 解約予約が新たに入った場合（false→true）に期間終了日を案内（best-effort）
+  const cancelNewlyScheduled =
+    !sub.cancel_at_period_end && cancelAtPeriodEnd && newStatus !== "canceled";
+  if (cancelNewlyScheduled) {
+    await notifyUser(supabase, sub.end_user_id, cancelScheduledNotification(currentPeriodEnd));
+    await recordSubscriptionLifecycleEvent(supabase, {
+      endUserId: sub.end_user_id,
+      castId,
+      eventType: "cancel_scheduled",
+      planCode: planCodeToSync ?? sub.plan_code,
+      sourceRefType: `stripe:${eventType}:cancel_scheduled`,
+      sourceRefId: eventId,
+      metadata: {
+        stripe_subscription_id: subscriptionId,
+        current_period_end: currentPeriodEnd,
+        cancel_at_period_end: cancelAtPeriodEnd,
+      },
+    });
+  }
+
+  if (trialConverted) {
+    await recordSubscriptionLifecycleEvent(supabase, {
+      endUserId: sub.end_user_id,
+      castId,
+      eventType: "subscribe",
+      planCode: planCodeToSync ?? sub.plan_code,
+      sourceRefType: `stripe:${eventType}:trial_converted`,
+      sourceRefId: eventId,
+      metadata: {
+        stripe_subscription_id: subscriptionId,
+        previous_status: previousStatus,
+        new_status: newStatus,
+      },
+    });
+  }
+
+  if (planChanged) {
+    await recordSubscriptionLifecycleEvent(supabase, {
+      endUserId: sub.end_user_id,
+      castId,
+      eventType: "plan_change",
+      planCode: planCodeToSync,
+      sourceRefType: `stripe:${eventType}:plan_change`,
+      sourceRefId: eventId,
+      metadata: {
+        stripe_subscription_id: subscriptionId,
+        previous_plan_code: sub.plan_code,
+        new_plan_code: planCodeToSync,
+      },
+    });
+  }
+
+  await writeAuditLog({
+    action: "SUBSCRIPTION_SYNC",
+    targetType: "subscriptions",
+    targetId: sub.id,
+    success: true,
+    metadata: {
+      event: eventType,
+      previous_status: previousStatus,
+      new_status: newStatus,
+      cancel_at_period_end: cancelAtPeriodEnd,
+      ...(trialConverted ? { trial_converted: true } : {}),
+      ...(cancelNewlyScheduled ? { cancel_scheduled: true } : {}),
+      ...(planChanged
+        ? { plan_changed: true, previous_plan_code: sub.plan_code, new_plan_code: planCodeToSync }
+        : {}),
+    },
+    actorStaffId: null,
+  });
+
+  return { subscriptionId: sub.id, newStatus };
+}
+
 export async function POST(request: Request) {
   const allowed = checkRateLimit({
     key: requestKey(request, "stripe_webhook"),
@@ -292,177 +883,9 @@ export async function POST(request: Request) {
   if (eventType === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
 
-    const result = await withWebhookIdempotency("stripe", eventId, eventType, async () => {
-      const metadata = session.metadata ?? {};
-      const type = metadata.type;
-
-      // --------------------------------------------------
-      // サブスクリプション購入完了
-      // --------------------------------------------------
-      if (type === "subscription" && session.subscription) {
-        const lineUserId = metadata.line_user_id;
-        const castId = metadata.cast_id;
-        const planCode = metadata.plan_code;
-        const customerId = session.customer as string;
-        const subscriptionId =
-          typeof session.subscription === "string"
-            ? session.subscription
-            : session.subscription.id;
-
-        if (!lineUserId || !castId || !planCode) {
-          logger.warn("checkout.session.completed: missing subscription metadata", {
-            sessionId: session.id,
-          });
-          return { skipped: true, reason: "missing subscription metadata" };
-        }
-
-        const stripeSubscription = await fetchStripeSubscription(subscriptionId);
-        const trialEndAt = trialEndAtFromSubscription(stripeSubscription);
-        const currentPeriodEnd = currentPeriodEndFromStripeSubscription(stripeSubscription);
-        const subscriptionStatus = toSubscriptionStatus(stripeSubscription.status);
-        const subscriptionStartedAt = new Date(
-          (stripeSubscription.created ?? session.created ?? Math.floor(Date.now() / 1000)) * 1000
-        ).toISOString();
-
-        // Checkout で入力された顧客メールを LINE 非依存の連絡先として取り込む
-        const checkoutEmail = normalizeEmail(
-          session.customer_details?.email ?? session.customer_email
-        );
-
-        // end_user取得または作成
-        let { data: user } = await supabase
-          .from("end_users")
-          .select("id, status, email")
-          .eq("line_user_id", lineUserId)
-          .single();
-
-        if (!user) {
-          const { data: newUser, error } = await supabase
-            .from("end_users")
-            .insert({
-              line_user_id: lineUserId,
-              nickname: endUserNicknameFromLineId(lineUserId),
-              status: subscriptionStatus,
-              plan_code: planCode,
-              assigned_cast_id: castId,
-              trial_end_at: trialEndAt,
-              line_followed_at: subscriptionStartedAt,
-              ...(subscriptionStatus === "trial"
-                ? { trial_started_at: subscriptionStartedAt }
-                : { subscribed_at: subscriptionStartedAt }),
-            })
-            .select("id")
-            .single();
-
-          if (error) {
-            throw new Error(`Failed to create end_user: ${error.message}`);
-          }
-          user = { id: newUser.id, status: subscriptionStatus, email: null };
-        } else {
-          await supabase
-            .from("end_users")
-            .update({
-              status: subscriptionStatus,
-              plan_code: planCode,
-              assigned_cast_id: castId,
-              trial_end_at: trialEndAt,
-              ...(subscriptionStatus === "trial"
-                ? { trial_started_at: subscriptionStartedAt }
-                : { subscribed_at: subscriptionStartedAt }),
-            })
-            .eq("id", user.id);
-        }
-
-        // メール取り込みは best-effort（未登録時のみ・衝突時は無視）。
-        // サブスク同期本体をメール一意制約違反で失敗させない。
-        if (checkoutEmail && !user.email) {
-          const { error: emailErr } = await supabase
-            .from("end_users")
-            .update({ email: checkoutEmail })
-            .eq("id", user.id)
-            .is("email", null);
-          if (emailErr) {
-            logger.warn("checkout.session.completed: email capture skipped", {
-              endUserId: user.id,
-              message: emailErr.message,
-            });
-          }
-        }
-
-        const { error: subError } = await supabase.from("subscriptions").insert({
-          end_user_id: user.id,
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscriptionId,
-          status: subscriptionStatus,
-          plan_code: planCode,
-          applied_stripe_price_id: metadata.stripe_price_id ?? "",
-          current_period_end: currentPeriodEnd,
-        });
-
-        if (subError && subError.code !== "23505") {
-          throw new Error(`Failed to create subscription: ${subError.message}`);
-        } else if (subError?.code === "23505") {
-          await supabase
-            .from("subscriptions")
-            .update({
-              status: subscriptionStatus,
-              applied_stripe_price_id: metadata.stripe_price_id ?? "",
-              ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
-            })
-            .eq("stripe_subscription_id", subscriptionId);
-        }
-
-        await recordSubscriptionLifecycleEvent(supabase, {
-          endUserId: user.id,
-          castId,
-          eventType: subscriptionStatus === "trial" ? "trial_start" : "subscribe",
-          planCode,
-          occurredAt: subscriptionStartedAt,
-          sourceRefType: "stripe:subscription_initial",
-          sourceRefId: subscriptionId,
-          metadata: {
-            stripe_checkout_session_id: session.id,
-            stripe_subscription_id: subscriptionId,
-            stripe_customer_id: customerId,
-            status: subscriptionStatus,
-            trial_end_at: trialEndAt,
-          },
-        });
-
-        await syncNewSubscriptionSideEffects(supabase, {
-          endUserId: user.id,
-          lineUserId,
-          castId,
-          trialEndAt,
-        });
-
-        // 監査ログ
-        await writeAuditLog({
-          action: "SUBSCRIPTION_SYNC",
-          targetType: "subscriptions",
-          targetId: subscriptionId,
-          success: true,
-          metadata: {
-            event: "checkout.session.completed",
-            line_user_id: lineUserId,
-            cast_id: castId,
-            plan_code: planCode,
-          },
-          actorStaffId: null,
-        });
-
-        return { type: "subscription", userId: user.id };
-      }
-
-      // --------------------------------------------------
-      // ポイント購入完了
-      // --------------------------------------------------
-      if (type === "point_purchase") {
-        return { skipped: true, reason: "point purchase disabled for MVP" };
-      }
-
-      return { type: "unknown" };
-    });
+    const result = await withWebhookIdempotency("stripe", eventId, eventType, () =>
+      handleCheckoutSessionCompleted(supabase, session)
+    );
 
     if (result.status === "error") {
       return stripeWebhookErrorResponse(eventType, eventId, result.message);
@@ -475,288 +898,9 @@ export async function POST(request: Request) {
   if (eventType === "customer.subscription.created" || eventType === "customer.subscription.updated") {
     const subscription = event.data.object as Stripe.Subscription;
 
-    const result = await withWebhookIdempotency("stripe", eventId, eventType, async () => {
-      const subscriptionId = subscription.id;
-      // pause_collection が設定されている場合はアプリ上のステータスを paused にする
-      // （Stripe の status は active のままのため、pause_collection の有無で判定する）
-      const isPaused = Boolean(subscription.pause_collection);
-      const newStatus = isPaused ? "paused" : toSubscriptionStatus(subscription.status);
-      const currentPeriodEnd = currentPeriodEndFromStripeSubscription(subscription);
-      const cancelAtPeriodEnd = subscription.cancel_at_period_end;
-      const appliedStripePriceId = subscription.items.data[0]?.price?.id ?? null;
-      const subscriptionStartedAt = new Date(
-        (subscription.created ?? Math.floor(Date.now() / 1000)) * 1000
-      ).toISOString();
-
-      // サブスクリプションを検索
-      const { data: sub } = await supabase
-        .from("subscriptions")
-        .select("id, end_user_id, status, plan_code, cancel_at_period_end, end_users!inner(assigned_cast_id)")
-        .eq("stripe_subscription_id", subscriptionId)
-        .single();
-
-      if (!sub) {
-        if (eventType !== "customer.subscription.created") {
-          logger.warn("stripe webhook: subscription not found", { subscriptionId });
-          return { skipped: true };
-        }
-
-        const metadata = subscription.metadata ?? {};
-        const lineUserId = metadata.line_user_id;
-        const castId = metadata.cast_id;
-        const planCode = metadata.plan_code;
-        const customerId =
-          typeof subscription.customer === "string"
-            ? subscription.customer
-            : subscription.customer?.id;
-
-        if (!lineUserId || !castId || !planCode || !customerId || !appliedStripePriceId) {
-          logger.warn("customer.subscription.created: missing metadata", {
-            subscriptionId,
-          });
-          return { skipped: true, reason: "missing subscription metadata" };
-        }
-
-        let { data: user } = await supabase
-          .from("end_users")
-          .select("id")
-          .eq("line_user_id", lineUserId)
-          .single();
-
-        const trialEndAt = trialEndAtFromSubscription(subscription);
-
-        if (!user) {
-          const { data: newUser, error: userCreateError } = await supabase
-            .from("end_users")
-            .insert({
-              line_user_id: lineUserId,
-              nickname: endUserNicknameFromLineId(lineUserId),
-              status: newStatus,
-              plan_code: planCode,
-              assigned_cast_id: castId,
-              trial_end_at: trialEndAt,
-              line_followed_at: subscriptionStartedAt,
-              ...(newStatus === "trial"
-                ? { trial_started_at: subscriptionStartedAt }
-                : { subscribed_at: subscriptionStartedAt }),
-            })
-            .select("id")
-            .single();
-
-          if (userCreateError) {
-            throw new Error(`Failed to create end_user: ${userCreateError.message}`);
-          }
-          user = { id: newUser.id };
-        } else {
-          await supabase
-            .from("end_users")
-            .update({
-              status: newStatus,
-              plan_code: planCode,
-              assigned_cast_id: castId,
-              trial_end_at: trialEndAt,
-              ...(newStatus === "trial"
-                ? { trial_started_at: subscriptionStartedAt }
-                : { subscribed_at: subscriptionStartedAt }),
-            })
-            .eq("id", user.id);
-        }
-
-        const { error: insertError } = await supabase.from("subscriptions").insert({
-          end_user_id: user.id,
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscriptionId,
-          status: newStatus,
-          plan_code: planCode,
-          applied_stripe_price_id: appliedStripePriceId,
-          current_period_end: currentPeriodEnd,
-          cancel_at_period_end: cancelAtPeriodEnd,
-        });
-
-        if (insertError && insertError.code !== "23505") {
-          throw new Error(`Failed to create subscription: ${insertError.message}`);
-        }
-
-        if (insertError?.code === "23505") {
-          await supabase
-            .from("subscriptions")
-            .update({
-              status: newStatus,
-              cancel_at_period_end: cancelAtPeriodEnd,
-              applied_stripe_price_id: appliedStripePriceId,
-              ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
-            })
-            .eq("stripe_subscription_id", subscriptionId);
-        }
-
-        await recordSubscriptionLifecycleEvent(supabase, {
-          endUserId: user.id,
-          castId,
-          eventType: newStatus === "trial" ? "trial_start" : "subscribe",
-          planCode,
-          occurredAt: subscriptionStartedAt,
-          sourceRefType: "stripe:subscription_initial",
-          sourceRefId: subscriptionId,
-          metadata: {
-            stripe_event_id: eventId,
-            stripe_subscription_id: subscriptionId,
-            status: newStatus,
-            trial_end_at: trialEndAt,
-            synced_from: "subscription.created",
-          },
-        });
-
-        await syncNewSubscriptionSideEffects(supabase, {
-          endUserId: user.id,
-          lineUserId,
-          castId,
-          trialEndAt,
-        });
-
-        await writeAuditLog({
-          action: "SUBSCRIPTION_SYNC",
-          targetType: "subscriptions",
-          targetId: subscriptionId,
-          success: true,
-          metadata: {
-            event: eventType,
-            new_status: newStatus,
-            synced_from: "subscription.created",
-          },
-          actorStaffId: null,
-        });
-
-        return { subscriptionId, newStatus, created: true };
-      }
-
-      const previousStatus = sub.status;
-      const trialEndAt = trialEndAtFromSubscription(subscription);
-
-      // plan_code 同期: Stripe メタデータ優先、無ければ price ID から逆引き
-      const metadataPlanCode = subscription.metadata?.plan_code;
-      let planCodeToSync: string | null =
-        metadataPlanCode && PLAN_CODES.includes(metadataPlanCode as (typeof PLAN_CODES)[number])
-          ? metadataPlanCode
-          : null;
-
-      if (!planCodeToSync && appliedStripePriceId) {
-        const { data: euForPlan } = await supabase
-          .from("end_users")
-          .select("assigned_cast_id")
-          .eq("id", sub.end_user_id)
-          .maybeSingle();
-        const pricing = await resolveCastPlanPricing(
-          supabase,
-          euForPlan?.assigned_cast_id ?? null
-        );
-        planCodeToSync = planCodeFromStripePriceId(pricing, appliedStripePriceId);
-      }
-
-      const planChanged = Boolean(planCodeToSync && planCodeToSync !== sub.plan_code);
-      const trialConverted = previousStatus === "trial" && newStatus === "active";
-
-      await supabase
-        .from("subscriptions")
-        .update({
-          status: newStatus,
-          cancel_at_period_end: cancelAtPeriodEnd,
-          ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
-          ...(appliedStripePriceId ? { applied_stripe_price_id: appliedStripePriceId } : {}),
-          ...(planCodeToSync ? { plan_code: planCodeToSync } : {}),
-        })
-        .eq("id", sub.id);
-
-      const endUser = sub.end_users as unknown as { assigned_cast_id: string | null };
-      const castId = endUser.assigned_cast_id;
-      const lifecycleUserUpdate = {
-        status: newStatus,
-        ...(trialEndAt ? { trial_end_at: trialEndAt } : {}),
-        ...(trialConverted ? { subscribed_at: new Date().toISOString() } : {}),
-        ...(planCodeToSync ? { plan_code: planCodeToSync } : {}),
-      };
-
-      await supabase
-        .from("end_users")
-        .update(lifecycleUserUpdate)
-        .eq("id", sub.end_user_id);
-
-      // 解約予約が新たに入った場合（false→true）に期間終了日を案内（best-effort）
-      const cancelNewlyScheduled =
-        !sub.cancel_at_period_end && cancelAtPeriodEnd && newStatus !== "canceled";
-      if (cancelNewlyScheduled) {
-        await notifyUser(
-          supabase,
-          sub.end_user_id,
-          cancelScheduledNotification(currentPeriodEnd)
-        );
-        await recordSubscriptionLifecycleEvent(supabase, {
-          endUserId: sub.end_user_id,
-          castId,
-          eventType: "cancel_scheduled",
-          planCode: planCodeToSync ?? sub.plan_code,
-          sourceRefType: `stripe:${eventType}:cancel_scheduled`,
-          sourceRefId: eventId,
-          metadata: {
-            stripe_subscription_id: subscriptionId,
-            current_period_end: currentPeriodEnd,
-            cancel_at_period_end: cancelAtPeriodEnd,
-          },
-        });
-      }
-
-      if (trialConverted) {
-        await recordSubscriptionLifecycleEvent(supabase, {
-          endUserId: sub.end_user_id,
-          castId,
-          eventType: "subscribe",
-          planCode: planCodeToSync ?? sub.plan_code,
-          sourceRefType: `stripe:${eventType}:trial_converted`,
-          sourceRefId: eventId,
-          metadata: {
-            stripe_subscription_id: subscriptionId,
-            previous_status: previousStatus,
-            new_status: newStatus,
-          },
-        });
-      }
-
-      if (planChanged) {
-        await recordSubscriptionLifecycleEvent(supabase, {
-          endUserId: sub.end_user_id,
-          castId,
-          eventType: "plan_change",
-          planCode: planCodeToSync,
-          sourceRefType: `stripe:${eventType}:plan_change`,
-          sourceRefId: eventId,
-          metadata: {
-            stripe_subscription_id: subscriptionId,
-            previous_plan_code: sub.plan_code,
-            new_plan_code: planCodeToSync,
-          },
-        });
-      }
-
-      await writeAuditLog({
-        action: "SUBSCRIPTION_SYNC",
-        targetType: "subscriptions",
-        targetId: sub.id,
-        success: true,
-        metadata: {
-          event: eventType,
-          previous_status: previousStatus,
-          new_status: newStatus,
-          cancel_at_period_end: cancelAtPeriodEnd,
-          ...(trialConverted ? { trial_converted: true } : {}),
-          ...(cancelNewlyScheduled ? { cancel_scheduled: true } : {}),
-          ...(planChanged
-            ? { plan_changed: true, previous_plan_code: sub.plan_code, new_plan_code: planCodeToSync }
-            : {}),
-        },
-        actorStaffId: null,
-      });
-
-      return { subscriptionId: sub.id, newStatus };
-    });
+    const result = await withWebhookIdempotency("stripe", eventId, eventType, () =>
+      handleSubscriptionUpsert(supabase, subscription, eventType, eventId)
+    );
 
     if (result.status === "error") {
       return stripeWebhookErrorResponse(eventType, eventId, result.message);
@@ -769,78 +913,9 @@ export async function POST(request: Request) {
   if (eventType === "customer.subscription.deleted") {
     const subscription = event.data.object as Stripe.Subscription;
 
-    const result = await withWebhookIdempotency("stripe", eventId, eventType, async () => {
-      const subscriptionId = subscription.id;
-
-      const { data: sub } = await supabase
-        .from("subscriptions")
-        .select("id, end_user_id, plan_code, end_users!inner(line_user_id, assigned_cast_id)")
-        .eq("stripe_subscription_id", subscriptionId)
-        .single();
-
-      if (!sub) {
-        return { skipped: true };
-      }
-
-      await supabase
-        .from("subscriptions")
-        .update({ status: "canceled" })
-        .eq("id", sub.id);
-
-      await supabase
-        .from("end_users")
-        .update({ status: "canceled", trial_end_at: null, canceled_at: new Date().toISOString() })
-        .eq("id", sub.end_user_id);
-
-      const endUser = sub.end_users as unknown as {
-        line_user_id: string;
-        assigned_cast_id: string | null;
-      };
-      const lineUserId = endUser.line_user_id;
-      if (lineUserId) {
-        // 契約変更・解約導線は共通Rutin公式LINEのリッチメニューで管理する。
-        const defaultAccount = await getDefaultLineAccount(supabase);
-        const uncontractedMenuId = defaultAccount.richMenuUncontractedId;
-        if (uncontractedMenuId) {
-          try {
-            await switchRichMenu(defaultAccount.credentials, lineUserId, uncontractedMenuId);
-          } catch (err) {
-            logger.error("Stripe webhook rich menu revert failed", {
-              lineUserId,
-              error: err instanceof Error ? err.message : "unknown",
-            });
-          }
-        }
-      }
-
-      // 解約完了を LINE / メールで通知（best-effort）
-      await notifyUser(supabase, sub.end_user_id, subscriptionCanceledNotification());
-
-      await recordSubscriptionLifecycleEvent(supabase, {
-        endUserId: sub.end_user_id,
-        castId: endUser.assigned_cast_id,
-        eventType: "cancel",
-        planCode: sub.plan_code,
-        sourceRefType: `stripe:${eventType}`,
-        sourceRefId: eventId,
-        metadata: {
-          stripe_subscription_id: subscriptionId,
-          new_status: "canceled",
-        },
-      });
-
-      // 監査ログ
-      await writeAuditLog({
-        action: "SUBSCRIPTION_SYNC",
-        targetType: "subscriptions",
-        targetId: sub.id,
-        success: true,
-        metadata: { event: eventType, new_status: "canceled" },
-        actorStaffId: null,
-      });
-
-      return { subscriptionId: sub.id };
-    });
+    const result = await withWebhookIdempotency("stripe", eventId, eventType, () =>
+      handleSubscriptionDeleted(supabase, subscription, eventType, eventId)
+    );
 
     if (result.status === "error") {
       return stripeWebhookErrorResponse(eventType, eventId, result.message);
@@ -874,64 +949,9 @@ export async function POST(request: Request) {
   if (eventType === "invoice.payment_failed") {
     const invoice = event.data.object as Stripe.Invoice;
 
-    const result = await withWebhookIdempotency("stripe", eventId, eventType, async () => {
-      const subscriptionId = subscriptionIdFromInvoice(invoice);
-      if (!subscriptionId) {
-        return { skipped: true };
-      }
-
-      const { data: sub } = await supabase
-        .from("subscriptions")
-        .select("id, end_user_id, stripe_customer_id")
-        .eq("stripe_subscription_id", subscriptionId)
-        .single();
-
-      if (!sub) {
-        return { skipped: true };
-      }
-
-      // past_dueに更新
-      await supabase
-        .from("subscriptions")
-        .update({ status: "past_due" })
-        .eq("id", sub.id);
-
-      await supabase
-        .from("end_users")
-        .update({ status: "past_due" })
-        .eq("id", sub.end_user_id);
-
-      // 支払い方法を更新できるカスタマーポータルのリンクを用意（best-effort）
-      let portalUrl: string | null = null;
-      if (sub.stripe_customer_id) {
-        try {
-          portalUrl = await createBillingPortalSession(
-            sub.stripe_customer_id,
-            `${getServerEnv().APP_BASE_URL}/account/plan`
-          );
-        } catch (err) {
-          logger.warn("invoice.payment_failed: billing portal link skipped", {
-            subscriptionId: sub.id,
-            error: err instanceof Error ? err.message : "unknown",
-          });
-        }
-      }
-
-      // 支払い更新のお願いを LINE / メールで通知（best-effort）
-      await notifyUser(supabase, sub.end_user_id, paymentFailedNotification(portalUrl));
-
-      // 監査ログ
-      await writeAuditLog({
-        action: "SUBSCRIPTION_SYNC",
-        targetType: "subscriptions",
-        targetId: sub.id,
-        success: true,
-        metadata: { event: eventType, new_status: "past_due" },
-        actorStaffId: null,
-      });
-
-      return { subscriptionId: sub.id };
-    });
+    const result = await withWebhookIdempotency("stripe", eventId, eventType, () =>
+      handleInvoicePaymentFailed(supabase, invoice, eventType)
+    );
 
     if (result.status === "error") {
       return stripeWebhookErrorResponse(eventType, eventId, result.message);
@@ -944,11 +964,9 @@ export async function POST(request: Request) {
   if (eventType === "charge.refunded") {
     const charge = event.data.object as Stripe.Charge;
 
-    const result = await withWebhookIdempotency("stripe", eventId, eventType, async () => {
-      // ポイント/ギフトはMVP対象外のため、返金台帳処理は行わない
-      const metadata = charge.metadata ?? {};
-      return { skipped: true, reason: `${metadata.type ?? "unknown"} refund disabled for MVP` };
-    });
+    const result = await withWebhookIdempotency("stripe", eventId, eventType, async () =>
+      handleChargeRefunded(charge)
+    );
 
     if (result.status === "error") {
       return stripeWebhookErrorResponse(eventType, eventId, result.message);
