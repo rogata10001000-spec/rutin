@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   upsertStepMessage,
+  uploadStepImage,
   type StepMessage,
 } from "@/actions/admin/step-messages";
 import { upsertStepMessageSchema, type StepTrigger } from "@/schemas/step-messages";
@@ -41,6 +42,8 @@ export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepM
   const [delayHours, setDelayHours] = useState("24");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [uploading, setUploading] = useState(false);
   const [active, setActive] = useState(true);
 
   useEffect(() => {
@@ -53,6 +56,7 @@ export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepM
         setDelayHours(String(editItem.delayHours));
         setTitle(editItem.title ?? "");
         setBody(editItem.body);
+        setImageUrl(editItem.imageUrl ?? "");
         setActive(editItem.active);
       } else {
         setTrigger("follow");
@@ -60,6 +64,7 @@ export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepM
         setDelayHours("24");
         setTitle("");
         setBody("");
+        setImageUrl("");
         setActive(true);
       }
     } else {
@@ -83,6 +88,7 @@ export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepM
       delayHours: delayHours ? parseInt(delayHours, 10) : NaN,
       title: title.trim() || undefined,
       body,
+      imageUrl: imageUrl || undefined,
       active,
     };
 
@@ -112,6 +118,28 @@ export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepM
       showToast("保存に失敗しました", "error");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const result = await uploadStepImage(fd);
+      if (result.ok) {
+        setImageUrl(result.data.url);
+        showToast("画像をアップロードしました", "success");
+      } else {
+        showToast(result.error.message, "error");
+      }
+    } catch {
+      showToast("画像のアップロードに失敗しました", "error");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
     }
   };
 
@@ -202,7 +230,7 @@ export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepM
 
               <div>
                 <label className="block text-sm font-bold text-stone-700">
-                  本文 <span className="text-terracotta">*</span>
+                  本文 <span className="text-xs font-medium text-stone-400">（画像のみ送る場合は任意）</span>
                 </label>
                 <textarea
                   value={body}
@@ -214,6 +242,42 @@ export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepM
                 <p className="mt-1.5 text-xs text-stone-400">{body.length} / 2000</p>
                 {errors.body && (
                   <p className="mt-1.5 text-xs font-medium text-red-600">{errors.body}</p>
+                )}
+              </div>
+
+              {/* 画像（任意） */}
+              <div>
+                <label className="block text-sm font-bold text-stone-700">
+                  画像 <span className="text-xs font-medium text-stone-400">（任意・最大5MB / JPEG・PNG・WebP・GIF）</span>
+                </label>
+                {imageUrl ? (
+                  <div className="mt-1.5 flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={imageUrl}
+                      alt="配信画像プレビュー"
+                      className="h-20 w-20 rounded-lg border border-stone-200 object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setImageUrl("")}
+                      disabled={uploading || submitting}
+                      className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      画像を削除
+                    </button>
+                  </div>
+                ) : (
+                  <label className="mt-1.5 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-stone-300 bg-stone-50 px-4 py-4 text-sm font-medium text-stone-500 hover:bg-stone-100">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      onChange={handleImageUpload}
+                      disabled={uploading || submitting}
+                      className="sr-only"
+                    />
+                    {uploading ? "アップロード中…" : "＋ 画像をアップロード"}
+                  </label>
                 )}
               </div>
 

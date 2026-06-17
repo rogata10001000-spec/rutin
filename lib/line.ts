@@ -76,6 +76,42 @@ export const pushTextMessage = async (
 };
 
 /**
+ * 画像（任意でテキストも）をまとめて push する。
+ * LINEの画像メッセージは公開HTTPSのURLが必須（originalContentUrl / previewImageUrl）。
+ */
+export const pushImageMessage = async (
+  account: Pick<LineAccountCredentials, "accessToken">,
+  lineUserId: string,
+  imageUrl: string,
+  caption?: string
+): Promise<void> => {
+  const messages: Array<Record<string, unknown>> = [];
+  if (caption && caption.trim()) {
+    messages.push({ type: "text", text: caption });
+  }
+  messages.push({
+    type: "image",
+    originalContentUrl: imageUrl,
+    previewImageUrl: imageUrl,
+  });
+
+  const res = await fetchWithRetry(`${LINE_API_BASE}/message/push`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${account.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ to: lineUserId, messages }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    logger.error("LINE image push failed", { status: res.status, lineUserId });
+    throw new Error(`LINE image push failed: ${res.status} - ${errorText.slice(0, 200)}`);
+  }
+};
+
+/**
  * 未契約ユーザー向けに、長いURLを本文へ出さずメイト選択へ案内する。
  */
 export const sendSubscribeGuideFlexMessage = async (

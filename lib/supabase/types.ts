@@ -171,6 +171,7 @@ type StepMessageRow = {
   delay_hours: number;
   title: string | null;
   body: string;
+  image_url: string | null;
   active: boolean;
   trigger: "follow" | "checkout_abandoned";
   created_at: string;
@@ -836,9 +837,10 @@ export interface Database {
       };
       step_messages: {
         Row: StepMessageRow;
-        Insert: Omit<StepMessageRow, "id" | "created_at" | "updated_at" | "trigger"> & {
+        Insert: Omit<StepMessageRow, "id" | "created_at" | "updated_at" | "trigger" | "image_url"> & {
           id?: string;
           trigger?: "follow" | "checkout_abandoned";
+          image_url?: string | null;
           created_at?: string;
           updated_at?: string;
         };

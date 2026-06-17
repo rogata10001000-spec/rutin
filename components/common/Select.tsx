@@ -20,12 +20,12 @@ export type SelectOption = {
 type Size = "sm" | "md";
 
 const sizeClasses: Record<Size, string> = {
-  sm: "px-3 py-1.5 text-xs",
-  md: "px-4 py-2 text-sm",
+  sm: "min-h-[2.25rem] px-3 py-1.5 text-xs",
+  md: "min-h-[2.75rem] px-3.5 py-2 text-sm",
 };
 
 const triggerBaseClass =
-  "inline-flex items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white font-medium text-stone-700 shadow-sm transition-colors hover:bg-stone-50 focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center justify-between gap-2 rounded-lg border border-stone-200 bg-white text-left font-medium leading-snug text-stone-700 shadow-sm transition-colors hover:bg-stone-50 focus:border-terracotta focus:outline-none focus:ring-2 focus:ring-terracotta/30 disabled:cursor-not-allowed disabled:opacity-50";
 
 function Chevron({ open }: { open: boolean }) {
   return (
@@ -92,7 +92,7 @@ function DropdownMenu({
       role="listbox"
       tabIndex={-1}
       style={{ top: position.top, left: position.left, minWidth: position.width }}
-      className="fixed z-[60] max-h-72 overflow-auto rounded-xl border border-stone-200 bg-white py-1 shadow-soft-lg ring-1 ring-stone-900/5 focus:outline-none"
+      className="animate-fade-in fixed z-[60] max-h-72 overflow-auto rounded-lg border border-stone-200 bg-white p-1 shadow-soft-lg ring-1 ring-stone-900/5 focus:outline-none"
     >
       {children}
     </div>,
@@ -195,7 +195,7 @@ export function Select({
                   onChange(option.value);
                   setOpen(false);
                 }}
-                className={`flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                   isSelected
                     ? "bg-terracotta/10 font-bold text-terracotta"
                     : "text-stone-700 hover:bg-stone-50"
@@ -320,7 +320,7 @@ export function MultiSelect({
                   if (option.disabled) return;
                   toggle(option.value);
                 }}
-                className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                   isSelected ? "font-bold text-terracotta" : "text-stone-700 hover:bg-stone-50"
                 }`}
               >

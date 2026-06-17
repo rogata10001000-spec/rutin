@@ -2,7 +2,7 @@ import "server-only";
 
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { getDefaultLineAccount, getLineAccountById } from "@/lib/line-accounts";
-import { pushTextMessage } from "@/lib/line";
+import { pushTextMessage, pushImageMessage } from "@/lib/line";
 import { logger } from "@/lib/logger";
 
 const MAX_USERS_PER_STEP = 300;
@@ -26,7 +26,7 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
 
   const { data: steps } = await supabase
     .from("step_messages")
-    .select("id, trigger, delay_hours, body")
+    .select("id, trigger, delay_hours, body, image_url")
     .eq("active", true)
     .order("step_order", { ascending: true });
 
@@ -67,12 +67,24 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
 
     for (const user of users) {
       if (deliveredSet.has(user.id) || !user.line_user_id) continue;
+      const bodyText = step.body?.trim() ?? "";
+      if (!step.image_url && !bodyText) continue; // 送信内容が無い場合はスキップ（通常は起きない）
+
       result.processed += 1;
       try {
         const account = user.primary_line_account_id
           ? (await getLineAccountById(user.primary_line_account_id, supabase)) ?? defaultAccount
           : defaultAccount;
-        await pushTextMessage(account.credentials, user.line_user_id, step.body);
+        if (step.image_url) {
+          await pushImageMessage(
+            account.credentials,
+            user.line_user_id,
+            step.image_url,
+            bodyText || undefined
+          );
+        } else {
+          await pushTextMessage(account.credentials, user.line_user_id, bodyText);
+        }
         await supabase
           .from("step_deliveries")
           .insert({ end_user_id: user.id, step_message_id: step.id, status: "sent" });

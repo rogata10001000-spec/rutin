@@ -116,7 +116,14 @@ export function StepMessagesTable({ items }: StepMessagesTableProps) {
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-stone-600">{formatDelay(item.delayHours)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-stone-600">{item.title ?? "-"}</td>
                     <td className="px-4 py-3 text-sm text-stone-600">
-                      <span className="block max-w-md truncate">{item.body}</span>
+                      <span className="flex max-w-md items-center gap-1.5">
+                        {item.imageUrl && (
+                          <span className="shrink-0 rounded bg-stone-100 px-1.5 py-0.5 text-[11px] font-bold text-stone-500">
+                            📷 画像
+                          </span>
+                        )}
+                        <span className="truncate">{item.body || (item.imageUrl ? "（画像のみ）" : "")}</span>
+                      </span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <span

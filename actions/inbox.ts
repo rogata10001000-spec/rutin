@@ -157,15 +157,20 @@ export async function getInboxItems(
       line_official_accounts!end_users_primary_line_account_id_fkey (
         name
       )
-    `)
-    .neq("status", "incomplete"); // 未契約は除外
+    `);
+
+  // ステータス絞り込み:
+  // - 状態フィルタを明示選択した場合はそれを尊重（解約済みのみ抽出＝復帰アプローチ用も可）
+  // - 未選択（既定）は「サービス提供中」のみ表示し、未契約(incomplete)・解約済み(canceled)は除外
+  if (filters?.statuses?.length) {
+    query = query.in("status", filters.statuses as SubscriptionStatus[]);
+  } else {
+    query = query.not("status", "in", '("incomplete","canceled")');
+  }
 
   // フィルタ適用
   if (filters?.planCodes?.length) {
     query = query.in("plan_code", filters.planCodes);
-  }
-  if (filters?.statuses?.length) {
-    query = query.in("status", filters.statuses as SubscriptionStatus[]);
   }
   if (filters?.assignedCastId) {
     query = query.eq("assigned_cast_id", filters.assignedCastId);

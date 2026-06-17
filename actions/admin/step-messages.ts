@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { Result, toZodErrorMessage } from "../types";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
+import { logger } from "@/lib/logger";
 import {
   upsertStepMessageSchema,
   type UpsertStepMessageInput,
@@ -18,8 +19,11 @@ export type StepMessage = {
   delayHours: number;
   title: string | null;
   body: string;
+  imageUrl: string | null;
   active: boolean;
 };
+
+const STEP_IMAGE_BUCKET = "step-images";
 
 export type GetStepMessagesResult = Result<{ items: StepMessage[] }>;
 
@@ -33,7 +37,7 @@ export async function getStepMessages(): Promise<GetStepMessagesResult> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("step_messages")
-    .select("id, trigger, step_order, delay_hours, title, body, active")
+    .select("id, trigger, step_order, delay_hours, title, body, image_url, active")
     .order("trigger", { ascending: true })
     .order("step_order", { ascending: true })
     .order("delay_hours", { ascending: true });
@@ -52,6 +56,7 @@ export async function getStepMessages(): Promise<GetStepMessagesResult> {
         delayHours: r.delay_hours,
         title: r.title,
         body: r.body,
+        imageUrl: r.image_url,
         active: r.active,
       })),
     },
@@ -83,7 +88,8 @@ export async function upsertStepMessage(
     step_order: parsed.data.stepOrder,
     delay_hours: parsed.data.delayHours,
     title: parsed.data.title?.trim() || null,
-    body: parsed.data.body,
+    body: parsed.data.body?.trim() || "",
+    image_url: parsed.data.imageUrl?.trim() || null,
     active: parsed.data.active,
     updated_at: new Date().toISOString(),
   };
@@ -142,4 +148,43 @@ export async function deleteStepMessage(id: string): Promise<DeleteStepMessageRe
 
   revalidatePath("/admin/step-messages");
   return { ok: true, data: undefined };
+}
+
+export type UploadStepImageResult = Result<{ url: string }>;
+
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+/** ステップ配信用の画像をアップロードし公開URLを返す（LINEは公開HTTPS画像が必要） */
+export async function uploadStepImage(formData: FormData): Promise<UploadStepImageResult> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { ok: false, error: { code: "FORBIDDEN", message: "管理者権限が必要です" } };
+  }
+
+  const file = formData.get("file");
+  if (!file || !(file instanceof File)) {
+    return { ok: false, error: { code: "ZOD_ERROR", message: "ファイルが選択されていません" } };
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    return { ok: false, error: { code: "ZOD_ERROR", message: "ファイルサイズは5MB以下にしてください" } };
+  }
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    return { ok: false, error: { code: "ZOD_ERROR", message: "JPEG/PNG/WebP/GIF形式のみ対応しています" } };
+  }
+
+  const adminSupabase = createAdminSupabaseClient();
+  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  const path = `${crypto.randomUUID()}.${ext}`;
+
+  const { error: uploadError } = await adminSupabase.storage
+    .from(STEP_IMAGE_BUCKET)
+    .upload(path, file, { contentType: file.type, upsert: false });
+
+  if (uploadError) {
+    logger.error("stepMessages: image upload failed", { error: uploadError.message });
+    return { ok: false, error: { code: "UNKNOWN", message: "画像のアップロードに失敗しました" } };
+  }
+
+  const url = adminSupabase.storage.from(STEP_IMAGE_BUCKET).getPublicUrl(path).data.publicUrl;
+  return { ok: true, data: { url } };
 }
