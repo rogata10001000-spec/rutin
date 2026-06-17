@@ -120,4 +120,27 @@ export async function syncNewSubscriptionSideEffects(
       error: err instanceof Error ? err.message : "unknown",
     });
   }
+
+  // 担当メイトへ新規契約を即時通知（Web Push・best-effort）。
+  // アクティベーション＝定着のため、担当が最初のひと言を素早く送れるようにする。
+  try {
+    const { sendPushToStaff } = await import("@/lib/push-notifications");
+    const { data: eu } = await supabase
+      .from("end_users")
+      .select("nickname, line_display_name")
+      .eq("id", params.endUserId)
+      .maybeSingle();
+    const userName = eu?.line_display_name || eu?.nickname || "新規ユーザー";
+    await sendPushToStaff(params.castId, {
+      title: "新しい担当ユーザーが契約しました",
+      body: `${userName} さんへ、最初のメッセージを送りましょう。`,
+      url: `/inbox?user=${params.endUserId}`,
+      tag: `new-contract-${params.endUserId}`,
+    });
+  } catch (err) {
+    logger.error("Stripe webhook new-contract push failed", {
+      castId: params.castId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+  }
 }
