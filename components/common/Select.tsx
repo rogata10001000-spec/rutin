@@ -92,7 +92,7 @@ function DropdownMenu({
       role="listbox"
       tabIndex={-1}
       style={{ top: position.top, left: position.left, minWidth: position.width }}
-      className="animate-fade-in fixed z-[60] max-h-72 overflow-auto rounded-lg border border-stone-200 bg-white p-1 shadow-soft-lg ring-1 ring-stone-900/5 focus:outline-none"
+      className="animate-fade-in fixed z-[60] max-h-72 overflow-auto rounded-xl border border-stone-200 bg-white p-1 shadow-soft-lg ring-1 ring-stone-900/5 focus:outline-none"
     >
       {children}
     </div>,
@@ -195,7 +195,7 @@ export function Select({
                   onChange(option.value);
                   setOpen(false);
                 }}
-                className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                   isSelected
                     ? "bg-terracotta/10 font-bold text-terracotta"
                     : "text-stone-700 hover:bg-stone-50"
@@ -320,7 +320,7 @@ export function MultiSelect({
                   if (option.disabled) return;
                   toggle(option.value);
                 }}
-                className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                   isSelected ? "font-bold text-terracotta" : "text-stone-700 hover:bg-stone-50"
                 }`}
               >
