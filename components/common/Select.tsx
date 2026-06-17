@@ -92,7 +92,7 @@ function DropdownMenu({
       role="listbox"
       tabIndex={-1}
       style={{ top: position.top, left: position.left, minWidth: position.width }}
-      className="animate-fade-in fixed z-[60] max-h-72 overflow-auto rounded-xl border border-stone-200 bg-white p-1 shadow-soft-lg ring-1 ring-stone-900/5 focus:outline-none"
+      className="animate-fade-in fixed z-[60] max-h-72 overflow-auto border border-stone-200 bg-white p-1 shadow-soft-lg ring-1 ring-stone-900/5 focus:outline-none"
     >
       {children}
     </div>,
