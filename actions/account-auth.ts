@@ -25,16 +25,18 @@ export async function requestEmailLogin(rawEmail: string): Promise<RequestEmailL
   const headerList = await headers();
   const ip = headerList.get("x-forwarded-for") ?? "unknown";
 
-  const emailOk = checkRateLimit({
-    key: `email-login:email:${email}`,
-    windowMs: 15 * 60 * 1000,
-    maxRequests: 3,
-  });
-  const ipOk = checkRateLimit({
-    key: `email-login:ip:${ip}`,
-    windowMs: 15 * 60 * 1000,
-    maxRequests: 10,
-  });
+  const [emailOk, ipOk] = await Promise.all([
+    checkRateLimit({
+      key: `email-login:email:${email}`,
+      windowMs: 15 * 60 * 1000,
+      maxRequests: 3,
+    }),
+    checkRateLimit({
+      key: `email-login:ip:${ip}`,
+      windowMs: 15 * 60 * 1000,
+      maxRequests: 10,
+    }),
+  ]);
 
   // レート超過時も列挙を避けるため成功扱い（送信はしない）
   if (!emailOk || !ipOk) {

@@ -21,6 +21,9 @@ const serverEnvSchema = z.object({
   AI_PROVIDER_KEY: z.string().min(1).optional(),
   AI_DRAFT_DAILY_LIMIT: z.coerce.number().int().positive().default(3),
   CRON_SECRET: z.string().min(16).optional(),
+  // 分散レート制限（Upstash Redis REST）。未設定ならインスタンス内メモリにフォールバック。
+  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
   RICH_MENU_ID_UNCONTRACTED: z.string().optional(),
   RICH_MENU_ID_CONTRACTED: z.string().optional(),
   TRIAL_PERIOD_DAYS: z.coerce.number().int().positive().default(7),

@@ -185,7 +185,7 @@ export async function handleLineWebhook(
   request: Request,
   account: ResolvedLineAccount
 ): Promise<Response> {
-  const allowed = checkRateLimit({
+  const allowed = await checkRateLimit({
     key: requestKey(request, `line_webhook:${account.id ?? "default"}`),
     windowMs: 60_000,
     maxRequests: 120,

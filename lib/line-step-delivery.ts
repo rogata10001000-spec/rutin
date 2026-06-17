@@ -6,6 +6,7 @@ import { pushTextMessage, pushImageMessage } from "@/lib/line";
 import { logger } from "@/lib/logger";
 
 const MAX_USERS_PER_STEP = 300;
+const SEND_CONCURRENCY = 10;
 
 export type StepDeliveryResult = {
   processed: number;
@@ -57,6 +58,9 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
 
     if (!users || users.length === 0) continue;
 
+    const bodyText = step.body?.trim() ?? "";
+    if (!step.image_url && !bodyText) continue; // 送信内容が無いステップはスキップ（通常は起きない）
+
     const userIds = users.map((u) => u.id);
     const { data: delivered } = await supabase
       .from("step_deliveries")
@@ -65,11 +69,11 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
       .in("end_user_id", userIds);
     const deliveredSet = new Set((delivered ?? []).map((d) => d.end_user_id));
 
-    for (const user of users) {
-      if (deliveredSet.has(user.id) || !user.line_user_id) continue;
-      const bodyText = step.body?.trim() ?? "";
-      if (!step.image_url && !bodyText) continue; // 送信内容が無い場合はスキップ（通常は起きない）
+    const targets = users.filter((u) => u.line_user_id && !deliveredSet.has(u.id));
 
+    // 1件ずつ送信。冪等は step_deliveries の (end_user_id, step_message_id) UNIQUE で担保。
+    const sendOne = async (user: (typeof targets)[number]): Promise<void> => {
+      if (!user.line_user_id) return;
       result.processed += 1;
       try {
         const account = user.primary_line_account_id
@@ -97,6 +101,11 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
           error: err instanceof Error ? err.message : "unknown",
         });
       }
+    };
+
+    // バウンド付き並列でスループットを確保（1万人規模でも順次awaitで詰まらない）
+    for (let i = 0; i < targets.length; i += SEND_CONCURRENCY) {
+      await Promise.all(targets.slice(i, i + SEND_CONCURRENCY).map(sendOne));
     }
   }
 

@@ -905,7 +905,7 @@ export async function handleSubscriptionUpsert(
 }
 
 export async function POST(request: Request) {
-  const allowed = checkRateLimit({
+  const allowed = await checkRateLimit({
     key: requestKey(request, "stripe_webhook"),
     windowMs: 60_000,
     maxRequests: 120,
