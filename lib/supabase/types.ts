@@ -225,6 +225,7 @@ type SubscriptionsRow = {
   status: SubscriptionStatus;
   plan_code: string;
   applied_stripe_price_id: string;
+  billing_interval: "month" | "year";
   current_period_end: string | null;
   cancel_at_period_end: boolean;
   created_at: string;
@@ -438,6 +439,8 @@ type PlanPricesRow = {
   currency: string;
   amount_monthly: number;
   stripe_price_id: string;
+  amount_annual: number | null;
+  stripe_price_id_annual: string | null;
   valid_from: string;
   active: boolean;
   created_at: string;
@@ -450,6 +453,8 @@ type CastPlanPriceOverridesRow = {
   currency: string;
   amount_monthly: number;
   stripe_price_id: string;
+  amount_annual: number | null;
+  stripe_price_id_annual: string | null;
   valid_from: string;
   active: boolean;
   created_at: string;
@@ -651,10 +656,11 @@ export interface Database {
       };
       subscriptions: {
         Row: SubscriptionsRow;
-        Insert: Omit<SubscriptionsRow, "id" | "created_at" | "updated_at" | "cancel_at_period_end" | "current_period_end"> & {
+        Insert: Omit<SubscriptionsRow, "id" | "created_at" | "updated_at" | "cancel_at_period_end" | "current_period_end" | "billing_interval"> & {
           id?: string;
           cancel_at_period_end?: boolean;
           current_period_end?: string | null;
+          billing_interval?: "month" | "year";
         };
         Update: Partial<Omit<SubscriptionsRow, "id" | "end_user_id" | "created_at">>;
         Relationships: [];
@@ -807,20 +813,50 @@ export interface Database {
       };
       plan_prices: {
         Row: PlanPricesRow;
-        Insert: Omit<PlanPricesRow, "id" | "created_at" | "currency"> & {
+        Insert: Omit<
+          PlanPricesRow,
+          "id" | "created_at" | "currency" | "amount_annual" | "stripe_price_id_annual"
+        > & {
           id?: string;
           currency?: string;
+          amount_annual?: number | null;
+          stripe_price_id_annual?: string | null;
         };
-        Update: Partial<Pick<PlanPricesRow, "active" | "stripe_price_id" | "amount_monthly" | "valid_from">>;
+        Update: Partial<
+          Pick<
+            PlanPricesRow,
+            | "active"
+            | "stripe_price_id"
+            | "amount_monthly"
+            | "amount_annual"
+            | "stripe_price_id_annual"
+            | "valid_from"
+          >
+        >;
         Relationships: [];
       };
       cast_plan_price_overrides: {
         Row: CastPlanPriceOverridesRow;
-        Insert: Omit<CastPlanPriceOverridesRow, "id" | "created_at" | "currency"> & {
+        Insert: Omit<
+          CastPlanPriceOverridesRow,
+          "id" | "created_at" | "currency" | "amount_annual" | "stripe_price_id_annual"
+        > & {
           id?: string;
           currency?: string;
+          amount_annual?: number | null;
+          stripe_price_id_annual?: string | null;
         };
-        Update: Partial<Pick<CastPlanPriceOverridesRow, "active">>;
+        Update: Partial<
+          Pick<
+            CastPlanPriceOverridesRow,
+            | "active"
+            | "amount_monthly"
+            | "stripe_price_id"
+            | "amount_annual"
+            | "stripe_price_id_annual"
+            | "valid_from"
+          >
+        >;
         Relationships: [];
       };
       cast_photos: {

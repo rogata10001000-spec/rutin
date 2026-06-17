@@ -13,9 +13,8 @@ type PricingFormProps = {
 
 type FieldErrors = {
   castId?: string;
-  stripePriceId?: string;
   amountMonthly?: string;
-  validFrom?: string;
+  amountAnnual?: string;
 };
 
 export function PricingForm({ casts }: PricingFormProps) {
@@ -26,23 +25,18 @@ export function PricingForm({ casts }: PricingFormProps) {
 
   const [castId, setCastId] = useState("");
   const [planCode, setPlanCode] = useState<"light" | "standard" | "premium">("standard");
-  const [stripePriceId, setStripePriceId] = useState("");
   const [amountMonthly, setAmountMonthly] = useState("");
-  const [validFrom, setValidFrom] = useState(
-    new Date().toISOString().split("T")[0]
-  );
+  const [amountAnnual, setAmountAnnual] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
 
-    // クライアント側Zodバリデーション
     const formData = {
       castId,
       planCode,
-      stripePriceId,
       amountMonthly: amountMonthly ? parseInt(amountMonthly, 10) : 0,
-      validFrom,
+      ...(amountAnnual ? { amountAnnual: parseInt(amountAnnual, 10) } : {}),
       active: true,
     };
 
@@ -63,15 +57,20 @@ export function PricingForm({ casts }: PricingFormProps) {
     setLoading(true);
 
     try {
-      const result = await upsertCastPlanPriceOverride(parsed.data as Required<typeof parsed.data>);
+      const result = await upsertCastPlanPriceOverride({
+        castId,
+        planCode,
+        amountMonthly: parseInt(amountMonthly, 10),
+        ...(amountAnnual ? { amountAnnual: parseInt(amountAnnual, 10) } : {}),
+        active: true,
+      });
 
       if (result.ok) {
         showToast("価格設定を保存しました", "success");
         router.refresh();
-        // フォームリセット
         setCastId("");
-        setStripePriceId("");
         setAmountMonthly("");
+        setAmountAnnual("");
       } else {
         showToast(result.error.message, "error");
       }
@@ -82,12 +81,17 @@ export function PricingForm({ casts }: PricingFormProps) {
     }
   };
 
+  const inputClass = (hasError: boolean) =>
+    `mt-1.5 block w-full rounded-xl border bg-stone-50 px-4 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
+      hasError
+        ? "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500"
+        : "border-stone-200 text-stone-900 focus:border-terracotta focus:bg-white focus:ring-terracotta"
+    }`;
+
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div>
-        <label className="block text-sm font-bold text-stone-700">
-          メイト
-        </label>
+        <label className="block text-sm font-bold text-stone-700">メイト</label>
         <div className="mt-1.5">
           <Select
             aria-label="メイト"
@@ -107,9 +111,7 @@ export function PricingForm({ casts }: PricingFormProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-bold text-stone-700">
-          プラン
-        </label>
+        <label className="block text-sm font-bold text-stone-700">プラン</label>
         <div className="mt-1.5">
           <Select
             aria-label="プラン"
@@ -125,40 +127,14 @@ export function PricingForm({ casts }: PricingFormProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-bold text-stone-700">
-          Stripe Price ID
-        </label>
-        <input
-          type="text"
-          value={stripePriceId}
-          onChange={(e) => setStripePriceId(e.target.value)}
-          placeholder="price_xxx"
-          className={`mt-1.5 block w-full rounded-xl border bg-stone-50 px-4 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-            errors.stripePriceId
-              ? "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500"
-              : "border-stone-200 text-stone-900 focus:border-terracotta focus:bg-white focus:ring-terracotta"
-          }`}
-          required
-        />
-        {errors.stripePriceId && (
-          <p className="mt-1.5 text-xs text-red-600 font-medium">{errors.stripePriceId}</p>
-        )}
-      </div>
-
-      <div>
-        <label className="block text-sm font-bold text-stone-700">
-          月額（税込）
-        </label>
+        <label className="block text-sm font-bold text-stone-700">月額（税込）</label>
         <input
           type="number"
+          inputMode="numeric"
           value={amountMonthly}
           onChange={(e) => setAmountMonthly(e.target.value)}
           placeholder="6980"
-          className={`mt-1.5 block w-full rounded-xl border bg-stone-50 px-4 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-            errors.amountMonthly
-              ? "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500"
-              : "border-stone-200 text-stone-900 focus:border-terracotta focus:bg-white focus:ring-terracotta"
-          }`}
+          className={inputClass(Boolean(errors.amountMonthly))}
           required
         />
         {errors.amountMonthly && (
@@ -168,23 +144,28 @@ export function PricingForm({ casts }: PricingFormProps) {
 
       <div>
         <label className="block text-sm font-bold text-stone-700">
-          適用開始日
+          年額（税込・任意）
         </label>
         <input
-          type="date"
-          value={validFrom}
-          onChange={(e) => setValidFrom(e.target.value)}
-          className={`mt-1.5 block w-full rounded-xl border bg-stone-50 px-4 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
-            errors.validFrom
-              ? "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500"
-              : "border-stone-200 text-stone-900 focus:border-terracotta focus:bg-white focus:ring-terracotta"
-          }`}
-          required
+          type="number"
+          inputMode="numeric"
+          value={amountAnnual}
+          onChange={(e) => setAmountAnnual(e.target.value)}
+          placeholder="例: 69800（実質2ヶ月無料なら月額×10）"
+          className={inputClass(Boolean(errors.amountAnnual))}
         />
-        {errors.validFrom && (
-          <p className="mt-1.5 text-xs text-red-600 font-medium">{errors.validFrom}</p>
+        <p className="mt-1 text-xs text-stone-500">
+          未入力の場合、このメイトの年額はデフォルト価格が適用されます。
+        </p>
+        {errors.amountAnnual && (
+          <p className="mt-1.5 text-xs text-red-600 font-medium">{errors.amountAnnual}</p>
         )}
       </div>
+
+      <p className="rounded-xl bg-stone-50 p-3 text-xs leading-relaxed text-stone-500">
+        入力した金額に対応する Stripe Price は自動で作成されます（表示額と請求額は常に一致）。
+        既存契約者の金額は変わりません。反映するには各ユーザーの「価格変更」を実行してください。
+      </p>
 
       <button
         type="submit"

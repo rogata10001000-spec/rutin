@@ -2,14 +2,14 @@ import { z } from "zod";
 
 /**
  * デフォルトプラン価格作成/更新スキーマ
+ * 金額のみ入力 → Stripe Price はサーバ側で自動作成（表示額=請求額を保証）。
  */
 export const upsertPlanPriceSchema = z.object({
-  id: z.string().uuid().optional(),
   planCode: z.enum(["light", "standard", "premium"]),
-  stripePriceId: z.string().min(1, "Stripe Price IDを入力してください"),
-  amountMonthly: z.number().int().positive("金額は正の整数で入力してください"),
-  validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "有効開始日を入力してください"),
-  active: z.boolean(),
+  amountMonthly: z.number().int().positive("月額は正の整数で入力してください"),
+  // 年額（任意）。未入力なら年額デフォルトは設定しない。
+  amountAnnual: z.number().int().positive("年額は正の整数で入力してください").optional(),
+  active: z.boolean().optional(),
 });
 
 export type UpsertPlanPriceInput = z.infer<typeof upsertPlanPriceSchema>;

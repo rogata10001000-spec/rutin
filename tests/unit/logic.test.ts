@@ -523,14 +523,23 @@ import { payoutRuleSchema } from "@/schemas/payout";
 import { settlementPeriodSchema } from "@/schemas/settlements";
 
 describe("Unit/Zod - 価格スキーマ", () => {
-  test("pricingOverrideSchema: 正常入力", () => {
+  test("pricingOverrideSchema: 正常入力（月額のみ）", () => {
     const input = {
       castId: "550e8400-e29b-41d4-a716-446655440000",
       planCode: "standard",
-      stripePriceId: "price_xxx",
       amountMonthly: 6980,
-      validFrom: "2024-01-01",
       active: true,
+    };
+    const result = pricingOverrideSchema.safeParse(input);
+    expect(result.success).toBe(true);
+  });
+
+  test("pricingOverrideSchema: 正常入力（月額+年額）", () => {
+    const input = {
+      castId: "550e8400-e29b-41d4-a716-446655440000",
+      planCode: "premium",
+      amountMonthly: 14800,
+      amountAnnual: 148000,
     };
     const result = pricingOverrideSchema.safeParse(input);
     expect(result.success).toBe(true);
@@ -540,23 +549,17 @@ describe("Unit/Zod - 価格スキーマ", () => {
     const input = {
       castId: "550e8400-e29b-41d4-a716-446655440000",
       planCode: "invalid",
-      stripePriceId: "price_xxx",
       amountMonthly: 6980,
-      validFrom: "2024-01-01",
-      active: true,
     };
     const result = pricingOverrideSchema.safeParse(input);
     expect(result.success).toBe(false);
   });
 
-  test("pricingOverrideSchema: 不正な日付形式", () => {
+  test("pricingOverrideSchema: 月額が0以下は不正", () => {
     const input = {
       castId: "550e8400-e29b-41d4-a716-446655440000",
       planCode: "standard",
-      stripePriceId: "price_xxx",
-      amountMonthly: 6980,
-      validFrom: "2024/01/01", // スラッシュ形式は不正
-      active: true,
+      amountMonthly: 0,
     };
     const result = pricingOverrideSchema.safeParse(input);
     expect(result.success).toBe(false);

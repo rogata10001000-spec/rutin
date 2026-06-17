@@ -1,10 +1,13 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { requireAdminOrSupervisor } from "@/lib/auth";
-import { Result } from "../types";
+import { requireAdmin, requireAdminOrSupervisor } from "@/lib/auth";
+import { Result, toZodErrorMessage } from "../types";
 import { upsertPlanPriceSchema, type UpsertPlanPriceInput } from "@/schemas/plan-prices";
-import { writeAuditLog } from "@/lib/audit";
+import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
+import { ensureRecurringPrice } from "@/lib/stripe-pricing";
+import type { PlanCode } from "@/lib/supabase/types";
 
 export type PlanPrice = {
   id: string;
@@ -13,6 +16,8 @@ export type PlanPrice = {
   currency: string;
   amountMonthly: number;
   stripePriceId: string;
+  amountAnnual: number | null;
+  stripePriceIdAnnual: string | null;
   validFrom: string;
   active: boolean;
   createdAt: string;
@@ -42,7 +47,9 @@ export async function getPlanPrices(): Promise<GetPlanPricesResult> {
 
   const { data: prices, error } = await supabase
     .from("plan_prices")
-    .select("id, plan_code, currency, amount_monthly, stripe_price_id, valid_from, active, created_at")
+    .select(
+      "id, plan_code, currency, amount_monthly, stripe_price_id, amount_annual, stripe_price_id_annual, valid_from, active, created_at"
+    )
     .order("plan_code")
     .order("valid_from", { ascending: false });
 
@@ -60,6 +67,8 @@ export async function getPlanPrices(): Promise<GetPlanPricesResult> {
     currency: p.currency,
     amountMonthly: p.amount_monthly,
     stripePriceId: p.stripe_price_id,
+    amountAnnual: p.amount_annual,
+    stripePriceIdAnnual: p.stripe_price_id_annual,
     validFrom: p.valid_from,
     active: p.active,
     createdAt: p.created_at,
@@ -72,15 +81,18 @@ export type UpsertPlanPriceResult = Result<{ id: string }>;
 
 /**
  * デフォルトプラン価格作成/更新
+ * 金額のみ受け取り、対応する Stripe Price を find-or-create してから保存する。
+ * これにより「画面の表示額」と「実際の請求額」が常に一致する。
  */
 export async function upsertPlanPrice(
   input: UpsertPlanPriceInput
 ): Promise<UpsertPlanPriceResult> {
-  const auth = await requireAdminOrSupervisor();
-  if (!auth) {
+  // 価格はビリングに直結するため admin 限定
+  const admin = await requireAdmin();
+  if (!admin) {
     return {
       ok: false,
-      error: { code: "FORBIDDEN", message: "この操作を行う権限がありません" },
+      error: { code: "FORBIDDEN", message: "管理者権限が必要です" },
     };
   }
 
@@ -88,85 +100,85 @@ export async function upsertPlanPrice(
   if (!parsed.success) {
     return {
       ok: false,
-      error: { code: "ZOD_ERROR", message: parsed.error.errors[0]?.message ?? "入力内容を確認してください" },
+      error: { code: "ZOD_ERROR", message: toZodErrorMessage(parsed.error.issues[0]?.message) },
+    };
+  }
+
+  const { planCode, amountMonthly, amountAnnual, active } = parsed.data;
+
+  // Stripe Price を金額から確定（自動作成・冪等）
+  let monthlyPriceId: string;
+  let annualPriceId: string | null = null;
+  try {
+    monthlyPriceId = await ensureRecurringPrice(planCode as PlanCode, amountMonthly, "month");
+    if (amountAnnual != null) {
+      annualPriceId = await ensureRecurringPrice(planCode as PlanCode, amountAnnual, "year");
+    }
+  } catch (err) {
+    await writeAuditLog({
+      action: "PLAN_PRICE_UPDATE",
+      targetType: "plan_prices",
+      targetId: planCode,
+      success: false,
+      metadata: buildAuditMetadata({
+        plan_code: planCode,
+        amount_monthly: amountMonthly,
+        amount_annual: amountAnnual ?? null,
+        error: err instanceof Error ? err.message : "stripe price creation failed",
+      }),
+    });
+    return {
+      ok: false,
+      error: { code: "EXTERNAL_API_ERROR", message: "Stripe価格の作成に失敗しました" },
     };
   }
 
   const supabase = await createServerSupabaseClient();
-  const { id, planCode, stripePriceId, amountMonthly, validFrom, active } = parsed.data;
+  const today = new Date().toISOString().split("T")[0];
 
-  let resultId: string;
-  let action: "PLAN_PRICE_CREATE" | "PLAN_PRICE_UPDATE";
-
-  if (id) {
-    // 更新
-    const { data, error } = await supabase
-      .from("plan_prices")
-      .update({
-        stripe_price_id: stripePriceId,
-        amount_monthly: amountMonthly,
-        valid_from: validFrom,
-        active,
-      })
-      .eq("id", id)
-      .select("id")
-      .single();
-
-    if (error) {
-      return {
-        ok: false,
-        error: { code: "UNKNOWN", message: "更新に失敗しました" },
-      };
-    }
-
-    resultId = data.id;
-    action = "PLAN_PRICE_UPDATE";
-  } else {
-    // 新規作成
-    const { data, error } = await supabase
-      .from("plan_prices")
-      .insert({
+  const { data, error } = await supabase
+    .from("plan_prices")
+    .upsert(
+      {
         plan_code: planCode,
-        stripe_price_id: stripePriceId,
+        currency: "JPY",
         amount_monthly: amountMonthly,
-        valid_from: validFrom,
-        active,
-      })
-      .select("id")
-      .single();
+        stripe_price_id: monthlyPriceId,
+        amount_annual: amountAnnual ?? null,
+        stripe_price_id_annual: annualPriceId,
+        valid_from: today,
+        active: active ?? true,
+      },
+      { onConflict: "plan_code" }
+    )
+    .select("id")
+    .single();
 
-    if (error) {
-      if (error.code === "23505") {
-        return {
-          ok: false,
-          error: { code: "CONFLICT", message: "同じプラン・開始日の価格が既に存在します" },
-        };
-      }
-      return {
-        ok: false,
-        error: { code: "UNKNOWN", message: "作成に失敗しました" },
-      };
-    }
-
-    resultId = data.id;
-    action = "PLAN_PRICE_CREATE";
+  if (error) {
+    return {
+      ok: false,
+      error: { code: "UNKNOWN", message: "保存に失敗しました" },
+    };
   }
 
-  // 監査ログ
   await writeAuditLog({
-    action,
+    action: "PLAN_PRICE_UPDATE",
     targetType: "plan_prices",
-    targetId: resultId,
+    targetId: data.id,
     success: true,
-    metadata: {
+    metadata: buildAuditMetadata({
       plan_code: planCode,
       amount_monthly: amountMonthly,
-      valid_from: validFrom,
-      active,
-    },
+      stripe_price_id: monthlyPriceId,
+      amount_annual: amountAnnual ?? null,
+      stripe_price_id_annual: annualPriceId,
+      active: active ?? true,
+    }),
   });
 
-  return { ok: true, data: { id: resultId } };
+  revalidatePath("/admin/pricing");
+
+  return { ok: true, data: { id: data.id } };
 }
 
 export type TogglePlanPriceActiveResult = Result<{ id: string }>;
@@ -177,11 +189,11 @@ export type TogglePlanPriceActiveResult = Result<{ id: string }>;
 export async function togglePlanPriceActive(
   id: string
 ): Promise<TogglePlanPriceActiveResult> {
-  const auth = await requireAdminOrSupervisor();
-  if (!auth) {
+  const admin = await requireAdmin();
+  if (!admin) {
     return {
       ok: false,
-      error: { code: "FORBIDDEN", message: "この操作を行う権限がありません" },
+      error: { code: "FORBIDDEN", message: "管理者権限が必要です" },
     };
   }
 

@@ -157,24 +157,21 @@ async function syncPlanPrices(
       continue;
     }
 
-    if (existing) {
-      await supabase
-        .from("plan_prices")
-        .update({ active: false })
-        .eq("id", existing.id);
-    }
-
-    const { error } = await supabase.from("plan_prices").insert({
-      plan_code: plan.code,
-      currency: "JPY",
-      amount_monthly: plan.amount,
-      stripe_price_id: stripePriceId,
-      valid_from: today,
-      active: true,
-    });
+    // plan_prices は (plan_code) 一意。月額のみ更新し、年額カラムは保持する。
+    const { error } = await supabase.from("plan_prices").upsert(
+      {
+        plan_code: plan.code,
+        currency: "JPY",
+        amount_monthly: plan.amount,
+        stripe_price_id: stripePriceId,
+        valid_from: today,
+        active: true,
+      },
+      { onConflict: "plan_code" }
+    );
 
     if (error) {
-      throw new Error(`plan_prices insert failed (${plan.code}): ${error.message}`);
+      throw new Error(`plan_prices upsert failed (${plan.code}): ${error.message}`);
     }
 
     console.log(`  plan_prices ${plan.code}: upserted (${stripePriceId})`);

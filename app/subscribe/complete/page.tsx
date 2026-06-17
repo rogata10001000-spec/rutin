@@ -25,11 +25,18 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
   let verified = false;
   let planCode: string | null = null;
   let interval: "month" | "year" = "month";
+  // 実際に契約された金額（Stripe Price の unit_amount）。表示と請求を一致させる。
+  let actualAmount: number | null = null;
   try {
     const session = await retrieveCheckoutSession(sessionId);
     verified = session.mode === "subscription" && session.payment_status !== "unpaid";
     planCode = session.metadata?.plan_code ?? null;
     interval = session.metadata?.billing_interval === "year" ? "year" : "month";
+    const sub = session.subscription;
+    if (sub && typeof sub !== "string") {
+      const unitAmount = sub.items?.data?.[0]?.price?.unit_amount;
+      if (typeof unitAmount === "number") actualAmount = unitAmount;
+    }
   } catch {
     verified = false;
   }
@@ -45,11 +52,13 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
     );
   }
 
+  // 実額（Stripe）を最優先。取得できない場合のみデフォルト表に基づく目安。
   const priceTable = interval === "year" ? DEFAULT_ANNUAL_PRICES : DEFAULT_PLAN_PRICES;
-  const price =
+  const fallbackPrice =
     planCode && planCode in priceTable
       ? priceTable[planCode as keyof typeof priceTable]
       : null;
+  const price = actualAmount ?? fallbackPrice;
   const trialMessage = getCompleteMessage(planCode ?? "", trialDays, price, interval);
 
   return (

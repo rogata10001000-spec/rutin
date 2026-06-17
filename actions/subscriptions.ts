@@ -19,11 +19,12 @@ import {
 import { calculateAge } from "@/lib/age";
 import { getTrialPeriodDaysForPlan } from "@/lib/trial";
 import {
+  PLAN_CODES,
   DEFAULT_PLAN_PRICES,
   DEFAULT_ANNUAL_PRICES,
   defaultStripePriceIds,
   annualStripePriceIds,
-  isAnnualEnabled,
+  resolvePlanPricing,
   type BillingInterval,
 } from "@/lib/plan-pricing";
 import type { StaffGender } from "@/lib/supabase/types";
@@ -124,8 +125,8 @@ export async function listAvailableCasts(
     return { ok: true, data: { casts: [] } };
   }
 
-  // バッチ取得: 担当ユーザー、価格オーバーライド、写真を1クエリずつまとめる
-  const [assignedRowsRes, priceOverridesRes, castPhotosRes] = await Promise.all([
+  // バッチ取得: 担当ユーザー、価格オーバーライド、デフォルト価格、写真を1クエリずつまとめる
+  const [assignedRowsRes, priceOverridesRes, planPricesRes, castPhotosRes] = await Promise.all([
     supabase
       .from("end_users")
       .select("assigned_cast_id")
@@ -133,9 +134,18 @@ export async function listAvailableCasts(
       .not("status", "in", '("incomplete","canceled")'),
     supabase
       .from("cast_plan_price_overrides")
-      .select("cast_id, plan_code, amount_monthly, stripe_price_id")
+      .select(
+        "cast_id, plan_code, amount_monthly, stripe_price_id, amount_annual, stripe_price_id_annual"
+      )
       .in("cast_id", castIds)
       .eq("active", true),
+    supabase
+      .from("plan_prices")
+      .select(
+        "plan_code, amount_monthly, stripe_price_id, amount_annual, stripe_price_id_annual, valid_from"
+      )
+      .eq("active", true)
+      .order("valid_from", { ascending: false }),
     supabase
       .from("cast_photos")
       .select("id, cast_id, storage_path, caption")
@@ -153,18 +163,44 @@ export async function listAvailableCasts(
     );
   }
 
-  const overridesByCast = new Map<
-    string,
-    Array<{ plan_code: string; amount_monthly: number; stripe_price_id: string }>
-  >();
+  type OverrideRow = {
+    plan_code: string;
+    amount_monthly: number;
+    stripe_price_id: string;
+    amount_annual: number | null;
+    stripe_price_id_annual: string | null;
+  };
+  const overridesByCast = new Map<string, OverrideRow[]>();
   for (const ov of priceOverridesRes.data ?? []) {
     const list = overridesByCast.get(ov.cast_id) ?? [];
     list.push({
       plan_code: ov.plan_code,
       amount_monthly: ov.amount_monthly,
       stripe_price_id: ov.stripe_price_id,
+      amount_annual: ov.amount_annual,
+      stripe_price_id_annual: ov.stripe_price_id_annual,
     });
     overridesByCast.set(ov.cast_id, list);
+  }
+
+  // デフォルト価格（plan_prices）を解決。未設定は env/ハードコードにフォールバック。
+  const defaultMonthly: CastPlanPrices = { ...DEFAULT_PRICES };
+  const defaultMonthlyIds: Record<string, string> = { ...DEFAULT_STRIPE_PRICE_IDS };
+  const defaultAnnual: CastPlanPrices = { ...DEFAULT_ANNUAL_PRICES };
+  const defaultAnnualIds: Record<string, string> = { ...annualStripePriceIds() };
+  const seenDefaultPlan = new Set<string>();
+  for (const row of planPricesRes.data ?? []) {
+    const code = row.plan_code as keyof CastPlanPrices;
+    if (!(code in defaultMonthly) || seenDefaultPlan.has(row.plan_code)) continue;
+    seenDefaultPlan.add(row.plan_code);
+    if (row.amount_monthly != null && row.stripe_price_id) {
+      defaultMonthly[code] = row.amount_monthly;
+      defaultMonthlyIds[code] = row.stripe_price_id;
+    }
+    if (row.amount_annual != null && row.stripe_price_id_annual) {
+      defaultAnnual[code] = row.amount_annual;
+      defaultAnnualIds[code] = row.stripe_price_id_annual;
+    }
   }
 
   const photosByCast = new Map<string, CastPhotoSummary[]>();
@@ -178,9 +214,6 @@ export async function listAvailableCasts(
     photosByCast.set(photo.cast_id, list);
   }
 
-  const annualEnabled = isAnnualEnabled();
-  const annualIds = annualStripePriceIds();
-
   const result: AvailableCast[] = [];
   for (const cast of casts ?? []) {
     const assignedCount = assignedCountByCast.get(cast.id) ?? 0;
@@ -190,26 +223,25 @@ export async function listAvailableCasts(
       continue;
     }
 
-    // 価格解決（オーバーライド > デフォルト）
-    const prices: CastPlanPrices = {
-      light: DEFAULT_PRICES.light,
-      standard: DEFAULT_PRICES.standard,
-      premium: DEFAULT_PRICES.premium,
-    };
-
-    const stripePriceIds: Record<string, string> = {
-      light: DEFAULT_STRIPE_PRICE_IDS.light,
-      standard: DEFAULT_STRIPE_PRICE_IDS.standard,
-      premium: DEFAULT_STRIPE_PRICE_IDS.premium,
-    };
+    // 価格解決（メイト別オーバーライド > デフォルト(plan_prices) > env/ハードコード）
+    const prices: CastPlanPrices = { ...defaultMonthly };
+    const stripePriceIds: Record<string, string> = { ...defaultMonthlyIds };
+    const annualPrices: CastPlanPrices = { ...defaultAnnual };
+    const annualPriceIds: Record<string, string> = { ...defaultAnnualIds };
 
     for (const override of overridesByCast.get(cast.id) ?? []) {
       const plan = override.plan_code as keyof CastPlanPrices;
-      if (plan in prices) {
-        prices[plan] = override.amount_monthly;
-        stripePriceIds[plan] = override.stripe_price_id;
+      if (!(plan in prices)) continue;
+      prices[plan] = override.amount_monthly;
+      stripePriceIds[plan] = override.stripe_price_id;
+      if (override.amount_annual != null && override.stripe_price_id_annual) {
+        annualPrices[plan] = override.amount_annual;
+        annualPriceIds[plan] = override.stripe_price_id_annual;
       }
     }
+
+    // 年額導線は全プランの年額Priceが揃っているメイトのみ表示
+    const annualEnabled = PLAN_CODES.every((code) => Boolean(annualPriceIds[code]));
 
     if (parsed.data.planCode && !stripePriceIds[parsed.data.planCode]) {
       continue;
@@ -225,8 +257,8 @@ export async function listAvailableCasts(
       prices,
       stripePriceIds,
       annualEnabled,
-      annualPrices: { ...DEFAULT_ANNUAL_PRICES },
-      annualStripePriceIds: { ...annualIds },
+      annualPrices,
+      annualStripePriceIds: annualPriceIds,
       acceptingNewUsers: cast.accepting_new_users,
       capacityLimit: cast.capacity_limit,
       assignedCount,
@@ -310,27 +342,10 @@ export async function createSubscriptionCheckoutSession(
 
   const interval: BillingInterval = parsed.data.interval ?? "month";
 
-  // 価格ID解決
-  let stripePriceId: string;
-  if (interval === "year") {
-    // 年額は全プランでデフォルト年額Priceを使用（メイト別オーバーライドは月額のみ対応）
-    stripePriceId = annualStripePriceIds()[parsed.data.planCode];
-  } else {
-    // 月額: オーバーライド > デフォルト
-    stripePriceId = DEFAULT_STRIPE_PRICE_IDS[parsed.data.planCode];
-    const { data: priceOverride } = await supabase
-      .from("cast_plan_price_overrides")
-      .select("stripe_price_id")
-      .eq("cast_id", parsed.data.castId)
-      .eq("plan_code", parsed.data.planCode)
-      .eq("active", true)
-      .order("valid_from", { ascending: false })
-      .limit(1)
-      .single();
-    if (priceOverride?.stripe_price_id) {
-      stripePriceId = priceOverride.stripe_price_id;
-    }
-  }
+  // 価格ID解決（メイト別オーバーライド > デフォルト(plan_prices) > env/ハードコード）。
+  // 月額/年額ともに同じ解決ロジックを使い、表示と請求のソースを一本化する。
+  const pricing = await resolvePlanPricing(supabase, parsed.data.castId, interval);
+  const stripePriceId = pricing[parsed.data.planCode].stripePriceId;
 
   if (!stripePriceId) {
     return {

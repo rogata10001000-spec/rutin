@@ -7,6 +7,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { stripe } from "@/lib/stripe";
+import { ensureRecurringPrice } from "@/lib/stripe-pricing";
+import type { PlanCode } from "@/lib/supabase/types";
 
 // =====================================
 // メイト別価格オーバーライド
@@ -19,6 +21,8 @@ export type PriceOverride = {
   planCode: string;
   stripePriceId: string;
   amountMonthly: number;
+  amountAnnual: number | null;
+  stripePriceIdAnnual: string | null;
   validFrom: string;
   active: boolean;
 };
@@ -47,6 +51,8 @@ export async function getPriceOverrides(): Promise<GetPriceOverridesResult> {
       plan_code,
       stripe_price_id,
       amount_monthly,
+      amount_annual,
+      stripe_price_id_annual,
       valid_from,
       active,
       staff_profiles!cast_plan_price_overrides_cast_id_fkey (
@@ -69,6 +75,8 @@ export async function getPriceOverrides(): Promise<GetPriceOverridesResult> {
     planCode: row.plan_code,
     stripePriceId: row.stripe_price_id,
     amountMonthly: row.amount_monthly,
+    amountAnnual: row.amount_annual,
+    stripePriceIdAnnual: row.stripe_price_id_annual,
     validFrom: row.valid_from,
     active: row.active,
   }));
@@ -79,16 +87,17 @@ export async function getPriceOverrides(): Promise<GetPriceOverridesResult> {
 export type UpsertCastPlanPriceOverrideInput = {
   castId: string;
   planCode: "light" | "standard" | "premium";
-  stripePriceId: string;
   amountMonthly: number;
-  validFrom: string;
-  active: boolean;
+  amountAnnual?: number;
+  active?: boolean;
 };
 
 export type UpsertCastPlanPriceOverrideResult = Result<{ id: string }>;
 
 /**
  * メイト別価格オーバーライド作成/更新
+ * 金額のみ受け取り、対応する Stripe Price を find-or-create してから保存する
+ * （画面の表示額と実際の請求額が常に一致するようにするため）。
  */
 export async function upsertCastPlanPriceOverride(
   input: UpsertCastPlanPriceOverrideInput
@@ -109,18 +118,52 @@ export async function upsertCastPlanPriceOverride(
     };
   }
 
+  const { castId, planCode, amountMonthly, amountAnnual, active } = parsed.data;
+
+  // Stripe Price を金額から確定（自動作成・冪等）
+  let monthlyPriceId: string;
+  let annualPriceId: string | null = null;
+  try {
+    monthlyPriceId = await ensureRecurringPrice(planCode as PlanCode, amountMonthly, "month");
+    if (amountAnnual != null) {
+      annualPriceId = await ensureRecurringPrice(planCode as PlanCode, amountAnnual, "year");
+    }
+  } catch (err) {
+    await writeAuditLog({
+      action: "UPSERT_CAST_PLAN_PRICE",
+      targetType: "cast_plan_price_overrides",
+      targetId: castId,
+      success: false,
+      metadata: buildAuditMetadata({
+        cast_id: castId,
+        plan_code: planCode,
+        amount_monthly: amountMonthly,
+        amount_annual: amountAnnual ?? null,
+        error: err instanceof Error ? err.message : "stripe price creation failed",
+      }),
+    });
+    return {
+      ok: false,
+      error: { code: "EXTERNAL_API_ERROR", message: "Stripe価格の作成に失敗しました" },
+    };
+  }
+
   const supabase = await createServerSupabaseClient();
+  const today = new Date().toISOString().split("T")[0];
 
   const { data, error } = await supabase
     .from("cast_plan_price_overrides")
     .upsert(
       {
-        cast_id: parsed.data.castId,
-        plan_code: parsed.data.planCode,
-        stripe_price_id: parsed.data.stripePriceId,
-        amount_monthly: parsed.data.amountMonthly,
-        valid_from: parsed.data.validFrom,
-        active: parsed.data.active,
+        cast_id: castId,
+        plan_code: planCode,
+        currency: "JPY",
+        stripe_price_id: monthlyPriceId,
+        amount_monthly: amountMonthly,
+        amount_annual: amountAnnual ?? null,
+        stripe_price_id_annual: annualPriceId,
+        valid_from: today,
+        active: active ?? true,
       },
       {
         onConflict: "cast_id,plan_code",
@@ -141,7 +184,15 @@ export async function upsertCastPlanPriceOverride(
     targetType: "cast_plan_price_overrides",
     targetId: data.id,
     success: true,
-    metadata: buildAuditMetadata(parsed.data),
+    metadata: buildAuditMetadata({
+      cast_id: castId,
+      plan_code: planCode,
+      amount_monthly: amountMonthly,
+      stripe_price_id: monthlyPriceId,
+      amount_annual: amountAnnual ?? null,
+      stripe_price_id_annual: annualPriceId,
+      active: active ?? true,
+    }),
   });
 
   revalidatePath("/admin/pricing");
@@ -195,7 +246,8 @@ export async function changeUserSubscriptionPrice(
       subscriptions (
         id,
         stripe_subscription_id,
-        status
+        status,
+        billing_interval
       )
     `)
     .eq("id", input.endUserId)
@@ -208,7 +260,12 @@ export async function changeUserSubscriptionPrice(
     };
   }
 
-  const subscription = (user.subscriptions as unknown as { id: string; stripe_subscription_id: string; status: string }[])?.[0];
+  const subscription = (user.subscriptions as unknown as {
+    id: string;
+    stripe_subscription_id: string;
+    status: string;
+    billing_interval: "month" | "year";
+  }[])?.[0];
   if (!subscription || !subscription.stripe_subscription_id) {
     return {
       ok: false,
@@ -216,19 +273,30 @@ export async function changeUserSubscriptionPrice(
     };
   }
 
-  // 新しい価格IDを取得
+  // 新しい価格IDを取得（契約中の請求間隔に合わせる。年額契約は年額Priceへ）
   const { data: priceOverride } = await supabase
     .from("cast_plan_price_overrides")
-    .select("stripe_price_id")
+    .select("stripe_price_id, stripe_price_id_annual")
     .eq("cast_id", user.assigned_cast_id)
     .eq("plan_code", user.plan_code)
     .eq("active", true)
     .single();
 
-  if (!priceOverride) {
+  const newPriceId =
+    subscription.billing_interval === "year"
+      ? priceOverride?.stripe_price_id_annual
+      : priceOverride?.stripe_price_id;
+
+  if (!newPriceId) {
     return {
       ok: false,
-      error: { code: "NOT_FOUND", message: "適用可能な価格が見つかりません" },
+      error: {
+        code: "NOT_FOUND",
+        message:
+          subscription.billing_interval === "year"
+            ? "このメイトの年額オーバーライド価格が未設定です"
+            : "適用可能な価格が見つかりません",
+      },
     };
   }
 
@@ -242,7 +310,7 @@ export async function changeUserSubscriptionPrice(
       items: [
         {
           id: stripeSubscription.items.data[0].id,
-          price: priceOverride.stripe_price_id,
+          price: newPriceId,
         },
       ],
       proration_behavior: input.mode === "immediate" ? "create_prorations" : "none",
@@ -251,7 +319,7 @@ export async function changeUserSubscriptionPrice(
     const { error: updateError } = await supabase
       .from("subscriptions")
       .update({
-        applied_stripe_price_id: priceOverride.stripe_price_id,
+        applied_stripe_price_id: newPriceId,
       })
       .eq("id", subscription.id);
 
@@ -264,7 +332,7 @@ export async function changeUserSubscriptionPrice(
         metadata: buildAuditMetadata({
           end_user_id: input.endUserId,
           mode: input.mode,
-          new_price_id: priceOverride.stripe_price_id,
+          new_price_id: newPriceId,
           error: "DB_SYNC_FAILED",
         }),
       });
@@ -282,7 +350,7 @@ export async function changeUserSubscriptionPrice(
       metadata: buildAuditMetadata({
         end_user_id: input.endUserId,
         mode: input.mode,
-        new_price_id: priceOverride.stripe_price_id,
+        new_price_id: newPriceId,
       }),
     });
 

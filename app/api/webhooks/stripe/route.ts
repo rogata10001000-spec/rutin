@@ -19,8 +19,7 @@ import { recordSubscriptionLifecycleEvent } from "@/lib/subscription-lifecycle";
 import type { PayoutScopeType } from "@/lib/supabase/types";
 import {
   PLAN_CODES,
-  resolveCastPlanPricing,
-  planCodeFromStripePriceId,
+  resolvePlanCodeFromAppliedPrice,
 } from "@/lib/plan-pricing";
 import { normalizeEmail } from "@/lib/email-address";
 import { notifyUser } from "@/lib/notifications";
@@ -544,6 +543,8 @@ export async function handleCheckoutSessionCompleted(
       }
     }
 
+    const billingInterval = metadata.billing_interval === "year" ? "year" : "month";
+
     const { error: subError } = await supabase.from("subscriptions").insert({
       end_user_id: user.id,
       stripe_customer_id: customerId,
@@ -551,6 +552,7 @@ export async function handleCheckoutSessionCompleted(
       status: subscriptionStatus,
       plan_code: planCode,
       applied_stripe_price_id: metadata.stripe_price_id ?? "",
+      billing_interval: billingInterval,
       current_period_end: currentPeriodEnd,
     });
 
@@ -562,6 +564,7 @@ export async function handleCheckoutSessionCompleted(
         .update({
           status: subscriptionStatus,
           applied_stripe_price_id: metadata.stripe_price_id ?? "",
+          billing_interval: billingInterval,
           ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
         })
         .eq("stripe_subscription_id", subscriptionId);
@@ -637,6 +640,9 @@ export async function handleSubscriptionUpsert(
   const currentPeriodEnd = currentPeriodEndFromStripeSubscription(subscription);
   const cancelAtPeriodEnd = subscription.cancel_at_period_end;
   const appliedStripePriceId = subscription.items.data[0]?.price?.id ?? null;
+  // 請求間隔は Stripe の Price から権威的に取得する（メタデータより確実）
+  const billingInterval =
+    subscription.items.data[0]?.price?.recurring?.interval === "year" ? "year" : "month";
   const subscriptionStartedAt = new Date(
     (subscription.created ?? Math.floor(Date.now() / 1000)) * 1000
   ).toISOString();
@@ -722,6 +728,7 @@ export async function handleSubscriptionUpsert(
       status: newStatus,
       plan_code: planCode,
       applied_stripe_price_id: appliedStripePriceId,
+      billing_interval: billingInterval,
       current_period_end: currentPeriodEnd,
       cancel_at_period_end: cancelAtPeriodEnd,
     });
@@ -737,6 +744,7 @@ export async function handleSubscriptionUpsert(
           status: newStatus,
           cancel_at_period_end: cancelAtPeriodEnd,
           applied_stripe_price_id: appliedStripePriceId,
+          billing_interval: billingInterval,
           ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
         })
         .eq("stripe_subscription_id", subscriptionId);
@@ -801,8 +809,12 @@ export async function handleSubscriptionUpsert(
       .select("assigned_cast_id")
       .eq("id", sub.end_user_id)
       .maybeSingle();
-    const pricing = await resolveCastPlanPricing(supabase, euForPlan?.assigned_cast_id ?? null);
-    planCodeToSync = planCodeFromStripePriceId(pricing, appliedStripePriceId);
+    // 月額/年額の両方を解決して price ID から plan_code を逆引きする
+    planCodeToSync = await resolvePlanCodeFromAppliedPrice(
+      supabase,
+      euForPlan?.assigned_cast_id ?? null,
+      appliedStripePriceId
+    );
   }
 
   const planChanged = Boolean(planCodeToSync && planCodeToSync !== sub.plan_code);
@@ -813,6 +825,7 @@ export async function handleSubscriptionUpsert(
     .update({
       status: newStatus,
       cancel_at_period_end: cancelAtPeriodEnd,
+      billing_interval: billingInterval,
       ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
       ...(appliedStripePriceId ? { applied_stripe_price_id: appliedStripePriceId } : {}),
       ...(planCodeToSync ? { plan_code: planCodeToSync } : {}),

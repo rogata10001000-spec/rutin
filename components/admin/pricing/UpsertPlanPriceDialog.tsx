@@ -11,9 +11,8 @@ import { Select } from "@/components/common/Select";
 
 const formSchema = z.object({
   planCode: z.enum(["light", "standard", "premium"]),
-  stripePriceId: z.string().min(1, "Stripe Price IDを入力してください"),
-  amountMonthly: z.string().min(1, "金額を入力してください"),
-  validFrom: z.string().min(1, "有効開始日を入力してください"),
+  amountMonthly: z.string().min(1, "月額を入力してください"),
+  amountAnnual: z.string().optional(),
   active: z.boolean(),
 });
 
@@ -46,9 +45,8 @@ export function UpsertPlanPriceDialog({ open, editItem, onClose }: UpsertPlanPri
     resolver: zodResolver(formSchema),
     defaultValues: {
       planCode: "standard",
-      stripePriceId: "",
       amountMonthly: "",
-      validFrom: "",
+      amountAnnual: "",
       active: true,
     },
   });
@@ -69,17 +67,15 @@ export function UpsertPlanPriceDialog({ open, editItem, onClose }: UpsertPlanPri
       if (editItem) {
         reset({
           planCode: editItem.planCode as "light" | "standard" | "premium",
-          stripePriceId: editItem.stripePriceId,
           amountMonthly: editItem.amountMonthly.toString(),
-          validFrom: editItem.validFrom,
+          amountAnnual: editItem.amountAnnual != null ? editItem.amountAnnual.toString() : "",
           active: editItem.active,
         });
       } else {
         reset({
           planCode: "standard",
-          stripePriceId: "",
           amountMonthly: "",
-          validFrom: new Date().toISOString().split("T")[0],
+          amountAnnual: "",
           active: true,
         });
       }
@@ -90,11 +86,11 @@ export function UpsertPlanPriceDialog({ open, editItem, onClose }: UpsertPlanPri
     setSubmitting(true);
     try {
       const result = await upsertPlanPrice({
-        id: editItem?.id,
         planCode: data.planCode,
-        stripePriceId: data.stripePriceId,
         amountMonthly: parseInt(data.amountMonthly, 10),
-        validFrom: data.validFrom,
+        ...(data.amountAnnual && data.amountAnnual.trim()
+          ? { amountAnnual: parseInt(data.amountAnnual, 10) }
+          : {}),
         active: data.active,
       });
 
@@ -173,36 +169,29 @@ export function UpsertPlanPriceDialog({ open, editItem, onClose }: UpsertPlanPri
                 )}
               </div>
 
-              {/* Stripe Price ID */}
+              {/* Annual Amount (optional) */}
               <div>
                 <label className="block text-sm font-bold text-stone-700">
-                  Stripe Price ID <span className="text-terracotta">*</span>
+                  年額（JPY・任意）
                 </label>
                 <input
-                  type="text"
-                  {...register("stripePriceId")}
-                  className="mt-1.5 block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 font-mono text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                  placeholder="price_xxxxx"
+                  type="number"
+                  {...register("amountAnnual")}
+                  className="mt-1.5 block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
+                  placeholder="例: 39800（実質2ヶ月無料なら月額×10）"
                 />
-                {errors.stripePriceId && (
-                  <p className="mt-1.5 text-sm text-red-600 font-medium">{errors.stripePriceId.message}</p>
+                <p className="mt-1 text-xs text-stone-500">
+                  未入力の場合、このプランの年額契約は提供されません。
+                </p>
+                {errors.amountAnnual && (
+                  <p className="mt-1.5 text-sm text-red-600 font-medium">{errors.amountAnnual.message}</p>
                 )}
               </div>
 
-              {/* Valid From */}
-              <div>
-                <label className="block text-sm font-bold text-stone-700">
-                  有効開始日 <span className="text-terracotta">*</span>
-                </label>
-                <input
-                  type="date"
-                  {...register("validFrom")}
-                  className="mt-1.5 block w-full rounded-xl border-stone-200 bg-stone-50 px-4 py-2.5 text-sm text-stone-900 shadow-sm focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
-                />
-                {errors.validFrom && (
-                  <p className="mt-1.5 text-sm text-red-600 font-medium">{errors.validFrom.message}</p>
-                )}
-              </div>
+              <p className="rounded-xl bg-stone-50 p-3 text-xs leading-relaxed text-stone-500">
+                入力した金額に対応する Stripe Price は自動で作成されます（表示額と請求額は常に一致）。
+                既存契約者の金額は変わりません。
+              </p>
 
               {/* Active */}
               <div className="flex items-center justify-between rounded-xl border border-stone-200 p-4 bg-stone-50/50">

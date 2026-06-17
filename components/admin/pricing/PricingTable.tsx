@@ -38,6 +38,9 @@ export function PricingTable({ items }: PricingTableProps) {
                 月額
               </th>
               <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
+                年額
+              </th>
+              <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
                 適用開始
               </th>
               <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
@@ -56,6 +59,9 @@ export function PricingTable({ items }: PricingTableProps) {
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-sm font-bold text-stone-900">
                   ¥{item.amountMonthly.toLocaleString()}
+                </td>
+                <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">
+                  {item.amountAnnual != null ? `¥${item.amountAnnual.toLocaleString()}` : "—"}
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">
                   {format(new Date(item.validFrom), "yyyy/MM/dd")}

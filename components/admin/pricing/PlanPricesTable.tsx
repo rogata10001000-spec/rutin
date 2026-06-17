@@ -71,7 +71,7 @@ export function PlanPricesTable({ items }: PlanPricesTableProps) {
                     月額（JPY）
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
-                    Stripe Price ID
+                    年額（JPY）
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
                     有効開始日
@@ -97,8 +97,8 @@ export function PlanPricesTable({ items }: PlanPricesTableProps) {
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">
                       ¥{item.amountMonthly.toLocaleString()}
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 font-mono text-xs text-stone-400">
-                      {item.stripePriceId.slice(0, 20)}...
+                    <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">
+                      {item.amountAnnual != null ? `¥${item.amountAnnual.toLocaleString()}` : "—"}
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">
                       {format(new Date(item.validFrom), "yyyy/MM/dd")}
