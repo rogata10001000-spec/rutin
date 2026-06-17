@@ -132,3 +132,57 @@ export async function getFunnelAnalytics(input?: {
     },
   };
 }
+
+// =====================================================
+// 日次トレンド（daily_metrics ロールアップから取得・E3）
+// =====================================================
+export type DailyTrendPoint = {
+  date: string;
+  subscribe: number;
+  cancel: number;
+  trialStart: number;
+  revenue: number;
+  activeUsers: number;
+};
+
+export type DailyTrendResult = Result<{ points: DailyTrendPoint[] }>;
+
+const TREND_ALLOWED_DAYS = [7, 30, 90] as const;
+
+export async function getDailyTrend(input?: { days?: number }): Promise<DailyTrendResult> {
+  const auth = await requireAdminOrSupervisor();
+  if (!auth) {
+    return { ok: false, error: { code: "FORBIDDEN", message: "権限がありません" } };
+  }
+
+  const requested = input?.days ?? 30;
+  const days = TREND_ALLOWED_DAYS.includes(requested as (typeof TREND_ALLOWED_DAYS)[number])
+    ? requested
+    : 30;
+  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("daily_metrics")
+    .select("metric_date, subscribe, cancel, trial_start, revenue_incl_tax_jpy, active_users")
+    .gte("metric_date", since)
+    .order("metric_date", { ascending: true });
+
+  if (error) {
+    return { ok: false, error: { code: "UNKNOWN", message: "データの取得に失敗しました" } };
+  }
+
+  return {
+    ok: true,
+    data: {
+      points: (data ?? []).map((r) => ({
+        date: r.metric_date,
+        subscribe: r.subscribe,
+        cancel: r.cancel,
+        trialStart: r.trial_start,
+        revenue: r.revenue_incl_tax_jpy,
+        activeUsers: r.active_users,
+      })),
+    },
+  };
+}

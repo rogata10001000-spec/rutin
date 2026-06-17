@@ -186,6 +186,20 @@ type StepDeliveryRow = {
   created_at: string;
 };
 
+type DailyMetricsRow = {
+  metric_date: string;
+  line_follow: number;
+  trial_start: number;
+  subscribe: number;
+  plan_change: number;
+  cancel_scheduled: number;
+  cancel: number;
+  resume: number;
+  revenue_incl_tax_jpy: number;
+  active_users: number;
+  updated_at: string;
+};
+
 type MemosRow = {
   id: string;
   end_user_id: string;
@@ -856,6 +870,12 @@ export interface Database {
         Update: Partial<Omit<StepDeliveryRow, "id" | "created_at">>;
         Relationships: [];
       };
+      daily_metrics: {
+        Row: DailyMetricsRow;
+        Insert: Partial<Omit<DailyMetricsRow, "metric_date">> & { metric_date: string };
+        Update: Partial<DailyMetricsRow>;
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -902,6 +922,10 @@ export interface Database {
       create_settlement_batch_atomic: {
         Args: { p_period_from: string; p_period_to: string; p_created_by: string };
         Returns: string;
+      };
+      get_cohort_revenue: {
+        Args: Record<string, never>;
+        Returns: { cohort_month: string; total_incl_tax: number }[];
       };
     };
     Enums: {
