@@ -24,6 +24,7 @@ type CancelDeflectionModalProps = {
   downgradeOption: DowngradeOption;
   renewalDateLabel: string | null;
   busy: boolean;
+  intervalLabel?: string;
   onClose: () => void;
   onPause: () => void;
   onDowngrade: () => void;
@@ -37,6 +38,7 @@ export function CancelDeflectionModal({
   downgradeOption,
   renewalDateLabel,
   busy,
+  intervalLabel = "月額",
   onClose,
   onPause,
   onDowngrade,
@@ -99,7 +101,7 @@ export function CancelDeflectionModal({
                     もっと気軽な「{downgradeOption.label}」はいかがですか？
                   </p>
                   <p className="mt-1 text-xs leading-relaxed text-stone-600">
-                    月額{formatYen(downgradeOption.monthlyPrice)}で、つながりを保ったまま続けられます。負担を抑えて再開のきっかけを残せます。
+                    {intervalLabel}{formatYen(downgradeOption.monthlyPrice)}で、つながりを保ったまま続けられます。負担を抑えて再開のきっかけを残せます。
                   </p>
                   <button
                     type="button"

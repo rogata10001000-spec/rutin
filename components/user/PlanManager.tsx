@@ -61,6 +61,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
   const trialEndDate = formatJaDate(subscription.trialEndAt);
   const isTrial = subscription.status === "trial";
   const { cancelAtPeriodEnd, canManage } = subscription;
+  const priceSuffix = subscription.interval === "year" ? "/年" : "/月";
 
   const refresh = () => startTransition(() => router.refresh());
 
@@ -214,7 +215,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
           {subscription.monthlyPrice != null && (
             <p className="whitespace-nowrap text-right text-lg font-bold text-primary">
               {formatYen(subscription.monthlyPrice)}
-              <span className="ml-0.5 text-xs font-medium text-stone-400">/月</span>
+              <span className="ml-0.5 text-xs font-medium text-stone-400">{priceSuffix}</span>
             </p>
           )}
         </div>
@@ -340,7 +341,9 @@ export function PlanManager({ subscription }: PlanManagerProps) {
                   </div>
                   <p className="whitespace-nowrap text-right text-base font-bold text-primary">
                     {formatYen(plan.monthlyPrice)}
-                    <span className="ml-0.5 text-[10px] font-medium text-stone-400">/月</span>
+                    <span className="ml-0.5 text-[10px] font-medium text-stone-400">
+                      {priceSuffix}
+                    </span>
                   </p>
                 </div>
 
@@ -399,7 +402,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
           confirmTarget
             ? `${confirmTarget.label}プラン（${formatYen(
                 confirmTarget.monthlyPrice
-              )}/月）に変更します。新しい料金は次回更新日から適用されます。`
+              )}${priceSuffix}）に変更します。新しい料金は次回更新日から適用されます。`
             : ""
         }
         confirmLabel="変更する"
@@ -414,6 +417,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
         downgradeOption={downgradeOption}
         renewalDateLabel={renewalDate}
         busy={busy}
+        intervalLabel={subscription.interval === "year" ? "年額" : "月額"}
         onClose={() => setCancelFlowOpen(false)}
         onPause={handlePause}
         onDowngrade={handleDowngradeToLight}

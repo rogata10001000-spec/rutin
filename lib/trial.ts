@@ -13,9 +13,15 @@ export function isTrialEligiblePlan(planCode: string): boolean {
 
 /**
  * Stripe Checkout に渡すトライアル日数。
- * トライアル対象外プラン（ライト）は undefined を返し、トライアルを付与しない。
+ * - 月額: トライアル対象は standard/premium のみ（ライトは即時課金）
+ * - 年額: 全プランにトライアルを付与
+ * 対象外は undefined を返し、トライアルを付与しない。
  */
-export function getTrialPeriodDaysForPlan(planCode: string): number | undefined {
+export function getTrialPeriodDaysForPlan(
+  planCode: string,
+  interval: "month" | "year" = "month"
+): number | undefined {
+  if (interval === "year") return getTrialPeriodDays();
   return isTrialEligiblePlan(planCode) ? getTrialPeriodDays() : undefined;
 }
 
@@ -94,18 +100,29 @@ export function getCompleteTrialMessage(
   };
 }
 
-/** 決済完了画面（プラン対応・ライトは即時契約、その他はトライアル開始） */
+/** 決済完了画面（プラン対応・ライトは即時契約、その他はトライアル開始）。年額は全プランにトライアル。 */
 export function getCompleteMessage(
   planCode: string,
   days: number,
-  monthlyPriceYen: number | null
+  priceYen: number | null,
+  interval: "month" | "year" = "month"
 ): { title: string; body: string } {
+  if (interval === "year") {
+    const pricePart =
+      priceYen != null
+        ? `トライアル終了後は年額${formatYen(priceYen)}が自動請求されます。`
+        : "トライアル終了後は選択プランの年額料金が自動請求されます。";
+    return {
+      title: `${formatTrialDaysLabel(days)}の無料トライアルを開始しました`,
+      body: `${formatTrialDaysLabel(days)}は無料でご利用いただけます。${pricePart}トライアル期間中はいつでも解約できます。`,
+    };
+  }
   if (isTrialEligiblePlan(planCode)) {
-    return getCompleteTrialMessage(days, monthlyPriceYen);
+    return getCompleteTrialMessage(days, priceYen);
   }
   const pricePart =
-    monthlyPriceYen != null
-      ? `月額${formatYen(monthlyPriceYen)}でのご契約です。`
+    priceYen != null
+      ? `月額${formatYen(priceYen)}でのご契約です。`
       : "選択プランの月額料金でのご契約です。";
   return {
     title: "ご契約ありがとうございます",

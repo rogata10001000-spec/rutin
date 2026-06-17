@@ -40,6 +40,39 @@ export function defaultStripePriceIds(): Record<PlanCode, string> {
   };
 }
 
+export type BillingInterval = "month" | "year";
+
+// 年額は月額×10（実質2ヶ月無料）。年額は全プランでデフォルト価格を使用（メイト別オーバーライドは月額のみ）。
+export const ANNUAL_PRICE_MULTIPLIER = 12 - 2;
+
+export const DEFAULT_ANNUAL_PRICES: Record<PlanCode, number> = {
+  light: DEFAULT_PLAN_PRICES.light * ANNUAL_PRICE_MULTIPLIER,
+  standard: DEFAULT_PLAN_PRICES.standard * ANNUAL_PRICE_MULTIPLIER,
+  premium: DEFAULT_PLAN_PRICES.premium * ANNUAL_PRICE_MULTIPLIER,
+};
+
+export function annualStripePriceIds(): Record<PlanCode, string> {
+  const env = getServerEnv();
+  return {
+    light: env.STRIPE_PRICE_LIGHT_ANNUAL ?? "",
+    standard: env.STRIPE_PRICE_STANDARD_ANNUAL ?? "",
+    premium: env.STRIPE_PRICE_PREMIUM_ANNUAL ?? "",
+  };
+}
+
+/** 年額プランが利用可能か（全プランの年額Priceが設定済みか）。未設定なら年額導線を出さない。 */
+export function isAnnualEnabled(): boolean {
+  const ids = annualStripePriceIds();
+  return PLAN_CODES.every((code) => Boolean(ids[code]));
+}
+
+/** 指定の stripe_price_id が年額プランのものか判定する（請求間隔の推定用）。 */
+export function isAnnualPriceId(stripePriceId: string | null): boolean {
+  if (!stripePriceId) return false;
+  const ids = annualStripePriceIds();
+  return PLAN_CODES.some((code) => ids[code] === stripePriceId);
+}
+
 export type ResolvedPlanPricing = Record<
   PlanCode,
   { amount: number; stripePriceId: string }

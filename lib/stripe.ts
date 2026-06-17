@@ -63,11 +63,13 @@ export async function createSubscriptionCheckout(params: {
   castId: string;
   planCode: string;
   stripePriceId: string;
+  billingInterval?: "month" | "year";
   customerEmail?: string;
   successUrl: string;
   cancelUrl: string;
   trialPeriodDays?: number;
 }): Promise<{ url: string | null; sessionId: string }> {
+  const billingInterval = params.billingInterval ?? "month";
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     payment_method_types: ["card"],
@@ -84,6 +86,7 @@ export async function createSubscriptionCheckout(params: {
         cast_id: params.castId,
         plan_code: params.planCode,
         stripe_price_id: params.stripePriceId,
+        billing_interval: billingInterval,
       },
     },
     metadata: {
@@ -91,6 +94,7 @@ export async function createSubscriptionCheckout(params: {
       cast_id: params.castId,
       plan_code: params.planCode,
       stripe_price_id: params.stripePriceId,
+      billing_interval: billingInterval,
       type: "subscription",
     },
     customer_email: params.customerEmail,

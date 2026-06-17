@@ -10,9 +10,11 @@ import {
   getCheckoutErrorMessage,
 } from "@/lib/subscribe-checkout-errors";
 import {
+  getPlanCheckoutButtonLabel,
   getPlanCheckoutButtonLabelForPlan,
   getPlanPageNotice,
   getTrialPeriodDays,
+  formatTrialDaysLabel,
 } from "@/lib/trial";
 import { buildSubscribeCastUrl } from "@/lib/subscribe-paths";
 
@@ -42,6 +44,7 @@ type PageProps = {
     checkoutError?: string;
     gender?: string;
     canceled?: string;
+    interval?: string;
   }>;
 };
 
@@ -108,6 +111,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
     "use server";
     const selectedPlan = formData.get("planCode");
     const selectedCastId = formData.get("castId");
+    const selectedInterval = formData.get("interval") === "year" ? "year" : "month";
 
     if (
       typeof selectedPlan !== "string" ||
@@ -119,6 +123,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
     const result = await createSubscriptionCheckoutForCurrentUser({
       castId: selectedCastId,
       planCode: selectedPlan as PlanCode,
+      interval: selectedInterval,
     });
 
     if (result.ok) {
@@ -129,11 +134,22 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
     const qs = new URLSearchParams({
       castId: selectedCastId,
       checkoutError: errorCode,
+      interval: selectedInterval,
     });
     if (params?.gender) qs.set("gender", params.gender);
     if (params?.canceled) qs.set("canceled", params.canceled);
     redirect(`/subscribe/plan?${qs.toString()}`);
   }
+
+  const interval: "month" | "year" = params?.interval === "year" ? "year" : "month";
+  const annualAvailable = cast.annualEnabled;
+  const intervalHref = (iv: "month" | "year") => {
+    const qs = new URLSearchParams({ castId });
+    if (params?.gender) qs.set("gender", params.gender);
+    if (params?.canceled) qs.set("canceled", params.canceled);
+    qs.set("interval", iv);
+    return `/subscribe/plan?${qs.toString()}`;
+  };
 
   return (
     <div className="min-h-screen bg-background-light">
@@ -172,10 +188,35 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
               担当: {cast.displayName}
             </div>
             <p className="text-sm leading-relaxed text-[#2D241E]">
-              {getPlanPageNotice("standard", trialDays, cast.prices.standard)}
+              {interval === "year"
+                ? `選んだプランで${formatTrialDaysLabel(trialDays)}の無料トライアルを開始します。トライアル終了後は年額（実質2ヶ月分お得）が自動請求されます。いつでも解約できます。`
+                : getPlanPageNotice("standard", trialDays, cast.prices.standard)}
             </p>
           </div>
         </div>
+
+        {annualAvailable && (
+          <div className="px-4 pb-2">
+            <div className="flex rounded-full border border-warm-border/50 bg-white p-1 text-sm font-bold">
+              <a
+                href={intervalHref("month")}
+                className={`flex-1 rounded-full py-2 text-center transition-colors ${
+                  interval === "month" ? "bg-primary text-white shadow-sm" : "text-[#6B5A51]"
+                }`}
+              >
+                月額
+              </a>
+              <a
+                href={intervalHref("year")}
+                className={`flex-1 rounded-full py-2 text-center transition-colors ${
+                  interval === "year" ? "bg-primary text-white shadow-sm" : "text-[#6B5A51]"
+                }`}
+              >
+                年額（2ヶ月分お得）
+              </a>
+            </div>
+          </div>
+        )}
 
         {!hasLineSession && (
           <div className="mx-4 mb-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-medium text-amber-700">
@@ -191,9 +232,24 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
 
         <div className="flex flex-col gap-4 px-4">
           {(["light", "standard", "premium"] as PlanCode[]).map((planCode) => {
-            const hasPriceId = Boolean(cast.stripePriceIds?.[planCode]);
+            const isAnnual = interval === "year";
+            const price = isAnnual ? cast.annualPrices[planCode] : cast.prices[planCode];
+            const hasPriceId = Boolean(
+              isAnnual
+                ? cast.annualStripePriceIds?.[planCode]
+                : cast.stripePriceIds?.[planCode]
+            );
             const canCheckout = hasLineSession && hasPriceId;
-            const monthlyPrice = cast.prices[planCode];
+            const priceSuffix = isAnnual ? "/年" : "/月";
+            const monthlyEquivalent = isAnnual ? Math.round(price / 12) : null;
+            const notice = isAnnual
+              ? `${formatTrialDaysLabel(trialDays)}の無料トライアル後、年額${formatYen(
+                  price
+                )}が自動請求されます（実質2ヶ月分お得・いつでも解約可）。`
+              : getPlanPageNotice(planCode, trialDays, price);
+            const buttonLabel = isAnnual
+              ? getPlanCheckoutButtonLabel(trialDays)
+              : getPlanCheckoutButtonLabelForPlan(planCode, trialDays);
 
             return (
               <div
@@ -223,15 +279,18 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                   </div>
                   <div className="text-right">
                     <span className="text-xl font-black text-primary">
-                      {formatYen(monthlyPrice)}
+                      {formatYen(price)}
                     </span>
-                    <span className="ml-0.5 text-[10px] text-[#6B5A51]">/月</span>
+                    <span className="ml-0.5 text-[10px] text-[#6B5A51]">{priceSuffix}</span>
+                    {monthlyEquivalent != null && (
+                      <p className="mt-0.5 text-[10px] text-[#6B5A51]">
+                        月あたり約{formatYen(monthlyEquivalent)}
+                      </p>
+                    )}
                   </div>
                 </div>
 
-                <p className="text-[11px] leading-relaxed text-[#6B5A51]">
-                  {getPlanPageNotice(planCode, trialDays, monthlyPrice)}
-                </p>
+                <p className="text-[11px] leading-relaxed text-[#6B5A51]">{notice}</p>
 
                 {!hasPriceId && (
                   <p className="rounded-lg bg-zinc-50 py-2 text-center text-xs font-medium text-zinc-400">
@@ -242,6 +301,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                 <form action={startCheckout}>
                   <input type="hidden" name="castId" value={cast.id} />
                   <input type="hidden" name="planCode" value={planCode} />
+                  <input type="hidden" name="interval" value={interval} />
                   <button
                     type="submit"
                     disabled={!canCheckout}
@@ -251,9 +311,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                         : "cursor-not-allowed bg-zinc-100 text-zinc-400 shadow-none"
                     }`}
                   >
-                    {canCheckout
-                      ? getPlanCheckoutButtonLabelForPlan(planCode, trialDays)
-                      : "選択できません"}
+                    {canCheckout ? buttonLabel : "選択できません"}
                   </button>
                 </form>
               </div>

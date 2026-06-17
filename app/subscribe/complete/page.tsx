@@ -1,6 +1,6 @@
 import { retrieveCheckoutSession } from "@/lib/stripe";
 import { getCompleteMessage, getTrialPeriodDays } from "@/lib/trial";
-import { DEFAULT_PLAN_PRICES } from "@/lib/plan-pricing";
+import { DEFAULT_PLAN_PRICES, DEFAULT_ANNUAL_PRICES } from "@/lib/plan-pricing";
 
 type PageProps = {
   searchParams?: Promise<{ session_id?: string }>;
@@ -24,10 +24,12 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
 
   let verified = false;
   let planCode: string | null = null;
+  let interval: "month" | "year" = "month";
   try {
     const session = await retrieveCheckoutSession(sessionId);
     verified = session.mode === "subscription" && session.payment_status !== "unpaid";
     planCode = session.metadata?.plan_code ?? null;
+    interval = session.metadata?.billing_interval === "year" ? "year" : "month";
   } catch {
     verified = false;
   }
@@ -43,11 +45,12 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
     );
   }
 
-  const monthlyPrice =
-    planCode && planCode in DEFAULT_PLAN_PRICES
-      ? DEFAULT_PLAN_PRICES[planCode as keyof typeof DEFAULT_PLAN_PRICES]
+  const priceTable = interval === "year" ? DEFAULT_ANNUAL_PRICES : DEFAULT_PLAN_PRICES;
+  const price =
+    planCode && planCode in priceTable
+      ? priceTable[planCode as keyof typeof priceTable]
       : null;
-  const trialMessage = getCompleteMessage(planCode ?? "", trialDays, monthlyPrice);
+  const trialMessage = getCompleteMessage(planCode ?? "", trialDays, price, interval);
 
   return (
     <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-12 text-center">

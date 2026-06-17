@@ -18,6 +18,10 @@ const serverEnvSchema = z.object({
   STRIPE_PRICE_LIGHT: z.string().optional(),
   STRIPE_PRICE_STANDARD: z.string().optional(),
   STRIPE_PRICE_PREMIUM: z.string().optional(),
+  // 年額プラン（任意）。未設定なら年額導線は自動的に非表示。
+  STRIPE_PRICE_LIGHT_ANNUAL: z.string().optional(),
+  STRIPE_PRICE_STANDARD_ANNUAL: z.string().optional(),
+  STRIPE_PRICE_PREMIUM_ANNUAL: z.string().optional(),
   AI_PROVIDER_KEY: z.string().min(1).optional(),
   AI_DRAFT_DAILY_LIMIT: z.coerce.number().int().positive().default(3),
   CRON_SECRET: z.string().min(16).optional(),

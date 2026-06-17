@@ -11,7 +11,11 @@ import {
   PLAN_DESCRIPTIONS,
   PLAN_SLA_LABELS,
   resolveCastPlanPricing,
+  DEFAULT_ANNUAL_PRICES,
+  annualStripePriceIds,
+  isAnnualPriceId,
   type ResolvedPlanPricing,
+  type BillingInterval,
 } from "@/lib/plan-pricing";
 import {
   setSubscriptionCancelAtPeriodEnd,
@@ -48,6 +52,7 @@ export type MySubscriptionView = {
   planCode: PlanCode;
   planLabel: string;
   monthlyPrice: number | null;
+  interval: BillingInterval;
   castName: string | null;
   currentPeriodEnd: string | null;
   trialEndAt: string | null;
@@ -190,13 +195,22 @@ export async function getMySubscription(): Promise<GetMySubscriptionResult> {
 
   const canManage = MANAGEABLE_STATUSES.includes(subscription.status);
 
+  // 年額契約かどうかは適用中の price_id から判定する。年額のプラン変更・価格表示も年額で揃える。
+  const isAnnual = isAnnualPriceId(subscription.applied_stripe_price_id);
+  const interval: BillingInterval = isAnnual ? "year" : "month";
+  const annualIds = annualStripePriceIds();
+  const priceFor = (code: PlanCode) =>
+    isAnnual ? DEFAULT_ANNUAL_PRICES[code] : pricing[code].amount;
+  const priceIdAvailable = (code: PlanCode) =>
+    isAnnual ? Boolean(annualIds[code]) : Boolean(pricing[code].stripePriceId);
+
   const planOptions: ManagedPlanOption[] = PLAN_CODES.map((code) => ({
     code,
     label: PLAN_LABELS[code],
     description: PLAN_DESCRIPTIONS[code],
     slaLabel: PLAN_SLA_LABELS[code],
-    monthlyPrice: pricing[code].amount,
-    available: Boolean(pricing[code].stripePriceId),
+    monthlyPrice: priceFor(code),
+    available: priceIdAvailable(code),
     isCurrent: code === currentPlan,
   }));
 
@@ -208,7 +222,8 @@ export async function getMySubscription(): Promise<GetMySubscriptionResult> {
         status: subscription.status,
         planCode: currentPlan,
         planLabel: PLAN_LABELS[currentPlan],
-        monthlyPrice: pricing[currentPlan].amount,
+        monthlyPrice: priceFor(currentPlan),
+        interval,
         castName,
         currentPeriodEnd: subscription.current_period_end,
         trialEndAt: ctx.trialEndAt,
@@ -271,7 +286,11 @@ export async function changeMyPlan(input: {
     };
   }
 
-  const newPriceId = pricing[newPlan].stripePriceId;
+  // 現在の請求間隔（年額/月額）を維持してプランを切り替える。年額契約は年額Priceへ。
+  const isAnnual = isAnnualPriceId(subscription.applied_stripe_price_id);
+  const newPriceId = isAnnual
+    ? annualStripePriceIds()[newPlan]
+    : pricing[newPlan].stripePriceId;
   if (!newPriceId) {
     return {
       ok: false,

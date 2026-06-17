@@ -18,7 +18,14 @@ import {
 } from "@/lib/subscribe-paths";
 import { calculateAge } from "@/lib/age";
 import { getTrialPeriodDaysForPlan } from "@/lib/trial";
-import { DEFAULT_PLAN_PRICES, defaultStripePriceIds } from "@/lib/plan-pricing";
+import {
+  DEFAULT_PLAN_PRICES,
+  DEFAULT_ANNUAL_PRICES,
+  defaultStripePriceIds,
+  annualStripePriceIds,
+  isAnnualEnabled,
+  type BillingInterval,
+} from "@/lib/plan-pricing";
 import type { StaffGender } from "@/lib/supabase/types";
 
 const serverEnv = getServerEnv();
@@ -53,6 +60,10 @@ export type AvailableCast = {
   gender: StaffGender | null;
   prices: CastPlanPrices;
   stripePriceIds: Record<string, string>;
+  // 年額（全プランでデフォルト価格・メイト別オーバーライドは月額のみ）
+  annualEnabled: boolean;
+  annualPrices: CastPlanPrices;
+  annualStripePriceIds: Record<string, string>;
   acceptingNewUsers: boolean;
   capacityLimit: number | null;
   assignedCount: number;
@@ -167,6 +178,9 @@ export async function listAvailableCasts(
     photosByCast.set(photo.cast_id, list);
   }
 
+  const annualEnabled = isAnnualEnabled();
+  const annualIds = annualStripePriceIds();
+
   const result: AvailableCast[] = [];
   for (const cast of casts ?? []) {
     const assignedCount = assignedCountByCast.get(cast.id) ?? 0;
@@ -210,6 +224,9 @@ export async function listAvailableCasts(
       gender: (cast.gender as StaffGender | null) ?? null,
       prices,
       stripePriceIds,
+      annualEnabled,
+      annualPrices: { ...DEFAULT_ANNUAL_PRICES },
+      annualStripePriceIds: { ...annualIds },
       acceptingNewUsers: cast.accepting_new_users,
       capacityLimit: cast.capacity_limit,
       assignedCount,
@@ -224,6 +241,7 @@ export type CreateSubscriptionCheckoutInput = {
   lineUserId: string;
   castId: string;
   planCode: PlanCode;
+  interval?: BillingInterval;
 };
 
 export type CreateSubscriptionCheckoutResult = Result<{ checkoutUrl: string }>;
@@ -231,6 +249,7 @@ export type CreateSubscriptionCheckoutResult = Result<{ checkoutUrl: string }>;
 export type CreateSubscriptionCheckoutForCurrentUserInput = {
   castId: string;
   planCode: PlanCode;
+  interval?: BillingInterval;
 };
 
 /**
@@ -289,27 +308,37 @@ export async function createSubscriptionCheckoutSession(
     }
   }
 
-  // 価格ID解決（オーバーライド > デフォルト）
-  let stripePriceId = DEFAULT_STRIPE_PRICE_IDS[parsed.data.planCode];
+  const interval: BillingInterval = parsed.data.interval ?? "month";
 
-  const { data: priceOverride } = await supabase
-    .from("cast_plan_price_overrides")
-    .select("stripe_price_id")
-    .eq("cast_id", parsed.data.castId)
-    .eq("plan_code", parsed.data.planCode)
-    .eq("active", true)
-    .order("valid_from", { ascending: false })
-    .limit(1)
-    .single();
-
-  if (priceOverride?.stripe_price_id) {
-    stripePriceId = priceOverride.stripe_price_id;
+  // 価格ID解決
+  let stripePriceId: string;
+  if (interval === "year") {
+    // 年額は全プランでデフォルト年額Priceを使用（メイト別オーバーライドは月額のみ対応）
+    stripePriceId = annualStripePriceIds()[parsed.data.planCode];
+  } else {
+    // 月額: オーバーライド > デフォルト
+    stripePriceId = DEFAULT_STRIPE_PRICE_IDS[parsed.data.planCode];
+    const { data: priceOverride } = await supabase
+      .from("cast_plan_price_overrides")
+      .select("stripe_price_id")
+      .eq("cast_id", parsed.data.castId)
+      .eq("plan_code", parsed.data.planCode)
+      .eq("active", true)
+      .order("valid_from", { ascending: false })
+      .limit(1)
+      .single();
+    if (priceOverride?.stripe_price_id) {
+      stripePriceId = priceOverride.stripe_price_id;
+    }
   }
 
   if (!stripePriceId) {
     return {
       ok: false,
-      error: { code: "CONFLICT", message: "価格設定が見つかりません" },
+      error: {
+        code: "CONFLICT",
+        message: interval === "year" ? "年額プランは現在ご利用いただけません" : "価格設定が見つかりません",
+      },
     };
   }
 
@@ -328,8 +357,8 @@ export async function createSubscriptionCheckoutSession(
     };
   }
 
-  // トライアル対象はスタンダード/プレミアムのみ。ライトは申込直後から課金。
-  const trialDays = getTrialPeriodDaysForPlan(parsed.data.planCode);
+  // トライアル: 月額はstandard/premiumのみ、年額は全プランに付与。
+  const trialDays = getTrialPeriodDaysForPlan(parsed.data.planCode, interval);
 
   try {
     const { url, sessionId } = await stripeCreateCheckout({
@@ -337,6 +366,7 @@ export async function createSubscriptionCheckoutSession(
       castId: parsed.data.castId,
       planCode: parsed.data.planCode,
       stripePriceId,
+      billingInterval: interval,
       successUrl: subscribeCheckoutSuccessUrl(),
       cancelUrl: subscribeCheckoutCancelUrl(),
       trialPeriodDays: trialDays,
@@ -422,6 +452,7 @@ export async function createSubscriptionCheckoutForCurrentUser(
     lineUserId,
     castId: input.castId,
     planCode: input.planCode,
+    interval: input.interval,
   });
 }
 
