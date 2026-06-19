@@ -199,10 +199,10 @@ async function resolveHistoricalTrialConversionRate(
 
   // 実績を信用するには十分なトライアル件数が必要。
   // 新規システムや、トライアルが始まったばかりで転換実績が溜まっていない段階では
-  // 実績だと 0% になり見込みが消えてしまうため、既定値(0.7)で試算する。
+  // 実績だと 0% になり見込みが消えてしまうため、既定値(1.0=100%)で試算する。
   const MIN_TRIAL_SAMPLE = 5;
   if (trialStarts < MIN_TRIAL_SAMPLE) {
-    return { rate: 0.7, source: "default" };
+    return { rate: 1, source: "default" };
   }
 
   return {
