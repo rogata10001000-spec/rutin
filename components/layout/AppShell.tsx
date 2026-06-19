@@ -39,15 +39,17 @@ export function AppShell({ staffId, staffName, staffRole, children }: AppShellPr
     if (saved === "true") setSidebarCollapsed(true);
   }, []);
 
-  // モバイルでドロワーを開いている間は背面のスクロールを止める。
+  // 受信トレイ/チャットは画面いっぱいの固定枠で、中身（一覧・会話）だけを
+  // スクロールさせたい。body が動くと枠ごと上下にズレるため、これらのページと
+  // ドロワー表示中は body のスクロールを止める。
   useEffect(() => {
-    if (!sidebarOpen) return;
+    if (!sidebarOpen && !fullHeightRoute) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [sidebarOpen]);
+  }, [sidebarOpen, fullHeightRoute]);
 
   const handleToggleCollapsed = () => {
     setSidebarCollapsed((prev) => {
@@ -58,7 +60,11 @@ export function AppShell({ staffId, staffName, staffRole, children }: AppShellPr
   };
 
   return (
-    <div className="min-h-screen bg-stone-50 pattern-grid-lg">
+    <div
+      className={`bg-stone-50 pattern-grid-lg ${
+        fullHeightRoute ? "h-[100dvh] overflow-hidden" : "min-h-screen"
+      }`}
+    >
       {/* モバイル用サイドバーオーバーレイ */}
       {sidebarOpen && (
         <div

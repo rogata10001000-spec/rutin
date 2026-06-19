@@ -203,7 +203,7 @@ export function ChatContainer({
         </div>
 
         {/* メッセージ履歴 */}
-        <div className="flex-1 overflow-y-auto bg-stone-50/30 p-4 sm:p-6">
+        <div className="flex-1 overflow-y-auto overscroll-contain bg-stone-50/30 p-4 sm:p-6">
           <ChatHistory messages={messages} />
           <div ref={messagesEndRef} />
         </div>
