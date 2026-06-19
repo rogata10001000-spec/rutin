@@ -54,12 +54,14 @@ export async function searchUsers(
     ? `subscriptions!inner (
         cancel_at_period_end,
         current_period_end,
-        status
+        status,
+        created_at
       )`
     : `subscriptions (
         cancel_at_period_end,
         current_period_end,
-        status
+        status,
+        created_at
       )`;
 
   let dbQuery = supabase
@@ -108,13 +110,29 @@ export async function searchUsers(
     };
   }
 
+  // 再契約ユーザーは「昔の解約済みサブスク」＋「新しい契約中サブスク」を持つため、
+  // 任意の1件ではなく『解約済み/incomplete を除いた最新のサブスク』を現在のものとして採用する。
+  // （詳細画面 getUserDetail と挙動を一致させ、古い解約フラグの誤表示を防ぐ）
+  const INACTIVE_SUB_STATUSES = new Set(["canceled", "incomplete"]);
+  type SubRow = {
+    cancel_at_period_end: boolean;
+    current_period_end: string | null;
+    status: string;
+    created_at: string;
+  };
+
   const items: UserListItem[] = (users ?? []).map((user) => {
     const staffProfile = user.staff_profiles as unknown as { display_name: string } | null;
-    const subscriptions = user.subscriptions as unknown as
-      | { cancel_at_period_end: boolean; current_period_end: string | null; status: string }
-      | { cancel_at_period_end: boolean; current_period_end: string | null; status: string }[]
-      | null;
-    const subscription = Array.isArray(subscriptions) ? subscriptions[0] : subscriptions;
+    const subscriptions = user.subscriptions as unknown as SubRow | SubRow[] | null;
+    const subList = Array.isArray(subscriptions)
+      ? subscriptions
+      : subscriptions
+        ? [subscriptions]
+        : [];
+    const subscription =
+      subList
+        .filter((s) => !INACTIVE_SUB_STATUSES.has(s.status))
+        .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))[0] ?? null;
     return {
       id: user.id,
       nickname: user.nickname,
