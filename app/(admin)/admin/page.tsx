@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentStaff } from "@/lib/auth";
@@ -5,6 +6,7 @@ import { getInboxItems } from "@/actions/inbox";
 import { getPendingCancellations } from "@/actions/admin/cancellations";
 import { getWebhookStats } from "@/actions/admin/webhooks";
 import { getRevenueSummary } from "@/actions/admin/revenue";
+import { LoadingSkeleton } from "@/components/common/LoadingSkeleton";
 
 export const dynamic = "force-dynamic";
 
@@ -67,14 +69,25 @@ function greeting(): string {
   return "こんばんは";
 }
 
-export default async function AdminDashboardPage() {
-  const staff = await getCurrentStaff();
-  if (!staff) redirect("/login");
-  // メイトはダッシュボード対象外。受信トレイへ。
-  if (staff.role === "cast") redirect("/inbox");
+function KpiSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="rounded-2xl border border-stone-200 bg-white p-5 shadow-soft">
+          <LoadingSkeleton className="h-4 w-24" />
+          <LoadingSkeleton className="mt-4 h-8 w-20" />
+          <LoadingSkeleton className="mt-2 h-3 w-28" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
-  const isAdmin = staff.role === "admin";
-
+/**
+ * KPIセクション（最重量の getInboxItems を含む）。
+ * Suspense でストリーミングし、ページの枠（挨拶・クイックアクセス）を即時表示する。
+ */
+async function DashboardKpis({ isAdmin }: { isAdmin: boolean }) {
   const [inboxResult, cancelResult, webhookResult, revenueResult] = await Promise.all([
     getInboxItems({ filters: {} }),
     getPendingCancellations({}),
@@ -95,25 +108,8 @@ export default async function AdminDashboardPage() {
   const webhook = webhookResult.ok ? webhookResult.data : null;
   const revenue = revenueResult && revenueResult.ok ? revenueResult.data.summary : null;
 
-  const todayLabel = new Intl.DateTimeFormat("ja-JP", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-  }).format(new Date());
-
   return (
-    <div className="space-y-6">
-      {/* ヘッダー */}
-      <div>
-        <p className="text-sm text-stone-400">{todayLabel}</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-stone-800">
-          {greeting()}、{staff.displayName}さん
-        </h1>
-        <p className="mt-1 text-sm text-stone-500">今日の状況をひと目で確認できます。</p>
-      </div>
-
+    <>
       {/* 今日の対応バナー */}
       {summary && (unreplied > 0 || notSentToday > 0) ? (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
@@ -198,8 +194,43 @@ export default async function AdminDashboardPage() {
           tone={(webhook?.needsAttention ?? 0) > 0 ? "bad" : "good"}
         />
       </div>
+    </>
+  );
+}
 
-      {/* クイックリンク */}
+export default async function AdminDashboardPage() {
+  const staff = await getCurrentStaff();
+  if (!staff) redirect("/login");
+  // メイトはダッシュボード対象外。受信トレイへ。
+  if (staff.role === "cast") redirect("/inbox");
+
+  const isAdmin = staff.role === "admin";
+
+  const todayLabel = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  }).format(new Date());
+
+  return (
+    <div className="space-y-6">
+      {/* ヘッダー（即時表示） */}
+      <div>
+        <p className="text-sm text-stone-400">{todayLabel}</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-stone-800">
+          {greeting()}、{staff.displayName}さん
+        </h1>
+        <p className="mt-1 text-sm text-stone-500">今日の状況をひと目で確認できます。</p>
+      </div>
+
+      {/* KPI（重いクエリを含むためSuspenseでストリーミング） */}
+      <Suspense fallback={<KpiSkeleton />}>
+        <DashboardKpis isAdmin={isAdmin} />
+      </Suspense>
+
+      {/* クイックアクセス（即時表示） */}
       <div>
         <h2 className="mb-3 text-sm font-semibold text-stone-500">クイックアクセス</h2>
         <div className="flex flex-wrap gap-2">

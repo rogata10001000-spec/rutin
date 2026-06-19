@@ -293,9 +293,14 @@ export async function getRevenueForecast(months: number = 6): Promise<GetRevenue
         row.cancelingCount += 1;
       }
 
-      if (status === "trial" && user.trial_end_at && getJstMonthKey(user.trial_end_at) === row.month) {
-        row.trialProjectedJpy += Math.floor(amount * trialConversionRate);
-        row.trialCount += 1;
+      // トライアルは転換後も継続課金として毎月積み上がる想定。
+      // トライアル終了月以降の各月に見込みを計上する（解約予定があればその月以降は除外）。
+      if (status === "trial" && user.trial_end_at) {
+        const trialEndMonth = getJstMonthKey(user.trial_end_at);
+        if (row.month >= trialEndMonth && !canceledBeforeMonth) {
+          row.trialProjectedJpy += Math.floor(amount * trialConversionRate);
+          row.trialCount += 1;
+        }
       }
     }
   }
