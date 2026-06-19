@@ -21,8 +21,17 @@ type ListenerEntry = {
 };
 
 let channel: RealtimeChannel | null = null;
+let supabaseRef: ReturnType<typeof createClient> | null = null;
+let initializing = false;
 let subscriberCount = 0;
 const listeners = new Set<ListenerEntry>();
+
+function getSupabase() {
+  if (!supabaseRef) {
+    supabaseRef = createClient();
+  }
+  return supabaseRef;
+}
 
 function parseRealtimeMessage(payload: Record<string, unknown>): RealtimeMessage | null {
   const id = payload.id;
@@ -63,29 +72,55 @@ function notifyListeners(message: RealtimeMessage) {
 }
 
 function ensureChannel() {
-  if (channel) {
+  if (channel || initializing) {
     return;
   }
 
-  const supabase = createClient();
+  initializing = true;
+  const supabase = getSupabase();
 
-  channel = supabase
-    .channel("message-realtime")
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "messages",
-      },
-      (payload) => {
-        const message = parseRealtimeMessage(payload.new as Record<string, unknown>);
-        if (message) {
-          notifyListeners(message);
-        }
+  // messages テーブルの RLS は authenticated ロールにのみ SELECT を許可している。
+  // Realtime の postgres_changes は RLS を尊重するため、ソケットに認証トークンを
+  // 渡さない（= anon のまま）と INSERT イベントが一切配信されず、
+  // 「ユーザーから返信が来てもリアルタイムで表示されない」状態になる。
+  // 購読前に必ずアクセストークンを設定する。
+  supabase.auth
+    .getSession()
+    .then(({ data }) => {
+      const token = data.session?.access_token;
+      if (token) {
+        supabase.realtime.setAuth(token);
       }
-    )
-    .subscribe();
+
+      // セッション取得を待つ間に全員が購読解除していたらチャネルは作らない。
+      if (subscriberCount <= 0) {
+        return;
+      }
+
+      channel = supabase
+        .channel("message-realtime")
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+          },
+          (payload) => {
+            const message = parseRealtimeMessage(payload.new as Record<string, unknown>);
+            if (message) {
+              notifyListeners(message);
+            }
+          }
+        )
+        .subscribe();
+    })
+    .catch(() => {
+      // セッション取得に失敗してもアプリは継続する（次の購読時に再試行される）。
+    })
+    .finally(() => {
+      initializing = false;
+    });
 }
 
 function teardownChannel() {
@@ -93,8 +128,7 @@ function teardownChannel() {
     return;
   }
 
-  const supabase = createClient();
-  supabase.removeChannel(channel);
+  getSupabase().removeChannel(channel);
   channel = null;
 }
 

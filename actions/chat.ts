@@ -177,3 +177,65 @@ export async function getChatThread(
     },
   };
 }
+
+export type GetMessagesSinceInput = {
+  endUserId: string;
+  sinceIso: string;
+};
+
+export type GetMessagesSinceResult = Result<{ messages: Message[] }>;
+
+/**
+ * 指定時刻より後のメッセージのみを取得する軽量フェッチ。
+ * Realtime はモバイルでタブをバックグラウンドにすると WebSocket が切れて
+ * 取りこぼすことがあるため、フォアグラウンド復帰時の差分取得に使う。
+ */
+export async function getMessagesSince(
+  input: GetMessagesSinceInput
+): Promise<GetMessagesSinceResult> {
+  const access = await canAccessUser(input.endUserId);
+  if (!access) {
+    return {
+      ok: false,
+      error: { code: "FORBIDDEN", message: "このユーザーへのアクセス権限がありません" },
+    };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  const { data, error } = await supabase
+    .from("messages")
+    .select(`
+      id,
+      direction,
+      body,
+      sent_as_proxy,
+      created_at,
+      staff_profiles!messages_sent_by_staff_id_fkey (
+        display_name
+      )
+    `)
+    .eq("end_user_id", input.endUserId)
+    .gt("created_at", input.sinceIso)
+    .order("created_at", { ascending: true })
+    .limit(100);
+
+  if (error) {
+    return {
+      ok: false,
+      error: { code: "UNKNOWN", message: "メッセージの取得に失敗しました" },
+    };
+  }
+
+  const messages: Message[] = (data ?? []).map((msg) => ({
+    id: msg.id,
+    direction: msg.direction as "in" | "out",
+    body: msg.body,
+    sentByStaffName:
+      (msg.staff_profiles as unknown as { display_name: string } | null)?.display_name ?? null,
+    sentAsProxy: msg.sent_as_proxy,
+    createdAt: msg.created_at,
+  }));
+
+  return { ok: true, data: { messages } };
+}

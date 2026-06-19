@@ -39,6 +39,16 @@ export function AppShell({ staffId, staffName, staffRole, children }: AppShellPr
     if (saved === "true") setSidebarCollapsed(true);
   }, []);
 
+  // モバイルでドロワーを開いている間は背面のスクロールを止める。
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [sidebarOpen]);
+
   const handleToggleCollapsed = () => {
     setSidebarCollapsed((prev) => {
       const next = !prev;

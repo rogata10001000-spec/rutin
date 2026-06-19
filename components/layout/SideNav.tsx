@@ -204,13 +204,13 @@ export function SideNav({ role, isOpen, onClose, isCollapsed = false, onToggleCo
 
   return (
     <>
-      {/* モバイル用サイドバー（オーバーレイ形式・変更なし） */}
+      {/* モバイル用サイドバー（オーバーレイ形式・縦スクロール対応） */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-64 transform bg-white shadow-soft-lg transition-transform duration-300 lg:hidden ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col bg-white shadow-soft-lg transition-transform duration-300 lg:hidden ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-16 items-center justify-between border-b border-stone-100 px-6">
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-stone-100 px-6">
           <span className="text-xl font-bold tracking-tight text-stone-800">Rutin</span>
           <button
             onClick={onClose}
@@ -222,7 +222,7 @@ export function SideNav({ role, isOpen, onClose, isCollapsed = false, onToggleCo
             </svg>
           </button>
         </div>
-        <nav className="mt-6 space-y-4 px-3">
+        <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
           {visibleGroups.map((group, gi) => (
             <div key={group.label ?? `group-${gi}`} className="space-y-1">
               {group.label && (

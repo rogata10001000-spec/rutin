@@ -9,6 +9,8 @@ import {
 
 type PushStatus = "loading" | "unsupported" | "not-configured" | "disabled" | "enabled" | "denied";
 
+const DISMISS_KEY = "rutin_push_prompt_dismissed";
+
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -63,8 +65,23 @@ export function PushNotificationManager() {
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState(false);
+  const [dismissed, setDismissed] = useState(true);
 
   const deviceContext = useMemo(() => getDeviceContext(), []);
+
+  // 一度閉じたら次回以降は表示しない（邪魔にならないように）。
+  useEffect(() => {
+    setDismissed(localStorage.getItem(DISMISS_KEY) === "true");
+  }, []);
+
+  const handleDismiss = () => {
+    setDismissed(true);
+    try {
+      localStorage.setItem(DISMISS_KEY, "true");
+    } catch {
+      // localStorage 不可でも閉じる動作は継続
+    }
+  };
 
   const deviceHint = useMemo(() => {
     if (deviceContext.requiresHomeScreenInstall) {
@@ -220,12 +237,17 @@ export function PushNotificationManager() {
     status === "not-configured" ||
     deviceContext.requiresHomeScreenInstall;
 
-  if (status === "loading" || (status === "unsupported" && !deviceContext.requiresHomeScreenInstall)) {
+  // ユーザーが閉じた場合や、表示する意味がない状態では出さない。
+  if (
+    dismissed ||
+    status === "loading" ||
+    (status === "unsupported" && !deviceContext.requiresHomeScreenInstall)
+  ) {
     return null;
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-30 max-w-sm rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-xl backdrop-blur">
+    <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-3 z-30 w-[calc(100vw-1.5rem)] max-w-xs rounded-2xl border border-stone-200 bg-white/95 p-4 shadow-xl backdrop-blur sm:bottom-4 sm:right-4 sm:w-auto sm:max-w-sm">
       <div className="flex items-start gap-3">
         <span className="material-symbols-outlined text-terracotta" aria-hidden="true">
           notifications
@@ -266,6 +288,16 @@ export function PushNotificationManager() {
             )}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={handleDismiss}
+          aria-label="閉じる"
+          className="-mr-1 -mt-1 shrink-0 rounded-lg p-1 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import type { Message, ChatSideInfo } from "@/actions/chat";
 import type { StaffRole } from "@/lib/supabase/types";
 import { sendMessage, sendProxyMessage } from "@/actions/messages";
+import { getMessagesSince } from "@/actions/chat";
 import { ChatHistory } from "./ChatHistory";
 import { MessageComposer } from "./MessageComposer";
 import { TodayProgressBar } from "./TodayProgressBar";
@@ -33,13 +34,44 @@ export function ChatContainer({
   const [proxyConfirmOpen, setProxyConfirmOpen] = useState(false);
   const [pendingMessage, setPendingMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<Message[]>(initialMessages);
   const { showToast, ToastContainer } = useToast();
 
   const canProxy = staffRole === "admin" || staffRole === "supervisor";
 
   useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // モバイルではタブをバックグラウンドにすると Realtime の WebSocket が切れ、
+  // 復帰時に新着を取りこぼす。フォアグラウンド復帰時に差分を取得して補完する。
+  useEffect(() => {
+    const catchUp = async () => {
+      if (document.visibilityState !== "visible") return;
+
+      const existing = messagesRef.current;
+      const lastReal = [...existing]
+        .reverse()
+        .find((m) => !m.id.startsWith("temp-"));
+      const sinceIso = lastReal?.createdAt ?? new Date(0).toISOString();
+
+      const result = await getMessagesSince({ endUserId, sinceIso });
+      if (!result.ok || result.data.messages.length === 0) return;
+
+      setMessages((prev) => {
+        const ids = new Set(prev.map((m) => m.id));
+        const additions = result.data.messages.filter((m) => !ids.has(m.id));
+        return additions.length > 0 ? [...prev, ...additions] : prev;
+      });
+    };
+
+    document.addEventListener("visibilitychange", catchUp);
+    return () => document.removeEventListener("visibilitychange", catchUp);
+  }, [endUserId]);
 
   useMessageRealtime(
     (message) => {
