@@ -4,11 +4,13 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import type { InboxItem } from "@/actions/inbox";
+import type { StaffRole } from "@/lib/supabase/types";
 import { BadgePlan, BadgeStatus, BadgeSla, BadgeRisk } from "@/components/common/Badge";
 
 type InboxListProps = {
   items: InboxItem[];
   selectedUserId?: string;
+  role?: StaffRole;
 };
 
 // 時刻のフォーマット
@@ -68,8 +70,10 @@ function ReplyDot({ status }: { status: InboxItem["replyStatus"] }) {
   return null;
 }
 
-export function InboxList({ items, selectedUserId }: InboxListProps) {
+export function InboxList({ items, selectedUserId, role }: InboxListProps) {
   const searchParams = useSearchParams();
+  // メイト本人は全員が自分の担当なので「担当: ◯◯」は冗長。非表示にしてノイズを減らす。
+  const showAssignee = role !== "cast";
 
   // 各行のリンク: 既存のフィルタ等を維持しつつ user だけ差し替える
   const buildHref = useMemo(() => {
@@ -181,23 +185,27 @@ export function InboxList({ items, selectedUserId }: InboxListProps) {
                     )}
                   </div>
 
-                  {/* 4段目: 担当・タグ */}
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-stone-400">
-                    <span className="whitespace-nowrap">
-                      担当: {item.assignedCastName ?? "未割当"}
-                    </span>
-                    {item.lineAccountName && (
-                      <span className="inline-flex items-center whitespace-nowrap rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-                        {item.lineAccountName}
-                      </span>
-                    )}
-                    {item.tags.length > 0 && (
-                      <span className="truncate">
-                        {item.tags.slice(0, 3).join(" / ")}
-                        {item.tags.length > 3 && ` +${item.tags.length - 3}`}
-                      </span>
-                    )}
-                  </div>
+                  {/* 4段目: 担当・タグ（メイトは担当を省略。情報が無ければ行ごと省く） */}
+                  {(showAssignee || item.lineAccountName || item.tags.length > 0) && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-stone-400">
+                      {showAssignee && (
+                        <span className="whitespace-nowrap">
+                          担当: {item.assignedCastName ?? "未割当"}
+                        </span>
+                      )}
+                      {item.lineAccountName && (
+                        <span className="inline-flex items-center whitespace-nowrap rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                          {item.lineAccountName}
+                        </span>
+                      )}
+                      {item.tags.length > 0 && (
+                        <span className="truncate">
+                          {item.tags.slice(0, 3).join(" / ")}
+                          {item.tags.length > 3 && ` +${item.tags.length - 3}`}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </Link>

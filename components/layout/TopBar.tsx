@@ -47,15 +47,21 @@ export function TopBar({ staffName, staffRole, onMenuClick }: TopBarProps) {
   return (
     <header className="sticky top-0 z-20 border-b border-stone-200 bg-white/80 backdrop-blur-md">
       <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
-        {/* モバイル用メニューボタン */}
-        <button
-          onClick={onMenuClick}
-          className="rounded-lg p-2 text-stone-500 hover:bg-stone-100 lg:hidden"
-        >
-          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
+        {/* モバイル用メニューボタン（メイトはボトムナビを使うため非表示） */}
+        {staffRole === "cast" ? (
+          <span className="text-lg font-bold tracking-tight text-stone-800 lg:hidden">
+            Rutin
+          </span>
+        ) : (
+          <button
+            onClick={onMenuClick}
+            className="rounded-lg p-2 text-stone-500 hover:bg-stone-100 lg:hidden"
+          >
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        )}
 
         {/* 左側スペーサー（デスクトップ） */}
         <div className="hidden lg:block" />

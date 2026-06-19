@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Noto_Sans_JP } from "next/font/google";
 import "./globals.css";
 
@@ -28,6 +28,18 @@ export const metadata: Metadata = {
   },
 };
 
+// モバイル最適化:
+// - viewportFit: cover → iPhone のセーフエリア(env(safe-area-inset-*))を有効化
+// - interactiveWidget: resizes-content → ソフトキーボード表示時にレイアウト高を縮め、
+//   入力欄・送信ボタンがキーボードに隠れないようにする（チャット返信のため必須）
+export const viewport: Viewport = {
+  themeColor: "#c76f55",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -36,7 +48,6 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <head>
-        <meta name="theme-color" content="#c76f55" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link

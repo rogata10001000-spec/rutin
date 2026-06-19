@@ -19,6 +19,12 @@ type NavItem = {
   roles: StaffRole[];
 };
 
+const DashboardIcon = () => (
+  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h5a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6zM4 16a1 1 0 011-1h5a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3z" />
+  </svg>
+);
+
 const InboxIcon = () => (
   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
@@ -104,127 +110,97 @@ const MarketingIcon = () => (
   </svg>
 );
 
-const navItems: NavItem[] = [
+// 配分ルール（分配）— 共有/分岐アイコン
+const SplitIcon = () => (
+  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+  </svg>
+);
+
+// ファネル分析 — じょうご(フィルター)アイコン
+const FunnelIcon = () => (
+  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.879a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+  </svg>
+);
+
+// ステップ配信 — 紙ヒコーキ(送信)アイコン
+const StepIcon = () => (
+  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+  </svg>
+);
+
+type NavGroup = {
+  /** セクション見出し（null の場合は見出しなしの主要グループ） */
+  label: string | null;
+  items: NavItem[];
+};
+
+const navGroups: NavGroup[] = [
   {
-    name: "受信トレイ",
-    href: "/inbox",
-    icon: <InboxIcon />,
-    roles: ["admin", "supervisor", "cast"],
+    label: null,
+    items: [
+      { name: "ダッシュボード", href: "/admin", icon: <DashboardIcon />, roles: ["admin", "supervisor"] },
+      { name: "受信トレイ", href: "/inbox", icon: <InboxIcon />, roles: ["admin", "supervisor", "cast"] },
+      { name: "ユーザー", href: "/users", icon: <UsersIcon />, roles: ["admin", "supervisor", "cast"] },
+      { name: "プロフィール管理", href: "/my-photos", icon: <PhotoIcon />, roles: ["cast"] },
+      { name: "解約予定", href: "/admin/cancellations", icon: <CancellationIcon />, roles: ["admin", "supervisor"] },
+    ],
   },
   {
-    name: "ユーザー",
-    href: "/users",
-    icon: <UsersIcon />,
-    roles: ["admin", "supervisor", "cast"],
+    label: "売上・精算",
+    items: [
+      { name: "価格設定", href: "/admin/pricing", icon: <PricingIcon />, roles: ["admin"] },
+      { name: "プラン管理", href: "/admin/plans", icon: <PlanIcon />, roles: ["admin"] },
+      { name: "配分ルール", href: "/admin/payout-rules", icon: <SplitIcon />, roles: ["admin"] },
+      { name: "精算", href: "/admin/settlements", icon: <SettlementIcon />, roles: ["admin"] },
+      { name: "売上", href: "/admin/revenue", icon: <RevenueIcon />, roles: ["admin"] },
+      { name: "税率管理", href: "/admin/tax-rates", icon: <TaxIcon />, roles: ["admin"] },
+    ],
   },
   {
-    name: "解約予定",
-    href: "/admin/cancellations",
-    icon: <CancellationIcon />,
-    roles: ["admin", "supervisor"],
+    label: "分析",
+    items: [
+      { name: "マーケ分析", href: "/admin/marketing", icon: <MarketingIcon />, roles: ["admin"] },
+      { name: "ファネル分析", href: "/admin/funnel", icon: <FunnelIcon />, roles: ["admin", "supervisor"] },
+    ],
   },
   {
-    name: "プロフィール管理",
-    href: "/my-photos",
-    icon: <PhotoIcon />,
-    roles: ["cast"],
+    label: "メイト・配信",
+    items: [
+      { name: "メイト管理", href: "/admin/staff", icon: <StaffIcon />, roles: ["admin", "supervisor"] },
+      { name: "メイト写真管理", href: "/admin/cast-photos", icon: <PhotoIcon />, roles: ["admin", "supervisor"] },
+      { name: "LINE公式アカウント", href: "/admin/line-accounts", icon: <LineAccountIcon />, roles: ["admin"] },
+      { name: "ステップ配信", href: "/admin/step-messages", icon: <StepIcon />, roles: ["admin"] },
+    ],
   },
   {
-    name: "メイト管理",
-    href: "/admin/staff",
-    icon: <StaffIcon />,
-    roles: ["admin", "supervisor"],
-  },
-  {
-    name: "メイト写真管理",
-    href: "/admin/cast-photos",
-    icon: <PhotoIcon />,
-    roles: ["admin", "supervisor"],
-  },
-  {
-    name: "価格設定",
-    href: "/admin/pricing",
-    icon: <PricingIcon />,
-    roles: ["admin"],
-  },
-  {
-    name: "プラン管理",
-    href: "/admin/plans",
-    icon: <PlanIcon />,
-    roles: ["admin"],
-  },
-  {
-    name: "配分ルール",
-    href: "/admin/payout-rules",
-    icon: <PricingIcon />,
-    roles: ["admin"],
-  },
-  {
-    name: "精算",
-    href: "/admin/settlements",
-    icon: <SettlementIcon />,
-    roles: ["admin"],
-  },
-  {
-    name: "売上",
-    href: "/admin/revenue",
-    icon: <RevenueIcon />,
-    roles: ["admin"],
-  },
-  {
-    name: "マーケ分析",
-    href: "/admin/marketing",
-    icon: <MarketingIcon />,
-    roles: ["admin"],
-  },
-  {
-    name: "ファネル分析",
-    href: "/admin/funnel",
-    icon: <RevenueIcon />,
-    roles: ["admin", "supervisor"],
-  },
-  {
-    name: "LINE公式アカウント",
-    href: "/admin/line-accounts",
-    icon: <LineAccountIcon />,
-    roles: ["admin"],
-  },
-  {
-    name: "ステップ配信",
-    href: "/admin/step-messages",
-    icon: <MarketingIcon />,
-    roles: ["admin"],
-  },
-  {
-    name: "Webhook監視",
-    href: "/admin/webhooks",
-    icon: <WebhookIcon />,
-    roles: ["admin", "supervisor"],
-  },
-  {
-    name: "税率管理",
-    href: "/admin/tax-rates",
-    icon: <TaxIcon />,
-    roles: ["admin"],
-  },
-  {
-    name: "アカウント統合",
-    href: "/admin/account-merge",
-    icon: <UsersIcon />,
-    roles: ["admin"],
-  },
-  {
-    name: "監査ログ",
-    href: "/admin/audit",
-    icon: <AuditIcon />,
-    roles: ["admin", "supervisor"],
+    label: "システム",
+    items: [
+      { name: "Webhook監視", href: "/admin/webhooks", icon: <WebhookIcon />, roles: ["admin", "supervisor"] },
+      { name: "アカウント統合", href: "/admin/account-merge", icon: <UsersIcon />, roles: ["admin"] },
+      { name: "監査ログ", href: "/admin/audit", icon: <AuditIcon />, roles: ["admin", "supervisor"] },
+    ],
   },
 ];
 
 export function SideNav({ role, isOpen, onClose, isCollapsed = false, onToggleCollapsed }: SideNavProps) {
   const pathname = usePathname();
 
-  const itemsToShow = navItems.filter((item) => item.roles.includes(role));
+  // ロールで絞り込み、空グループは除外
+  const visibleGroups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.roles.includes(role)),
+    }))
+    .filter((group) => group.items.length > 0);
+
+  const isActiveHref = (href: string) =>
+    // "/admin"（ダッシュボード）は配下の /admin/* と被るため完全一致のみ
+    href === "/admin"
+      ? pathname === "/admin"
+      : pathname === href || pathname.startsWith(href + "/");
 
   return (
     <>
@@ -246,25 +222,34 @@ export function SideNav({ role, isOpen, onClose, isCollapsed = false, onToggleCo
             </svg>
           </button>
         </div>
-        <nav className="mt-6 px-3 space-y-1">
-          {itemsToShow.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onClose}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-terracotta/10 text-terracotta"
-                    : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"
-                }`}
-              >
-                {item.icon}
-                {item.name}
-              </Link>
-            );
-          })}
+        <nav className="mt-6 space-y-4 px-3">
+          {visibleGroups.map((group, gi) => (
+            <div key={group.label ?? `group-${gi}`} className="space-y-1">
+              {group.label && (
+                <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-stone-400">
+                  {group.label}
+                </p>
+              )}
+              {group.items.map((item) => {
+                const isActive = isActiveHref(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={onClose}
+                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                      isActive
+                        ? "bg-terracotta/10 text-terracotta"
+                        : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"
+                    }`}
+                  >
+                    {item.icon}
+                    {item.name}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </div>
 
@@ -301,27 +286,45 @@ export function SideNav({ role, isOpen, onClose, isCollapsed = false, onToggleCo
         </div>
 
         {/* ナビゲーション */}
-        <nav className={`mt-4 flex-1 overflow-y-auto space-y-1 ${isCollapsed ? "px-2" : "px-3"}`}>
-          {itemsToShow.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                title={isCollapsed ? item.name : undefined}
-                className={`flex items-center rounded-xl py-2.5 text-sm font-medium transition-all duration-200 ${
-                  isCollapsed ? "justify-center px-2" : "gap-3 px-3"
-                } ${
-                  isActive
-                    ? "bg-terracotta/10 text-terracotta shadow-sm"
-                    : "text-stone-600 hover:bg-stone-50 hover:text-stone-900"
-                }`}
-              >
-                {item.icon}
-                {!isCollapsed && <span className="truncate">{item.name}</span>}
-              </Link>
-            );
-          })}
+        <nav className={`mt-4 flex-1 overflow-y-auto ${isCollapsed ? "space-y-2 px-2" : "space-y-4 px-3"}`}>
+          {visibleGroups.map((group, gi) => (
+            <div
+              key={group.label ?? `group-${gi}`}
+              className={
+                isCollapsed
+                  ? gi > 0
+                    ? "space-y-1 border-t border-stone-100 pt-2"
+                    : "space-y-1"
+                  : "space-y-1"
+              }
+            >
+              {group.label && !isCollapsed && (
+                <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-stone-400">
+                  {group.label}
+                </p>
+              )}
+              {group.items.map((item) => {
+                const isActive = isActiveHref(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    title={isCollapsed ? item.name : undefined}
+                    className={`flex items-center rounded-xl py-2.5 text-sm font-medium transition-all duration-200 ${
+                      isCollapsed ? "justify-center px-2" : "gap-3 px-3"
+                    } ${
+                      isActive
+                        ? "bg-terracotta/10 text-terracotta shadow-sm"
+                        : "text-stone-600 hover:bg-stone-50 hover:text-stone-900"
+                    }`}
+                  >
+                    {item.icon}
+                    {!isCollapsed && <span className="truncate">{item.name}</span>}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </div>
     </>

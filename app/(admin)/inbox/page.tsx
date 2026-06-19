@@ -85,8 +85,17 @@ export default async function InboxPage({
     ? `/inbox?${listOnlyParams.toString()}`
     : "/inbox";
 
+  // メイトはモバイルでボトムナビ(4rem)が出る。会話を開いていない一覧表示時のみ
+  // その分の高さを差し引き、ナビと一覧が重ならないようにする。
+  // 会話表示時はボトムナビが隠れるため全高を使う。
+  const isCast = staff?.role === "cast";
+  const reserveBottomNav = isCast && !selectedUserId;
+  const heightClass = reserveBottomNav
+    ? "h-[calc(100dvh-8rem-4rem-env(safe-area-inset-bottom))] lg:h-[calc(100dvh-8rem)]"
+    : "h-[calc(100dvh-8rem)]";
+
   return (
-    <div className="flex h-[calc(100vh-8rem)] gap-4">
+    <div className={`flex ${heightClass} gap-4`}>
       <InboxAutoRefresh intervalMs={30000} />
 
       {/* 左ペイン: フィルタ + 会話一覧 */}
@@ -110,7 +119,7 @@ export default async function InboxPage({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {result.ok ? (
             items.length > 0 ? (
-              <InboxList items={items} selectedUserId={selectedUserId} />
+              <InboxList items={items} selectedUserId={selectedUserId} role={staff?.role} />
             ) : (
               <div className="p-6">
                 <EmptyState

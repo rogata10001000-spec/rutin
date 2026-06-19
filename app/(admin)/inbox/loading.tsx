@@ -2,7 +2,7 @@ import { InboxRowSkeleton } from "@/components/common/LoadingSkeleton";
 
 export default function InboxLoading() {
   return (
-    <div className="flex h-[calc(100vh-8rem)] gap-4">
+    <div className="flex h-[calc(100dvh-8rem)] gap-4">
       {/* 左ペイン: フィルタ + 一覧 */}
       <aside className="flex w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-soft lg:w-72 lg:shrink-0 xl:w-[24rem]">
         <div className="shrink-0 border-b border-stone-100 p-4">

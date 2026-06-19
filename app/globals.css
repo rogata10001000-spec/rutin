@@ -132,6 +132,15 @@
     scrollbar-width: none;
   }
 
+  /* iPhone セーフエリア（ホームバー）対応の余白 */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* 固定ボトムナビ(4rem)＋セーフエリア分の下余白を確保するユーティリティ */
+  .pb-bottomnav {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+
   .container-responsive {
     @apply px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto;
   }

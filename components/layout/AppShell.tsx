@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { SideNav } from "./SideNav";
 import { TopBar } from "./TopBar";
+import { BottomNav } from "./BottomNav";
 import { CommandPalette } from "@/components/common/CommandPalette";
 import { ShortcutHelp } from "@/components/common/ShortcutHelp";
 import { RealtimeNotification } from "@/components/common/RealtimeNotification";
@@ -19,6 +21,12 @@ type AppShellProps = {
 export function AppShell({ staffId, staffName, staffRole, children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const pathname = usePathname();
+
+  const isCast = staffRole === "cast";
+  // 受信トレイ/チャットは自前で全画面高さを管理するため、main 側の下余白は付けない。
+  // それ以外のメイト向けページはボトムナビ分の下余白を確保する。
+  const fullHeightRoute = pathname.startsWith("/inbox") || pathname.startsWith("/chat");
 
   useEffect(() => {
     if ("serviceWorker" in navigator) {
@@ -66,12 +74,15 @@ export function AppShell({ staffId, staffName, staffRole, children }: AppShellPr
           onMenuClick={() => setSidebarOpen(true)}
         />
 
-        <main className="py-8">
+        <main className={isCast && !fullHeightRoute ? "pt-8 pb-bottomnav lg:pb-8" : "py-8"}>
           <div className="container-responsive">
             {children}
           </div>
         </main>
       </div>
+
+      {/* メイト専用: モバイル用ボトムタブナビ */}
+      {isCast && <BottomNav />}
 
       {/* グローバルキーボードショートカット */}
       <CommandPalette role={staffRole} />

@@ -30,7 +30,8 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/inbox");
+      // ルート("/")でロール別に着地先を振り分ける（メイト→受信トレイ / 管理→ダッシュボード）
+      router.push("/");
       router.refresh();
       // 遷移完了までローディング表示を維持（ページがアンマウントされるまで）
     } catch {

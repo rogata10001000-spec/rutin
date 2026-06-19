@@ -121,7 +121,7 @@ export function MessageComposer({
   return (
     <form
       onSubmit={(e) => e.preventDefault()}
-      className="border-t border-stone-200 bg-white p-3 sm:p-4"
+      className="border-t border-stone-200 bg-white px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-4 sm:pt-4 sm:pb-[calc(1rem+env(safe-area-inset-bottom))]"
     >
       {/* Birthday Widget */}
       {showBirthdayWidget && (
@@ -147,7 +147,12 @@ export function MessageComposer({
           />
           <TemplateSelector onSelect={(text) => setBody(text)} />
         </div>
-        <SaveStatus status={saveStatus} className="text-xs" />
+        <div className="flex items-center gap-2">
+          <span className="hidden whitespace-nowrap text-[11px] text-stone-400 sm:inline">
+            ⌘/Ctrl + Enter で送信
+          </span>
+          <SaveStatus status={saveStatus} className="text-xs" />
+        </div>
       </div>
 
       <div className="flex items-end gap-2 sm:gap-3">
@@ -157,7 +162,7 @@ export function MessageComposer({
             value={body}
             onChange={(e) => setBody(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="メッセージを入力…（⌘/Ctrl + Enter で送信）"
+            placeholder="メッセージを入力…"
             rows={2}
             className="block max-h-[200px] w-full resize-none rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 pb-6 text-sm text-stone-900 shadow-sm transition-all focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
             disabled={sending}
@@ -173,7 +178,7 @@ export function MessageComposer({
           onClick={handleSubmit}
           disabled={!body.trim() || sending}
           aria-label="送信"
-          className={`inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-4 py-3 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none sm:px-5 ${
+          className={`inline-flex min-h-[2.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-4 py-3 text-sm font-bold text-white shadow-md transition-all hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none sm:px-5 ${
             proxyMode
               ? "bg-purple-600 hover:bg-purple-700 focus:ring-purple-500"
               : "bg-terracotta hover:bg-[#d0694e] focus:ring-terracotta"
