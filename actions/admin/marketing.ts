@@ -18,6 +18,8 @@ export type MarketingPlanBreakdown = {
   count: number;
   ratio: number;
   estimatedMrrJpy: number;
+  /** 同プランのトライアル中ユーザー数（MRR・比率には含めない） */
+  trialCount: number;
 };
 
 export type MarketingCastScorecard = {
@@ -179,11 +181,16 @@ export async function getMarketingSummary(
 
   let estimatedMrrJpy = 0;
   const planCount = new Map<PlanCode, { count: number; mrr: number }>();
+  const planTrialCount = new Map<PlanCode, number>();
   const castBuckets = new Map<string, typeof allUsers>();
 
   for (const user of allUsers) {
     const castKey = user.assigned_cast_id ?? "unassigned";
     castBuckets.set(castKey, [...(castBuckets.get(castKey) ?? []), user]);
+
+    const code = PLAN_CODES.includes(user.plan_code as PlanCode)
+      ? (user.plan_code as PlanCode)
+      : "standard";
 
     if (ACTIVE_STATUSES.includes(user.status as SubscriptionStatus)) {
       const amount = await resolvePlanAmount(
@@ -193,13 +200,12 @@ export async function getMarketingSummary(
         user.plan_code
       );
       estimatedMrrJpy += amount;
-      const code = PLAN_CODES.includes(user.plan_code as PlanCode)
-        ? (user.plan_code as PlanCode)
-        : "standard";
       const current = planCount.get(code) ?? { count: 0, mrr: 0 };
       current.count += 1;
       current.mrr += amount;
       planCount.set(code, current);
+    } else if (user.status === "trial") {
+      planTrialCount.set(code, (planTrialCount.get(code) ?? 0) + 1);
     }
   }
 
@@ -218,6 +224,7 @@ export async function getMarketingSummary(
       count: entry.count,
       ratio: activeUsers > 0 ? entry.count / activeUsers : 0,
       estimatedMrrJpy: entry.mrr,
+      trialCount: planTrialCount.get(planCode) ?? 0,
     };
   });
 
@@ -240,6 +247,7 @@ export async function getMarketingSummary(
 
     let castMrr = 0;
     const castPlanCount = new Map<PlanCode, { count: number; mrr: number }>();
+    const castPlanTrialCount = new Map<PlanCode, number>();
     for (const user of castActiveUsers) {
       const amount = await resolvePlanAmount(supabase, pricingCache, castId, user.plan_code);
       castMrr += amount;
@@ -250,6 +258,13 @@ export async function getMarketingSummary(
       current.count += 1;
       current.mrr += amount;
       castPlanCount.set(code, current);
+    }
+    for (const user of castUsers) {
+      if (user.status !== "trial") continue;
+      const code = PLAN_CODES.includes(user.plan_code as PlanCode)
+        ? (user.plan_code as PlanCode)
+        : "standard";
+      castPlanTrialCount.set(code, (castPlanTrialCount.get(code) ?? 0) + 1);
     }
 
     const castLeadTimes = castUsers
@@ -280,6 +295,7 @@ export async function getMarketingSummary(
           count: entry.count,
           ratio: castActiveUsers.length > 0 ? entry.count / castActiveUsers.length : 0,
           estimatedMrrJpy: entry.mrr,
+          trialCount: castPlanTrialCount.get(planCode) ?? 0,
         };
       }),
     });

@@ -51,7 +51,7 @@ export function MarketingDashboard({ summary }: MarketingDashboardProps) {
         <div>
           <h2 className="text-sm font-bold text-stone-800">プラン構成比</h2>
           <p className="mt-0.5 text-xs text-stone-500">
-            現在の active / past_due / paused ユーザーを対象にしています。
+            比率・MRR は active / past_due / paused が対象。トライアル中は人数のみ併記しています。
           </p>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -62,6 +62,11 @@ export function MarketingDashboard({ summary }: MarketingDashboardProps) {
                 {plan.count}人 / {formatRate(plan.ratio)}
               </p>
               <p className="mt-1 text-xs text-stone-500">MRR {formatYen(plan.estimatedMrrJpy)}</p>
+              {plan.trialCount > 0 && (
+                <p className="mt-1 text-xs font-medium text-amber-600">
+                  トライアル中 {plan.trialCount}人
+                </p>
+              )}
             </div>
           ))}
         </div>

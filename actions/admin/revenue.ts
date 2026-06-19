@@ -197,7 +197,11 @@ async function resolveHistoricalTrialConversionRate(
   const trialStarts = events.filter((e) => e.event_type === "trial_start").length;
   const subscribes = events.filter((e) => e.event_type === "subscribe").length;
 
-  if (trialStarts <= 0) {
+  // 実績を信用するには十分なトライアル件数が必要。
+  // 新規システムや、トライアルが始まったばかりで転換実績が溜まっていない段階では
+  // 実績だと 0% になり見込みが消えてしまうため、既定値(0.7)で試算する。
+  const MIN_TRIAL_SAMPLE = 5;
+  if (trialStarts < MIN_TRIAL_SAMPLE) {
     return { rate: 0.7, source: "default" };
   }
 
