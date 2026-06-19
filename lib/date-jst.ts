@@ -57,6 +57,12 @@ export function getJstMonthKey(dateIso: string): string {
   return dateIso.slice(0, 7);
 }
 
+/** 精算期間の開始日(YYYY-MM-DD)から「YYYY年M月分」ラベルを作る */
+export function formatSettlementPeriodLabel(periodFrom: string): string {
+  const [year, month] = periodFrom.slice(0, 7).split("-");
+  return `${year}年${Number(month)}月分`;
+}
+
 export function addJstMonths(year: number, month: number, offset: number): { year: number; month: number } {
   const total = year * 12 + (month - 1) + offset;
   return {

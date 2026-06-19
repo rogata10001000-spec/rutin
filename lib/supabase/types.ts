@@ -370,7 +370,7 @@ type SettlementBatchesRow = {
   period_to: string;
   status: SettlementStatus;
   total_amount_jpy: number;
-  created_by: string;
+  created_by: string | null;
   created_at: string;
   approved_by: string | null;
   approved_at: string | null;

@@ -9,6 +9,7 @@ import {
   markSettlementBatchPaid,
 } from "@/actions/admin/settlements";
 import { format } from "date-fns";
+import { formatSettlementPeriodLabel } from "@/lib/date-jst";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useToast } from "@/components/common/Toast";
 
@@ -61,7 +62,7 @@ export function SettlementsTable({ items }: SettlementsTableProps) {
   if (items.length === 0) {
     return (
       <div className="p-12 text-center text-stone-500 bg-white rounded-2xl border border-stone-200">
-        精算バッチがありません
+        まだ精算データがありません。毎月1日に前月分が自動で作成されます。
       </div>
     );
   }
@@ -74,7 +75,7 @@ export function SettlementsTable({ items }: SettlementsTableProps) {
             <thead className="bg-stone-50">
               <tr>
                 <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
-                  期間
+                  対象月
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
                   状態
@@ -98,10 +99,24 @@ export function SettlementsTable({ items }: SettlementsTableProps) {
                     <td className="whitespace-nowrap px-6 py-4 text-sm">
                       <Link
                         href={`/admin/settlements/${item.id}`}
-                        className="font-bold text-stone-800 hover:text-terracotta"
+                        className="group inline-flex flex-col"
                       >
-                        {format(new Date(item.periodFrom), "yyyy/MM/dd")} -{" "}
-                        {format(new Date(item.periodTo), "yyyy/MM/dd")}
+                        <span className="flex items-center gap-2 font-bold text-stone-800 group-hover:text-terracotta">
+                          {formatSettlementPeriodLabel(item.periodFrom)}
+                          {item.isAuto ? (
+                            <span className="rounded-full bg-sage/20 px-2 py-0.5 text-[10px] font-bold text-sage-800">
+                              自動
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-bold text-stone-500">
+                              手動
+                            </span>
+                          )}
+                        </span>
+                        <span className="mt-0.5 text-[11px] text-stone-400">
+                          {format(new Date(item.periodFrom), "yyyy/MM/dd")} -{" "}
+                          {format(new Date(item.periodTo), "yyyy/MM/dd")}
+                        </span>
                       </Link>
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
@@ -149,10 +164,10 @@ export function SettlementsTable({ items }: SettlementsTableProps) {
 
       <ConfirmDialog
         open={!!action}
-        title={action?.type === "approve" ? "バッチの承認" : "支払完了の確認"}
+        title={action?.type === "approve" ? "精算の承認" : "支払完了の確認"}
         description={
           action?.type === "approve"
-            ? "このバッチを承認しますか？"
+            ? "この精算を承認しますか？"
             : "支払完了にしますか？この操作は取り消せません。"
         }
         confirmLabel={action?.type === "approve" ? "承認" : "支払完了"}

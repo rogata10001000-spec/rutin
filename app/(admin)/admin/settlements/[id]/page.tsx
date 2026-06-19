@@ -4,6 +4,7 @@ import { getSettlementBatchDetail } from "@/actions/admin/settlements";
 import { SettlementDetailTable } from "@/components/admin/settlements/SettlementDetailTable";
 import { SettlementActions } from "@/components/admin/settlements/SettlementActions";
 import { ErrorState } from "@/components/common/ErrorState";
+import { formatSettlementPeriodLabel } from "@/lib/date-jst";
 import { format } from "date-fns";
 
 export const dynamic = "force-dynamic";
@@ -44,9 +45,18 @@ export default async function SettlementDetailPage({
         </Link>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-stone-900">
-              精算バッチ詳細
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-stone-900">
+                {formatSettlementPeriodLabel(batch.periodFrom)}の精算
+              </h1>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                  batch.isAuto ? "bg-sage/20 text-sage-800" : "bg-stone-100 text-stone-500"
+                }`}
+              >
+                {batch.isAuto ? "自動作成" : "手動作成"}
+              </span>
+            </div>
             <p className="mt-1 text-sm text-stone-500">
               {format(new Date(batch.periodFrom), "yyyy/MM/dd")} -{" "}
               {format(new Date(batch.periodTo), "yyyy/MM/dd")}

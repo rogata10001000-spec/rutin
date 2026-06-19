@@ -65,7 +65,7 @@ export function CreateBatchForm() {
       });
 
       if (result.ok) {
-        showToast("精算バッチを作成しました", "success");
+        showToast("精算を作成しました", "success");
         router.refresh();
       } else {
         showToast(result.error.message, "error");
@@ -125,7 +125,7 @@ export function CreateBatchForm() {
 
       <div className="rounded-xl bg-stone-50 p-4 border border-stone-100">
         <p className="text-xs text-stone-500">
-          指定期間内の未精算の配分を集計してバッチを作成します
+          指定期間内の未精算の配分を集計して精算を作成します
         </p>
       </div>
 
@@ -134,7 +134,7 @@ export function CreateBatchForm() {
         disabled={loading}
         className="w-full rounded-xl bg-terracotta px-4 py-3 text-sm font-bold text-white shadow-md hover:bg-[#d0694e] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-terracotta focus:ring-offset-2 disabled:opacity-50 transition-all"
       >
-        {loading ? "作成中..." : "バッチ作成"}
+        {loading ? "作成中..." : "この期間で作成"}
       </button>
 
       <ToastContainer />

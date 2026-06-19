@@ -70,7 +70,7 @@ export function SettlementActions({ batch }: SettlementActionsProps) {
 
       <ConfirmDialog
         open={!!action}
-        title={action === "approve" ? "バッチの承認" : "支払完了の確認"}
+        title={action === "approve" ? "精算の承認" : "支払完了の確認"}
         description={
           action === "approve"
             ? `合計 ¥${batch.totalAmount.toLocaleString()} を ${batch.castCount}人のメイトに支払うことを承認しますか？`

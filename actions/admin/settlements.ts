@@ -21,6 +21,8 @@ export type SettlementBatch = {
   createdAt: string;
   approvedAt: string | null;
   paidAt: string | null;
+  /** 月次自動作成（created_by=null）かどうか */
+  isAuto: boolean;
 };
 
 export type GetSettlementBatchesResult = Result<{ items: SettlementBatch[] }>;
@@ -47,6 +49,7 @@ export async function getSettlementBatches(): Promise<GetSettlementBatchesResult
       period_to,
       status,
       total_amount_jpy,
+      created_by,
       created_at,
       approved_at,
       paid_at
@@ -78,6 +81,7 @@ export async function getSettlementBatches(): Promise<GetSettlementBatchesResult
         createdAt: row.created_at,
         approvedAt: row.approved_at,
         paidAt: row.paid_at,
+        isAuto: row.created_by === null,
       };
     })
   );
@@ -125,7 +129,7 @@ export async function getSettlementBatchDetail(
 
   const { data: batch, error: batchError } = await supabase
     .from("settlement_batches")
-    .select("id, period_from, period_to, status, total_amount_jpy, created_at, approved_at, paid_at")
+    .select("id, period_from, period_to, status, total_amount_jpy, created_by, created_at, approved_at, paid_at")
     .eq("id", input.batchId)
     .single();
 
@@ -163,6 +167,7 @@ export async function getSettlementBatchDetail(
         createdAt: batch.created_at,
         approvedAt: batch.approved_at,
         paidAt: batch.paid_at,
+        isAuto: batch.created_by === null,
       },
       items: (items ?? []).map((item) => {
         const breakdown = (item.breakdown as Record<string, number>) ?? {};
