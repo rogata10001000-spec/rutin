@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ChatSideInfo } from "@/actions/chat";
 import { format } from "date-fns";
 import { MemoEditor } from "./MemoEditor";
+import { BadgePlan } from "@/components/common/Badge";
 
 type ChatSidePanelProps = {
   sideInfo: ChatSideInfo;
@@ -30,10 +31,10 @@ export function ChatSidePanel({ sideInfo, endUserId }: ChatSidePanelProps) {
           </Link>
         </div>
         <dl className="space-y-3 text-sm">
-          <div className="flex justify-between">
+          <div className="flex items-center justify-between">
             <dt className="text-stone-500">プラン</dt>
-            <dd className="font-bold text-stone-800">
-              {sideInfo.planCode.charAt(0).toUpperCase() + sideInfo.planCode.slice(1)}
+            <dd>
+              <BadgePlan plan={sideInfo.planCode as "light" | "standard" | "premium"} />
             </dd>
           </div>
           <div className="flex justify-between">

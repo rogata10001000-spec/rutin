@@ -184,6 +184,38 @@ export async function getChatThread(
   };
 }
 
+/**
+ * 通知などに使うユーザー表示名の軽量取得。
+ * 自動生成ニックネームの場合はLINE表示名を優先する（一覧と同じ整形）。
+ */
+export async function getEndUserDisplayName(
+  endUserId: string
+): Promise<Result<{ displayName: string }>> {
+  const access = await canAccessUser(endUserId);
+  if (!access) {
+    return {
+      ok: false,
+      error: { code: "FORBIDDEN", message: "このユーザーへのアクセス権限がありません" },
+    };
+  }
+
+  const supabase = await createServerSupabaseClient();
+  const { data } = await supabase
+    .from("end_users")
+    .select("nickname, line_display_name")
+    .eq("id", endUserId)
+    .single();
+
+  const nickname = data?.nickname ?? null;
+  const lineDisplayName = data?.line_display_name ?? null;
+  const displayName =
+    nickname && !nickname.startsWith("ユーザー_")
+      ? nickname
+      : lineDisplayName ?? nickname ?? "ユーザー";
+
+  return { ok: true, data: { displayName } };
+}
+
 export type GetMessagesSinceInput = {
   endUserId: string;
   sinceIso: string;

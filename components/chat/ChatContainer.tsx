@@ -11,6 +11,7 @@ import { TodayProgressBar } from "./TodayProgressBar";
 import { NextUserButton } from "./NextUserButton";
 import { useToast } from "@/components/common/Toast";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { BadgePlan } from "@/components/common/Badge";
 import { useMessageRealtime } from "@/hooks/useMessageRealtime";
 
 type ChatContainerProps = {
@@ -174,12 +175,16 @@ export function ChatContainer({
         {/* ヘッダー */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-stone-100 bg-stone-50/50 px-4 py-3 sm:px-6 sm:py-4">
           <div className="min-w-0">
-            <h2 className="truncate text-base font-bold text-stone-800 sm:text-lg">
-              {sideInfo.nickname}
-            </h2>
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="truncate text-base font-bold text-stone-800 sm:text-lg">
+                {sideInfo.nickname}
+              </h2>
+              <span className="shrink-0">
+                <BadgePlan plan={sideInfo.planCode as "light" | "standard" | "premium"} />
+              </span>
+            </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
               <p className="text-sm font-medium text-stone-500">
-                {sideInfo.planCode.charAt(0).toUpperCase() + sideInfo.planCode.slice(1)} ・{" "}
                 {sideInfo.assignedCastName ?? "担当未割当"}
               </p>
               {sideInfo.lineAccountName && (

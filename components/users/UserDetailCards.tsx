@@ -8,6 +8,7 @@ import { MemoSection } from "./MemoSection";
 import { AssignmentHistorySection } from "./AssignmentHistorySection";
 import { InlineEdit, InlineTagEdit } from "@/components/common/InlineEdit";
 import { useToast } from "@/components/common/Toast";
+import { BadgePlan } from "@/components/common/Badge";
 
 type UserDetailCardsProps = {
   user: UserDetail;
@@ -68,8 +69,8 @@ export function UserDetailCards({ user, onUpdateUser }: UserDetailCardsProps) {
         <dl className="space-y-3">
           <div className="flex justify-between">
             <dt className="text-sm text-stone-500">プラン</dt>
-            <dd className="text-sm font-medium text-stone-900">
-              {user.planCode.charAt(0).toUpperCase() + user.planCode.slice(1)}
+            <dd>
+              <BadgePlan plan={user.planCode as "light" | "standard" | "premium"} />
             </dd>
           </div>
           <div className="flex justify-between">

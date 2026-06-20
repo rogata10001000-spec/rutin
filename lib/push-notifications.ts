@@ -137,7 +137,7 @@ export async function notifyStaffOfInboundMessage(params: {
     await Promise.all([
       supabase
         .from("end_users")
-        .select("assigned_cast_id")
+        .select("assigned_cast_id, nickname, line_display_name")
         .eq("id", params.endUserId)
         .single(),
       supabase
@@ -170,8 +170,17 @@ export async function notifyStaffOfInboundMessage(params: {
     return;
   }
 
+  // 通知タイトルに送信ユーザー名を出す。自動生成ニックネームの場合はLINE表示名を優先。
+  const nickname = userError ? null : (user?.nickname ?? null);
+  const lineDisplayName = userError ? null : (user?.line_display_name ?? null);
+  const displayName =
+    nickname && !nickname.startsWith("ユーザー_")
+      ? nickname
+      : lineDisplayName ?? nickname ?? null;
+  const title = displayName?.trim() ? `${displayName}さん` : "新着メッセージ";
+
   const payload: PushPayload = {
-    title: "新着メッセージ",
+    title,
     body: truncateMessageBody(params.body),
     url: `/inbox?user=${params.endUserId}`,
     tag: `message-${params.endUserId}`,

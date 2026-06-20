@@ -4,16 +4,18 @@ type BadgePlanProps = {
   plan: "light" | "standard" | "premium";
 };
 
+// プランごとに明確に色分け（light=スカイ / standard=インディゴ / premium=ゴールド）。
+// ステータス系（trial=黄, active=緑, リスク=赤）やブランド色(terracotta)と被らない色を選定。
 const planConfig = {
-  light: { label: "Light", className: "bg-stone-100 text-stone-600" },
-  standard: { label: "Standard", className: "bg-sage/20 text-sage-800" },
-  premium: { label: "Premium", className: "bg-terracotta/10 text-terracotta" },
+  light: { label: "Light", className: "bg-sky-100 text-sky-700 ring-1 ring-inset ring-sky-600/20" },
+  standard: { label: "Standard", className: "bg-indigo-100 text-indigo-700 ring-1 ring-inset ring-indigo-600/20" },
+  premium: { label: "Premium", className: "bg-amber-100 text-amber-800 ring-1 ring-inset ring-amber-600/30" },
 };
 
 export function BadgePlan({ plan }: BadgePlanProps) {
-  const config = planConfig[plan];
+  const config = planConfig[plan] ?? planConfig.standard;
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${config.className}`}>
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${config.className}`}>
       {config.label}
     </span>
   );
