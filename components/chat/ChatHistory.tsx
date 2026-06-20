@@ -63,7 +63,26 @@ export function ChatHistory({ messages }: ChatHistoryProps) {
                       : "rounded-bl-md border border-stone-200 bg-white text-stone-800"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>
+                  {message.messageType === "image" && message.mediaUrl ? (
+                    <a
+                      href={message.mediaUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={message.mediaUrl}
+                        alt="受信した画像"
+                        loading="lazy"
+                        className="max-h-72 w-auto max-w-full rounded-lg object-contain"
+                      />
+                    </a>
+                  ) : message.messageType === "image" ? (
+                    <p className="italic opacity-80">画像を読み込めませんでした</p>
+                  ) : (
+                    <p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p>
+                  )}
                   <div
                     className={`mt-1 flex items-center gap-2 text-[11px] ${
                       isOut ? "justify-end text-white/75" : "text-stone-400"

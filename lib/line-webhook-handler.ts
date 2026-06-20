@@ -7,6 +7,7 @@ import {
   verifyLineSignature,
   parsePostbackData,
   toCheckinStatus,
+  getLineMessageContent,
 } from "@/lib/line";
 import type { ResolvedLineAccount } from "@/lib/line-accounts";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
@@ -34,11 +35,15 @@ type LineFollowEvent = {
   webhookEventId: string;
 };
 
+type LineInboundMessage =
+  | { id: string; type: "text"; text: string }
+  | { id: string; type: "image" | "video" | "audio" | "file" | "sticker" | "location" };
+
 type LineMessageEvent = {
   type: "message";
   timestamp: number;
   source: { userId: string };
-  message: { id: string; type: "text"; text: string };
+  message: LineInboundMessage;
   replyToken: string;
   webhookEventId: string;
 };
@@ -81,11 +86,80 @@ function buildWelcomeMessage(lineUserId: string) {
   return getLineWelcomeTrialMessage(getTrialPeriodDays(), buildSubscribeUrl(lineUserId));
 }
 
+type InboundContent = {
+  body: string;
+  messageType: string;
+  mediaUrl: string | null;
+};
+
+// 非テキストメッセージの本文プレースホルダ（一覧・通知で「何が来たか」を示す）。
+const NON_TEXT_BODY: Record<string, string> = {
+  image: "[画像]",
+  video: "[動画]",
+  audio: "[音声]",
+  file: "[ファイル]",
+  sticker: "[スタンプ]",
+  location: "[位置情報]",
+};
+
+/**
+ * 受信メッセージを保存可能な形（本文・種別・メディアURL）に解決する。
+ * 画像は LINE からバイナリを取得し、chat-media バケットへ保存して公開URLを得る。
+ * 取得・保存に失敗してもメッセージ自体は「[画像]」として残す（取りこぼし防止）。
+ */
+async function resolveInboundContent(
+  supabase: SupabaseAdmin,
+  account: ResolvedLineAccount,
+  endUserId: string,
+  message: LineInboundMessage
+): Promise<InboundContent> {
+  if (message.type === "text") {
+    return { body: message.text, messageType: "text", mediaUrl: null };
+  }
+
+  if (message.type === "image") {
+    try {
+      const { data, contentType } = await getLineMessageContent(account.credentials, message.id);
+      const ext = contentType.includes("png")
+        ? "png"
+        : contentType.includes("gif")
+          ? "gif"
+          : contentType.includes("webp")
+            ? "webp"
+            : "jpg";
+      const path = `${endUserId}/${message.id}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("chat-media")
+        .upload(path, data, { contentType, upsert: true });
+
+      if (uploadError) {
+        throw new Error(uploadError.message);
+      }
+
+      const mediaUrl = supabase.storage.from("chat-media").getPublicUrl(path).data.publicUrl;
+      return { body: "[画像]", messageType: "image", mediaUrl };
+    } catch (err) {
+      logger.error("LINE image content fetch/upload failed", {
+        messageId: message.id,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+      return { body: "[画像]", messageType: "image", mediaUrl: null };
+    }
+  }
+
+  return {
+    body: NON_TEXT_BODY[message.type] ?? "[メッセージ]",
+    messageType: message.type,
+    mediaUrl: null,
+  };
+}
+
 async function saveInboundMessage(
   supabase: SupabaseAdmin,
   endUserId: string,
   messageId: string,
-  messageText: string,
+  content: InboundContent,
   userStatus: string,
   lineAccountId: string | null
 ): Promise<{ messageId: string | null; duplicate: boolean }> {
@@ -94,7 +168,9 @@ async function saveInboundMessage(
     .insert({
       end_user_id: endUserId,
       direction: "in",
-      body: messageText,
+      body: content.body,
+      message_type: content.messageType,
+      media_url: content.mediaUrl,
       line_message_id: messageId,
       line_account_id: lineAccountId,
     })
@@ -293,13 +369,16 @@ export async function handleLineWebhook(
       }
     }
 
-    if (event.type === "message" && event.message.type === "text") {
-      const messageId = event.message.id;
-      const messageText = event.message.text;
+    if (event.type === "message") {
+      const inboundMessage = event.message;
+      const messageId = inboundMessage.id;
 
       // リッチメニュー「メイトを選ぶ」等のテキスト送信ボタンはコマンドとして処理する。
       // 会話としては保存・スタッフ通知せず、契約状態に応じた案内を返す（未契約はFlexカードでURLを隠す）。
-      if (MENU_SELECT_MATE_TEXTS.has(messageText.trim())) {
+      if (
+        inboundMessage.type === "text" &&
+        MENU_SELECT_MATE_TEXTS.has(inboundMessage.text.trim())
+      ) {
         const cmd = await withWebhookIdempotency("line", eventId, "menu_select_mate", async () => {
           const { data: menuUser } = await supabase
             .from("end_users")
@@ -392,11 +471,17 @@ export async function handleLineWebhook(
             );
           }
 
+          const content = await resolveInboundContent(
+            supabase,
+            account,
+            createdUser.id,
+            inboundMessage
+          );
           const saved = await saveInboundMessage(
             supabase,
             createdUser.id,
             messageId,
-            messageText,
+            content,
             "incomplete",
             lineAccountId
           );
@@ -405,6 +490,7 @@ export async function handleLineWebhook(
             userId: createdUser.id,
             messageId: saved.messageId,
             duplicate: saved.duplicate,
+            body: content.body,
             isNew: true,
           };
         }
@@ -418,11 +504,17 @@ export async function handleLineWebhook(
 
         await markPrimaryAccountIfMate(supabase, account, user.id);
 
+        const content = await resolveInboundContent(
+          supabase,
+          account,
+          user.id,
+          inboundMessage
+        );
         const saved = await saveInboundMessage(
           supabase,
           user.id,
           messageId,
-          messageText,
+          content,
           user.status,
           lineAccountId
         );
@@ -431,6 +523,7 @@ export async function handleLineWebhook(
           userId: user.id,
           messageId: saved.messageId,
           duplicate: saved.duplicate,
+          body: content.body,
         };
       });
 
@@ -446,7 +539,7 @@ export async function handleLineWebhook(
           await notifyStaffOfInboundMessage({
             endUserId: result.data.userId,
             messageId: messageIdForPush,
-            body: messageText,
+            body: "body" in result.data ? result.data.body : "",
           });
         }
       }

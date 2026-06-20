@@ -8,6 +8,8 @@ export type Message = {
   id: string;
   direction: "in" | "out";
   body: string;
+  messageType: string;
+  mediaUrl: string | null;
   sentByStaffName: string | null;
   sentAsProxy: boolean;
   createdAt: string;
@@ -62,6 +64,8 @@ export async function getChatThread(
       id,
       direction,
       body,
+      message_type,
+      media_url,
       sent_as_proxy,
       created_at,
       staff_profiles!messages_sent_by_staff_id_fkey (
@@ -92,6 +96,8 @@ export async function getChatThread(
       id: msg.id,
       direction: msg.direction as "in" | "out",
       body: msg.body,
+      messageType: msg.message_type ?? "text",
+      mediaUrl: msg.media_url ?? null,
       sentByStaffName: (msg.staff_profiles as unknown as { display_name: string } | null)?.display_name ?? null,
       sentAsProxy: msg.sent_as_proxy,
       createdAt: msg.created_at,
@@ -209,6 +215,8 @@ export async function getMessagesSince(
       id,
       direction,
       body,
+      message_type,
+      media_url,
       sent_as_proxy,
       created_at,
       staff_profiles!messages_sent_by_staff_id_fkey (
@@ -231,6 +239,8 @@ export async function getMessagesSince(
     id: msg.id,
     direction: msg.direction as "in" | "out",
     body: msg.body,
+    messageType: msg.message_type ?? "text",
+    mediaUrl: msg.media_url ?? null,
     sentByStaffName:
       (msg.staff_profiles as unknown as { display_name: string } | null)?.display_name ?? null,
     sentAsProxy: msg.sent_as_proxy,

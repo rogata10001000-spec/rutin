@@ -8,6 +8,8 @@ export type RealtimeMessage = {
   end_user_id: string;
   direction: "in" | "out";
   body: string;
+  message_type: string;
+  media_url: string | null;
   sent_as_proxy: boolean;
   created_at: string;
   sent_by_staff_id: string | null;
@@ -55,6 +57,8 @@ function parseRealtimeMessage(payload: Record<string, unknown>): RealtimeMessage
     end_user_id: endUserId,
     direction,
     body,
+    message_type: typeof payload.message_type === "string" ? payload.message_type : "text",
+    media_url: typeof payload.media_url === "string" ? payload.media_url : null,
     sent_as_proxy: Boolean(payload.sent_as_proxy),
     created_at: createdAt,
     sent_by_staff_id:

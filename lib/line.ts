@@ -3,6 +3,8 @@ import { fetchWithRetry } from "@/lib/http-client";
 import { logger } from "@/lib/logger";
 
 const LINE_API_BASE = "https://api.line.me/v2/bot";
+// 画像などのメッセージ本体（バイナリ）は data ドメインから取得する。
+const LINE_DATA_API_BASE = "https://api-data.line.me/v2/bot";
 
 /**
  * LINE送受信に必要な資格情報。
@@ -73,6 +75,33 @@ export const pushTextMessage = async (
     logger.error("LINE push failed", { status: res.status, lineUserId });
     throw new Error(`LINE push failed: ${res.status} - ${errorText.slice(0, 200)}`);
   }
+};
+
+/**
+ * ユーザーが送ってきた画像・動画・音声・ファイルの本体を取得する。
+ * LINEのメッセージIDから data ドメインのコンテンツAPIでバイナリを取得する。
+ */
+export const getLineMessageContent = async (
+  account: Pick<LineAccountCredentials, "accessToken">,
+  messageId: string
+): Promise<{ data: ArrayBuffer; contentType: string }> => {
+  const res = await fetchWithRetry(
+    `${LINE_DATA_API_BASE}/message/${encodeURIComponent(messageId)}/content`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${account.accessToken}` },
+    }
+  );
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    logger.error("LINE get message content failed", { status: res.status, messageId });
+    throw new Error(`LINE get content failed: ${res.status} - ${errorText.slice(0, 200)}`);
+  }
+
+  const contentType = res.headers.get("content-type") ?? "application/octet-stream";
+  const data = await res.arrayBuffer();
+  return { data, contentType };
 };
 
 /**

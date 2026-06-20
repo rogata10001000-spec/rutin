@@ -148,6 +148,8 @@ type MessagesRow = {
   end_user_id: string;
   direction: MessageDirection;
   body: string;
+  message_type: string;
+  media_url: string | null;
   line_message_id: string | null;
   line_account_id: string | null;
   sent_by_staff_id: string | null;
@@ -587,9 +589,11 @@ export interface Database {
       };
       messages: {
         Row: MessagesRow;
-        Insert: Omit<MessagesRow, "id" | "created_at" | "sent_as_proxy" | "line_message_id" | "line_account_id" | "proxy_for_cast_id" | "sent_by_staff_id"> & {
+        Insert: Omit<MessagesRow, "id" | "created_at" | "sent_as_proxy" | "message_type" | "media_url" | "line_message_id" | "line_account_id" | "proxy_for_cast_id" | "sent_by_staff_id"> & {
           id?: string;
           sent_as_proxy?: boolean;
+          message_type?: string;
+          media_url?: string | null;
           line_message_id?: string | null;
           line_account_id?: string | null;
           proxy_for_cast_id?: string | null;
