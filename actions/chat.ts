@@ -84,7 +84,63 @@ export async function getChatThread(
     query = query.lt("created_at", input.cursor);
   }
 
-  const { data: messagesData, error: msgError } = await query;
+  // 直近7日のチェックイン範囲
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  // メッセージとサイド情報の各クエリは互いに独立 → 並列実行で往復回数を削減する
+  // （以前は直列で5往復していたためチャット表示が遅かった）。
+  const [
+    { data: messagesData, error: msgError },
+    { data: user },
+    { data: ledger },
+    { data: pinnedMemos },
+    { data: checkins },
+  ] = await Promise.all([
+    query,
+    supabase
+      .from("end_users")
+      .select(`
+        id,
+        nickname,
+        plan_code,
+        status,
+        birthday,
+        trial_end_at,
+        assigned_cast_id,
+        primary_line_account_id,
+        staff_profiles!end_users_assigned_cast_id_fkey (
+          display_name
+        ),
+        line_official_accounts!end_users_primary_line_account_id_fkey (
+          name
+        ),
+        subscriptions (
+          cancel_at_period_end,
+          current_period_end,
+          status,
+          created_at
+        )
+      `)
+      .eq("id", input.endUserId)
+      .single(),
+    supabase
+      .from("user_point_ledger")
+      .select("delta_points")
+      .eq("end_user_id", input.endUserId),
+    supabase
+      .from("memos")
+      .select("id, category, latest_body")
+      .eq("end_user_id", input.endUserId)
+      .eq("pinned", true)
+      .order("updated_at", { ascending: false }),
+    supabase
+      .from("checkins")
+      .select("date, status")
+      .eq("end_user_id", input.endUserId)
+      .gte("date", sevenDaysAgo.toISOString().split("T")[0])
+      .order("date", { ascending: false }),
+  ]);
 
   if (msgError) {
     return {
@@ -110,34 +166,6 @@ export async function getChatThread(
 
   const nextCursor = hasMore ? messagesData?.[limit]?.created_at ?? null : null;
 
-  // サイド情報取得
-  const { data: user } = await supabase
-    .from("end_users")
-    .select(`
-      id,
-      nickname,
-      plan_code,
-      status,
-      birthday,
-      trial_end_at,
-      assigned_cast_id,
-      primary_line_account_id,
-      staff_profiles!end_users_assigned_cast_id_fkey (
-        display_name
-      ),
-      line_official_accounts!end_users_primary_line_account_id_fkey (
-        name
-      ),
-      subscriptions (
-        cancel_at_period_end,
-        current_period_end,
-        status,
-        created_at
-      )
-    `)
-    .eq("id", input.endUserId)
-    .single();
-
   // 再契約者は古い解約済みサブスクも持つため、解約済み/incomplete を除いた最新を採用。
   const INACTIVE_SUB_STATUSES = new Set(["canceled", "incomplete"]);
   const subList = Array.isArray(user?.subscriptions)
@@ -155,31 +183,7 @@ export async function getChatThread(
       .filter((s) => !INACTIVE_SUB_STATUSES.has(s.status))
       .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))[0] ?? null;
 
-  // ポイント残高
-  const { data: ledger } = await supabase
-    .from("user_point_ledger")
-    .select("delta_points")
-    .eq("end_user_id", input.endUserId);
-
   const pointBalance = (ledger ?? []).reduce((sum, row) => sum + row.delta_points, 0);
-
-  // ピン留めメモ
-  const { data: pinnedMemos } = await supabase
-    .from("memos")
-    .select("id, category, latest_body")
-    .eq("end_user_id", input.endUserId)
-    .eq("pinned", true)
-    .order("updated_at", { ascending: false });
-
-  // 直近7日のチェックイン
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const { data: checkins } = await supabase
-    .from("checkins")
-    .select("date, status")
-    .eq("end_user_id", input.endUserId)
-    .gte("date", sevenDaysAgo.toISOString().split("T")[0])
-    .order("date", { ascending: false });
 
   const staffProfile = user?.staff_profiles as unknown as { display_name: string } | null;
   const lineAccount = user?.line_official_accounts as unknown as { name: string } | null;

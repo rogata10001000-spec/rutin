@@ -213,50 +213,55 @@ export async function getInboxItems(
   const userIds = users.map((u) => u.id);
 
   // ===== 一括クエリで関連データを取得 =====
-  
-  // 全メッセージを一括取得（ユーザーメッセージとメイト返信両方）
-  const { data: allMessages } = await supabase
-    .from("messages")
-    .select("end_user_id, direction, body, created_at")
-    .in("end_user_id", userIds)
-    .order("created_at", { ascending: false });
-
-  // 今日のメイト送信メッセージを一括取得
-  const { data: todayMessages } = await supabase
-    .from("messages")
-    .select("end_user_id")
-    .in("end_user_id", userIds)
-    .eq("direction", "out")
-    .gte("created_at", todayStart.toISOString());
-
-  // 全チェックインを一括取得
-  const { data: allCheckins } = await supabase
-    .from("checkins")
-    .select("end_user_id, date")
-    .in("end_user_id", userIds)
-    .order("date", { ascending: false });
-
-  // 全リスクフラグを一括取得（openのみ）
-  const { data: allRiskFlags } = await supabase
-    .from("risk_flags")
-    .select("end_user_id, risk_level")
-    .in("end_user_id", userIds)
-    .eq("status", "open")
-    .order("created_at", { ascending: false });
-
-  // 過去にリスクフラグが立ったことのあるユーザーを取得
-  const { data: allHistoricalRisks } = await supabase
-    .from("risk_flags")
-    .select("end_user_id")
-    .in("end_user_id", userIds)
-    .in("status", ["resolved", "ack"]);
-
-  // スタッフごとの既読状態
-  const { data: threadReads } = await supabase
-    .from("staff_thread_reads")
-    .select("end_user_id, last_read_at")
-    .eq("staff_id", staff.id)
-    .in("end_user_id", userIds);
+  // 6本は互いに独立しているので並列実行して往復回数を削減する
+  // （以前は直列で、受信トレイ＝ユーザー選択のたびに再実行され遷移が遅かった）。
+  const [
+    { data: allMessages },
+    { data: todayMessages },
+    { data: allCheckins },
+    { data: allRiskFlags },
+    { data: allHistoricalRisks },
+    { data: threadReads },
+  ] = await Promise.all([
+    // 全メッセージ（ユーザーメッセージとメイト返信両方）
+    supabase
+      .from("messages")
+      .select("end_user_id, direction, body, created_at")
+      .in("end_user_id", userIds)
+      .order("created_at", { ascending: false }),
+    // 今日のメイト送信メッセージ
+    supabase
+      .from("messages")
+      .select("end_user_id")
+      .in("end_user_id", userIds)
+      .eq("direction", "out")
+      .gte("created_at", todayStart.toISOString()),
+    // 全チェックイン
+    supabase
+      .from("checkins")
+      .select("end_user_id, date")
+      .in("end_user_id", userIds)
+      .order("date", { ascending: false }),
+    // 全リスクフラグ（openのみ）
+    supabase
+      .from("risk_flags")
+      .select("end_user_id, risk_level")
+      .in("end_user_id", userIds)
+      .eq("status", "open")
+      .order("created_at", { ascending: false }),
+    // 過去にリスクフラグが立ったことのあるユーザー
+    supabase
+      .from("risk_flags")
+      .select("end_user_id")
+      .in("end_user_id", userIds)
+      .in("status", ["resolved", "ack"]),
+    // スタッフごとの既読状態
+    supabase
+      .from("staff_thread_reads")
+      .select("end_user_id, last_read_at")
+      .eq("staff_id", staff.id)
+      .in("end_user_id", userIds),
+  ]);
 
   const previousRiskUserIds = new Set(
     (allHistoricalRisks ?? []).map((r) => r.end_user_id)
