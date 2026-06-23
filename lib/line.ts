@@ -141,16 +141,11 @@ export const pushImageMessage = async (
 };
 
 /**
- * 未契約ユーザー向けに、長いURLを本文へ出さずメイト選択へ案内する。
+ * メイト選択への案内 Flex メッセージ本体を組み立てる（push/reply 共用）。
  */
-export const sendSubscribeGuideFlexMessage = async (
-  account: Pick<LineAccountCredentials, "accessToken">,
-  lineUserId: string,
-  subscribeUrl: string,
-  trialDays: number
-): Promise<void> => {
+const buildSubscribeGuideFlex = (subscribeUrl: string, trialDays: number) => {
   const trialLabel = `${trialDays}日間`;
-  const flexMessage = {
+  return {
     type: "flex",
     altText: `メイトを選んで${trialLabel}無料トライアルを始められます`,
     contents: {
@@ -203,6 +198,43 @@ export const sendSubscribeGuideFlexMessage = async (
       },
     },
   };
+};
+
+/**
+ * 受信メッセージへの返信（reply API）。push と異なり無料枠を消費せず、
+ * 1つの replyToken につき1回・約1分以内のみ有効。未契約者への案内に使う。
+ */
+export const replyMessages = async (
+  account: Pick<LineAccountCredentials, "accessToken">,
+  replyToken: string,
+  messages: Array<Record<string, unknown>>
+): Promise<void> => {
+  const res = await fetchWithRetry(`${LINE_API_BASE}/message/reply`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${account.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ replyToken, messages }),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    logger.error("LINE reply failed", { status: res.status });
+    throw new Error(`LINE reply failed: ${res.status} - ${errorText.slice(0, 200)}`);
+  }
+};
+
+/**
+ * 未契約ユーザー向けに、長いURLを本文へ出さずメイト選択へ案内する（push）。
+ */
+export const sendSubscribeGuideFlexMessage = async (
+  account: Pick<LineAccountCredentials, "accessToken">,
+  lineUserId: string,
+  subscribeUrl: string,
+  trialDays: number
+): Promise<void> => {
+  const flexMessage = buildSubscribeGuideFlex(subscribeUrl, trialDays);
 
   const res = await fetchWithRetry(`${LINE_API_BASE}/message/push`, {
     method: "POST",
@@ -226,6 +258,18 @@ export const sendSubscribeGuideFlexMessage = async (
       `LINE subscribe guide Flex message failed: ${res.status} - ${errorText.slice(0, 200)}`
     );
   }
+};
+
+/**
+ * 未契約ユーザーの受信メッセージへ、メイト選択案内を返信する（reply・無料）。
+ */
+export const replySubscribeGuideFlexMessage = async (
+  account: Pick<LineAccountCredentials, "accessToken">,
+  replyToken: string,
+  subscribeUrl: string,
+  trialDays: number
+): Promise<void> => {
+  await replyMessages(account, replyToken, [buildSubscribeGuideFlex(subscribeUrl, trialDays)]);
 };
 
 /**

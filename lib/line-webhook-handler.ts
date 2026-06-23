@@ -3,6 +3,7 @@ import "server-only";
 import {
   pushTextMessage,
   sendSubscribeGuideFlexMessage,
+  replySubscribeGuideFlexMessage,
   switchRichMenu,
   verifyLineSignature,
   parsePostbackData,
@@ -68,6 +69,56 @@ type SupabaseAdmin = ReturnType<typeof createAdminSupabaseClient>;
 
 const DEFAULT_PLAN_CODE = getServerEnv().TRIAL_PLAN_CODE;
 const CONTRACTED_STATUSES_EXCLUDED = ["incomplete", "canceled"] as const;
+
+// 未契約（incomplete / canceled）ユーザーへ案内を再送するまでの最短間隔。
+// 同一ユーザーへ短時間に案内Flexを連投しない（連投はAPI濫用にもUX悪化にもなる）。
+const GUIDE_THROTTLE_MS = 30 * 60 * 1000;
+
+/** 未契約（サービス未提供）状態か。null/未知の状態も未契約扱いにする。 */
+function isUncontractedStatus(status: string | null | undefined): boolean {
+  return !status || (CONTRACTED_STATUSES_EXCLUDED as readonly string[]).includes(status);
+}
+
+/**
+ * 未契約ユーザーの受信に対し、契約案内（メイト選択Flex）を返信する。
+ * - reply API を使うため無料枠を消費しない。
+ * - 直近 GUIDE_THROTTLE_MS 以内に案内済みなら黙る（連投防止）。
+ * - 送信できたら last_guide_sent_at を更新する。
+ */
+async function replyUncontractedGuide(
+  supabase: SupabaseAdmin,
+  account: ResolvedLineAccount,
+  endUserId: string,
+  lineUserId: string,
+  replyToken: string,
+  lastGuideSentAt: string | null
+): Promise<void> {
+  if (
+    lastGuideSentAt &&
+    Date.now() - new Date(lastGuideSentAt).getTime() < GUIDE_THROTTLE_MS
+  ) {
+    return;
+  }
+
+  try {
+    await replySubscribeGuideFlexMessage(
+      account.credentials,
+      replyToken,
+      buildSubscribeUrl(lineUserId),
+      getTrialPeriodDays()
+    );
+    await supabase
+      .from("end_users")
+      .update({ last_guide_sent_at: new Date().toISOString() })
+      .eq("id", endUserId);
+  } catch (err) {
+    logger.warn("LINE uncontracted guide reply failed", {
+      lineUserId,
+      endUserId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+  }
+}
 
 // リッチメニューのボタンが「テキスト送信」アクションの場合に届く定型文。
 // 会話ではなくナビゲーション操作として扱い、生URLを露出せず案内（Flex/管理リンク）で応答する。
@@ -419,16 +470,38 @@ export async function handleLineWebhook(
       }
 
       const result = await withWebhookIdempotency("line", eventId, "message", async () => {
-        const { data: user } = await supabase
+        const { data: existing } = await supabase
           .from("end_users")
-          .select("id, status, nickname, line_profile_synced_at")
+          .select("id, status, nickname, line_profile_synced_at, last_guide_sent_at")
           .eq("line_user_id", lineUserId)
           .maybeSingle();
 
-        if (!user) {
-          const createdUser = await ensureIncompleteEndUser(supabase, lineUserId, DEFAULT_PLAN_CODE);
-          const firstContactAt = new Date(event.timestamp).toISOString();
+        // ユーザー行の解決（無ければ作成）。follow を取りこぼした初回メッセージでも
+        // ファネル計上と案内のために行は用意する。会話自体の保存は契約状態で判断する。
+        let userId: string;
+        let status: string;
+        let lastGuideSentAt: string | null;
+        let isNew = false;
 
+        if (existing) {
+          userId = existing.id;
+          status = existing.status;
+          lastGuideSentAt = existing.last_guide_sent_at;
+
+          await syncLineProfileToEndUser(supabase, account, {
+            endUserId: existing.id,
+            lineUserId,
+            nickname: existing.nickname,
+            lastSyncedAt: existing.line_profile_synced_at,
+          });
+        } else {
+          const createdUser = await ensureIncompleteEndUser(supabase, lineUserId, DEFAULT_PLAN_CODE);
+          userId = createdUser.id;
+          status = "incomplete";
+          lastGuideSentAt = null;
+          isNew = createdUser.isNew;
+
+          const firstContactAt = new Date(event.timestamp).toISOString();
           await supabase
             .from("end_users")
             .update({ line_followed_at: firstContactAt })
@@ -460,67 +533,52 @@ export async function handleLineWebhook(
             lastSyncedAt: createdUser.lineProfileSyncedAt,
             force: createdUser.isNew,
           });
+        }
 
-          await markPrimaryAccountIfMate(supabase, account, createdUser.id);
+        await markPrimaryAccountIfMate(supabase, account, userId);
 
-          if (createdUser.isNew) {
+        // 未契約（incomplete / canceled）ユーザーの連絡は受け付けない。
+        // 保存・画像取得・スタッフ通知を行わず、契約への案内のみ返す（＝管理画面にも出ない）。
+        if (isUncontractedStatus(status)) {
+          if (isNew) {
+            // 初回接触は welcome + リッチメニューで迎える（follow 取りこぼしの保険）。
             await sendLineUncontractedOnboarding(
               account,
               lineUserId,
               buildWelcomeMessage(lineUserId)
             );
+            await supabase
+              .from("end_users")
+              .update({ last_guide_sent_at: new Date().toISOString() })
+              .eq("id", userId);
+          } else {
+            await replyUncontractedGuide(
+              supabase,
+              account,
+              userId,
+              lineUserId,
+              event.replyToken,
+              lastGuideSentAt
+            );
           }
 
-          const content = await resolveInboundContent(
-            supabase,
-            account,
-            createdUser.id,
-            inboundMessage
-          );
-          const saved = await saveInboundMessage(
-            supabase,
-            createdUser.id,
-            messageId,
-            content,
-            "incomplete",
-            lineAccountId
-          );
-
-          return {
-            userId: createdUser.id,
-            messageId: saved.messageId,
-            duplicate: saved.duplicate,
-            body: content.body,
-            isNew: true,
-          };
+          return { uncontracted: true, userId };
         }
 
-        await syncLineProfileToEndUser(supabase, account, {
-          endUserId: user.id,
-          lineUserId,
-          nickname: user.nickname,
-          lastSyncedAt: user.line_profile_synced_at,
-        });
-
-        await markPrimaryAccountIfMate(supabase, account, user.id);
-
-        const content = await resolveInboundContent(
-          supabase,
-          account,
-          user.id,
-          inboundMessage
-        );
+        // 契約者（trial / active / past_due / paused）は従来どおり受信・保存する。
+        const content = await resolveInboundContent(supabase, account, userId, inboundMessage);
         const saved = await saveInboundMessage(
           supabase,
-          user.id,
+          userId,
           messageId,
           content,
-          user.status,
+          status,
           lineAccountId
         );
 
         return {
-          userId: user.id,
+          uncontracted: false,
+          userId,
           messageId: saved.messageId,
           duplicate: saved.duplicate,
           body: content.body,
@@ -531,7 +589,8 @@ export async function handleLineWebhook(
         logger.error("LINE webhook message error", { message: result.message, eventId });
       }
 
-      if (result.status === "processed") {
+      // 通知は契約者の保存メッセージに対してのみ送る（未契約者では一切通知しない）。
+      if (result.status === "processed" && !result.data.uncontracted) {
         const isDuplicate = "duplicate" in result.data && result.data.duplicate;
         const messageIdForPush = "messageId" in result.data ? result.data.messageId : null;
 
