@@ -345,6 +345,17 @@ export async function handleLineWebhook(
     const lineUserId = event.source.userId;
     const eventId = event.webhookEventId;
 
+    // ブロック済みユーザーは一切処理しない（保存・通知・案内・プロフィール同期すべてしない）。
+    // 拡散されたメイトLINEを荒らす相手を運用側で完全に遮断するための関門。
+    const { data: blockState } = await supabase
+      .from("end_users")
+      .select("is_blocked")
+      .eq("line_user_id", lineUserId)
+      .maybeSingle();
+    if (blockState?.is_blocked) {
+      continue;
+    }
+
     if (event.type === "follow") {
       const result = await withWebhookIdempotency("line", eventId, "follow", async () => {
         const user = await ensureIncompleteEndUser(supabase, lineUserId, DEFAULT_PLAN_CODE);
@@ -396,7 +407,7 @@ export async function handleLineWebhook(
         // 契約者が共通LINEを再追加した場合だけ、共通LINE側の契約済メニューを復元する。
         const { data: statusRow } = await supabase
           .from("end_users")
-          .select("status")
+          .select("status, last_guide_sent_at")
           .eq("id", user.id)
           .maybeSingle();
         const status = statusRow?.status ?? "incomplete";
@@ -405,11 +416,23 @@ export async function handleLineWebhook(
         if (isContracted) {
           await applyDefaultContractedRichMenu(account, lineUserId);
         } else {
-          await sendLineUncontractedOnboarding(
-            account,
-            lineUserId,
-            buildWelcomeMessage(lineUserId)
-          );
+          // welcome push は連投しない（再追加のたびに無料枠を消費しない）。
+          // 直近に案内済みなら welcome を送らず、未送信なら送って last_guide_sent_at を更新。
+          const lastGuide = statusRow?.last_guide_sent_at ?? null;
+          const recentlyGuided =
+            lastGuide && Date.now() - new Date(lastGuide).getTime() < GUIDE_THROTTLE_MS;
+
+          if (!recentlyGuided) {
+            await sendLineUncontractedOnboarding(
+              account,
+              lineUserId,
+              buildWelcomeMessage(lineUserId)
+            );
+            await supabase
+              .from("end_users")
+              .update({ last_guide_sent_at: new Date().toISOString() })
+              .eq("id", user.id);
+          }
         }
 
         return { success: true, userId: user.id, isNew: user.isNew };

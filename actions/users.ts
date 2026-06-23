@@ -176,6 +176,7 @@ export type UserDetail = {
   assignedCastName: string | null;
   tags: string[];
   createdAt: string;
+  isBlocked: boolean;
   subscription: {
     id: string;
     stripeSubscriptionId: string;
@@ -226,6 +227,7 @@ export async function getUserDetail(
       assigned_cast_id,
       tags,
       created_at,
+      is_blocked,
       staff_profiles!end_users_assigned_cast_id_fkey (
         display_name
       )
@@ -313,6 +315,7 @@ export async function getUserDetail(
       assignedCastName: staffProfile?.display_name ?? null,
       tags: user.tags ?? [],
       createdAt: user.created_at,
+      isBlocked: user.is_blocked ?? false,
       subscription: subscription
         ? {
             id: subscription.id,
@@ -440,6 +443,60 @@ export async function updateEndUser(
   });
 
   return { ok: true, data: { id: endUserId } };
+}
+
+export type SetEndUserBlockedResult = Result<{ id: string; isBlocked: boolean }>;
+
+/**
+ * エンドユーザーのブロック切替（Admin/Supervisor）。
+ * ブロック中は LINE Webhook 冒頭で遮断され、メッセージ保存・通知・案内が一切行われない。
+ */
+export async function setEndUserBlocked(input: {
+  endUserId: string;
+  blocked: boolean;
+}): Promise<SetEndUserBlockedResult> {
+  const staff = await getCurrentStaff();
+  if (!staff) {
+    return {
+      ok: false,
+      error: { code: "UNAUTHORIZED", message: "ログインが必要です" },
+    };
+  }
+  if (staff.role !== "admin" && staff.role !== "supervisor") {
+    return {
+      ok: false,
+      error: { code: "FORBIDDEN", message: "この操作を行う権限がありません" },
+    };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  const { error } = await supabase
+    .from("end_users")
+    .update({
+      is_blocked: input.blocked,
+      blocked_at: input.blocked ? new Date().toISOString() : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.endUserId);
+
+  if (error) {
+    logger.error("setEndUserBlocked: update failed", { error: error.message });
+    return {
+      ok: false,
+      error: { code: "UNKNOWN", message: "更新に失敗しました" },
+    };
+  }
+
+  await writeAuditLog({
+    action: input.blocked ? "USER_BLOCKED" : "USER_UNBLOCKED",
+    targetType: "end_users",
+    targetId: input.endUserId,
+    success: true,
+    metadata: { blocked: input.blocked },
+  });
+
+  return { ok: true, data: { id: input.endUserId, isBlocked: input.blocked } };
 }
 
 export type CreateEndUserResult = Result<{ id: string }>;

@@ -102,6 +102,8 @@ type EndUsersRow = {
   line_followed_at: string | null;
   checkout_started_at: string | null;
   last_guide_sent_at: string | null;
+  is_blocked: boolean;
+  blocked_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -547,9 +549,11 @@ export interface Database {
       };
       end_users: {
         Row: EndUsersRow;
-        Insert: Omit<EndUsersRow, "id" | "created_at" | "updated_at" | "paused_priority_penalty" | "tags" | "birthday" | "trial_end_at" | "trial_started_at" | "subscribed_at" | "canceled_at" | "line_followed_at" | "checkout_started_at" | "last_guide_sent_at" | "assigned_cast_id" | "primary_line_account_id" | "email" | "email_verified_at" | "phone" | "line_display_name" | "line_picture_url" | "line_profile_synced_at"> & {
+        Insert: Omit<EndUsersRow, "id" | "created_at" | "updated_at" | "paused_priority_penalty" | "tags" | "birthday" | "trial_end_at" | "trial_started_at" | "subscribed_at" | "canceled_at" | "line_followed_at" | "checkout_started_at" | "last_guide_sent_at" | "is_blocked" | "blocked_at" | "assigned_cast_id" | "primary_line_account_id" | "email" | "email_verified_at" | "phone" | "line_display_name" | "line_picture_url" | "line_profile_synced_at"> & {
           id?: string;
           last_guide_sent_at?: string | null;
+          is_blocked?: boolean;
+          blocked_at?: string | null;
           paused_priority_penalty?: number;
           tags?: string[];
           birthday?: string | null;

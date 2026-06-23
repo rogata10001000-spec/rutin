@@ -41,6 +41,11 @@ export default async function UserDetailPage({
           <div className="mt-2 flex flex-wrap gap-2">
             <BadgePlan plan={user.planCode as "light" | "standard" | "premium"} />
             <BadgeStatus status={user.status as "trial" | "active" | "past_due" | "paused" | "canceled" | "incomplete"} />
+            {user.isBlocked && (
+              <span className="inline-flex items-center whitespace-nowrap rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-bold text-red-700 ring-1 ring-inset ring-red-600/20">
+                🚫 ブロック中
+              </span>
+            )}
             {user.assignedCastName && (
               <span className="text-sm text-stone-500">
                 担当: {user.assignedCastName}
