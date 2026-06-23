@@ -12,6 +12,7 @@ import { NextUserButton } from "./NextUserButton";
 import { useToast } from "@/components/common/Toast";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { BadgePlan } from "@/components/common/Badge";
+import { resolveChatMediaUrl } from "@/lib/chat-media";
 import { useMessageRealtime } from "@/hooks/useMessageRealtime";
 
 type ChatContainerProps = {
@@ -92,7 +93,7 @@ export function ChatContainer({
             direction: message.direction,
             body: message.body,
             messageType: message.message_type,
-            mediaUrl: message.media_url,
+            mediaUrl: resolveChatMediaUrl(message.id, message.message_type, message.media_url),
             sentByStaffName: null,
             sentAsProxy: message.sent_as_proxy,
             createdAt: message.created_at,

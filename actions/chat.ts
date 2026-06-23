@@ -2,6 +2,7 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { canAccessUser } from "@/lib/auth";
+import { resolveChatMediaUrl } from "@/lib/chat-media";
 import { Result } from "./types";
 
 export type Message = {
@@ -97,7 +98,7 @@ export async function getChatThread(
       direction: msg.direction as "in" | "out",
       body: msg.body,
       messageType: msg.message_type ?? "text",
-      mediaUrl: msg.media_url ?? null,
+      mediaUrl: resolveChatMediaUrl(msg.id, msg.message_type ?? "text", msg.media_url ?? null),
       sentByStaffName: (msg.staff_profiles as unknown as { display_name: string } | null)?.display_name ?? null,
       sentAsProxy: msg.sent_as_proxy,
       createdAt: msg.created_at,
@@ -272,7 +273,7 @@ export async function getMessagesSince(
     direction: msg.direction as "in" | "out",
     body: msg.body,
     messageType: msg.message_type ?? "text",
-    mediaUrl: msg.media_url ?? null,
+    mediaUrl: resolveChatMediaUrl(msg.id, msg.message_type ?? "text", msg.media_url ?? null),
     sentByStaffName:
       (msg.staff_profiles as unknown as { display_name: string } | null)?.display_name ?? null,
     sentAsProxy: msg.sent_as_proxy,

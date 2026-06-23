@@ -84,6 +84,12 @@ const FOLLOW_SURGE_WINDOW_MS = 10 * 60 * 1000;
 const FOLLOW_SURGE_THRESHOLD = 20;
 const FOLLOW_SURGE_ALERT_COOLDOWN_MS = 60 * 60 * 1000;
 
+// 同一 line_user_id からの受信メッセージの上限（自動ソフトブロック）。
+// 契約者・トライアルを含め、人間の会話速度を大きく超える連投を一時的に drop する。
+// Dの手動ブロックの自動版。閾値は人間の通常会話より十分高く設定。
+const INBOUND_MSG_RATE_WINDOW_MS = 60 * 1000;
+const INBOUND_MSG_RATE_MAX = 30;
+
 /** 未契約（サービス未提供）状態か。null/未知の状態も未契約扱いにする。 */
 function isUncontractedStatus(status: string | null | undefined): boolean {
   return !status || (CONTRACTED_STATUSES_EXCLUDED as readonly string[]).includes(status);
@@ -275,8 +281,9 @@ async function resolveInboundContent(
         throw new Error(uploadError.message);
       }
 
-      const mediaUrl = supabase.storage.from("chat-media").getPublicUrl(path).data.publicUrl;
-      return { body: "[画像]", messageType: "image", mediaUrl };
+      // 公開URLではなくストレージ内パスを保存する。バケットは非公開で、
+      // 配信は /api/chat-media が認証・担当チェック後に署名付きURLで行う。
+      return { body: "[画像]", messageType: "image", mediaUrl: path };
     } catch (err) {
       logger.error("LINE image content fetch/upload failed", {
         messageId: message.id,
@@ -536,6 +543,18 @@ export async function handleLineWebhook(
     if (event.type === "message") {
       const inboundMessage = event.message;
       const messageId = inboundMessage.id;
+
+      // 自動ソフトブロック: 同一ユーザーからの受信が短時間に上限を超えたら drop。
+      // 契約者・トライアルを含む大量送信（ストレージ/通知の濫用）を止める。
+      const withinInboundLimit = await checkRateLimit({
+        key: `line_inbound:${lineUserId}`,
+        windowMs: INBOUND_MSG_RATE_WINDOW_MS,
+        maxRequests: INBOUND_MSG_RATE_MAX,
+      });
+      if (!withinInboundLimit) {
+        logger.warn("LINE inbound message rate limit exceeded; dropping", { lineUserId });
+        continue;
+      }
 
       // リッチメニュー「メイトを選ぶ」等のテキスト送信ボタンはコマンドとして処理する。
       // 会話としては保存・スタッフ通知せず、契約状態に応じた案内を返す（未契約はFlexカードでURLを隠す）。
