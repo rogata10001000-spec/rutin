@@ -1,8 +1,9 @@
-import { getFunnelAnalytics, getDailyTrend } from "@/actions/admin/funnel";
+import { getFunnelAnalytics, getDailyTrend, getAcquisitionAnalytics } from "@/actions/admin/funnel";
 import { getCohortAnalysis } from "@/actions/admin/cohort";
 import { FunnelDashboard } from "@/components/admin/funnel/FunnelDashboard";
 import { CohortTable } from "@/components/admin/funnel/CohortTable";
 import { DailyTrend } from "@/components/admin/funnel/DailyTrend";
+import { AcquisitionBreakdown } from "@/components/admin/funnel/AcquisitionBreakdown";
 import { ErrorState } from "@/components/common/ErrorState";
 
 export const dynamic = "force-dynamic";
@@ -15,10 +16,11 @@ export default async function FunnelPage({
   const params = await searchParams;
   const days = params.days ? parseInt(params.days, 10) : 30;
 
-  const [result, trendResult, cohortResult] = await Promise.all([
+  const [result, trendResult, cohortResult, acquisitionResult] = await Promise.all([
     getFunnelAnalytics({ days }),
     getDailyTrend({ days }),
     getCohortAnalysis(),
+    getAcquisitionAnalytics({ days }),
   ]);
 
   if (!result.ok) {
@@ -36,6 +38,7 @@ export default async function FunnelPage({
 
       <div className="space-y-6">
         <FunnelDashboard data={result.data} />
+        {acquisitionResult.ok && <AcquisitionBreakdown data={acquisitionResult.data} />}
         {trendResult.ok && <DailyTrend points={trendResult.data.points} />}
         {cohortResult.ok && <CohortTable data={cohortResult.data} />}
       </div>

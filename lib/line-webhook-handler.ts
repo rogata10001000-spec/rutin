@@ -23,6 +23,7 @@ import {
   notifyStaffOfInboundMessage,
   notifyManagersOfFollowSurge,
 } from "@/lib/push-notifications";
+import { applyAcquisitionToEndUser } from "@/lib/acquisition";
 import {
   ensureIncompleteEndUser,
   sendLineUncontractedOnboarding,
@@ -489,6 +490,9 @@ export async function handleLineWebhook(
 
         // 追加直後の件数で急増（拡散・荒らし）を検知して管理者へ通知する。
         await checkFollowSurge(supabase, account);
+
+        // LIFF入口で捕捉済みの流入元があれば first-touch で確定する。
+        await applyAcquisitionToEndUser(supabase, lineUserId, user.id);
 
         await syncLineProfileToEndUser(supabase, account, {
           endUserId: user.id,

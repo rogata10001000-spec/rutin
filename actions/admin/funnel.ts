@@ -186,3 +186,82 @@ export async function getDailyTrend(input?: { days?: number }): Promise<DailyTre
     },
   };
 }
+
+// =====================================================
+// 流入元分析（公式LINEの友だち追加の流入元）
+// =====================================================
+
+export type AcquisitionSourceRow = {
+  /** 流入元（未捕捉は「(直接/不明)」） */
+  source: string;
+  /** 期間内の追加（友だち追加）数 */
+  added: number;
+  /** うち契約・トライアル中（trial/active/past_due/paused） */
+  contracted: number;
+  /** 転換率（contracted / added） */
+  conversionRate: number | null;
+};
+
+export type AcquisitionAnalytics = {
+  periodDays: number;
+  total: number;
+  sources: AcquisitionSourceRow[];
+};
+
+const ACQUISITION_UNKNOWN_LABEL = "(直接/不明)";
+const CONTRACTED_STATUSES = new Set(["trial", "active", "past_due", "paused"]);
+
+export async function getAcquisitionAnalytics(input?: {
+  days?: number;
+}): Promise<Result<AcquisitionAnalytics>> {
+  const auth = await requireAdminOrSupervisor();
+  if (!auth) {
+    return { ok: false, error: { code: "FORBIDDEN", message: "権限がありません" } };
+  }
+
+  const requestedDays = input?.days ?? 30;
+  const days = ALLOWED_DAYS.includes(requestedDays as (typeof ALLOWED_DAYS)[number])
+    ? requestedDays
+    : 30;
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+
+  const supabase = await createServerSupabaseClient();
+
+  const { data: users, error } = await supabase
+    .from("end_users")
+    .select("acquisition_source, status, created_at")
+    .gte("created_at", since);
+
+  if (error) {
+    return { ok: false, error: { code: "UNKNOWN", message: "データの取得に失敗しました" } };
+  }
+
+  const tally = new Map<string, { added: number; contracted: number }>();
+  for (const u of users ?? []) {
+    const key = u.acquisition_source?.trim() || ACQUISITION_UNKNOWN_LABEL;
+    const row = tally.get(key) ?? { added: 0, contracted: 0 };
+    row.added += 1;
+    if (CONTRACTED_STATUSES.has(u.status)) {
+      row.contracted += 1;
+    }
+    tally.set(key, row);
+  }
+
+  const sources: AcquisitionSourceRow[] = Array.from(tally.entries())
+    .map(([source, v]) => ({
+      source,
+      added: v.added,
+      contracted: v.contracted,
+      conversionRate: v.added > 0 ? v.contracted / v.added : null,
+    }))
+    .sort((a, b) => b.added - a.added);
+
+  return {
+    ok: true,
+    data: {
+      periodDays: days,
+      total: (users ?? []).length,
+      sources,
+    },
+  };
+}
