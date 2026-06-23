@@ -19,7 +19,10 @@ import { logger } from "@/lib/logger";
 import { generateUserToken } from "@/lib/auth";
 import { getServerEnv } from "@/lib/env";
 import { getLineWelcomeTrialMessage, getTrialPeriodDays } from "@/lib/trial";
-import { notifyStaffOfInboundMessage } from "@/lib/push-notifications";
+import {
+  notifyStaffOfInboundMessage,
+  notifyManagersOfFollowSurge,
+} from "@/lib/push-notifications";
 import {
   ensureIncompleteEndUser,
   sendLineUncontractedOnboarding,
@@ -74,6 +77,13 @@ const CONTRACTED_STATUSES_EXCLUDED = ["incomplete", "canceled"] as const;
 // 同一ユーザーへ短時間に案内Flexを連投しない（連投はAPI濫用にもUX悪化にもなる）。
 const GUIDE_THROTTLE_MS = 30 * 60 * 1000;
 
+// 友だち追加の急増（拡散・荒らし）検知のパラメータ。
+// 直近 WINDOW 内に同一アカウントで THRESHOLD 件以上の follow があればアラート。
+// 同一アカウントのアラートは COOLDOWN 内に1回までに抑える（通知連投の防止）。
+const FOLLOW_SURGE_WINDOW_MS = 10 * 60 * 1000;
+const FOLLOW_SURGE_THRESHOLD = 20;
+const FOLLOW_SURGE_ALERT_COOLDOWN_MS = 60 * 60 * 1000;
+
 /** 未契約（サービス未提供）状態か。null/未知の状態も未契約扱いにする。 */
 function isUncontractedStatus(status: string | null | undefined): boolean {
   return !status || (CONTRACTED_STATUSES_EXCLUDED as readonly string[]).includes(status);
@@ -115,6 +125,83 @@ async function replyUncontractedGuide(
     logger.warn("LINE uncontracted guide reply failed", {
       lineUserId,
       endUserId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+  }
+}
+
+/**
+ * 友だち追加の急増を検知し、閾値超過なら admin / supervisor へ通知する。
+ * follow ライフサイクルイベント（再追加も含む全 follow）を直近ウィンドウで集計する。
+ * 検知失敗は follow 処理本体に影響させない（自前で握りつぶす）。
+ */
+async function checkFollowSurge(
+  supabase: SupabaseAdmin,
+  account: ResolvedLineAccount
+): Promise<void> {
+  try {
+    const windowStart = new Date(Date.now() - FOLLOW_SURGE_WINDOW_MS).toISOString();
+    const windowMinutes = FOLLOW_SURGE_WINDOW_MS / 60000;
+
+    // アカウント単位で集計（メイト個別= cast_id、共通= cast_id is null）。
+    let countQuery = supabase
+      .from("subscription_lifecycle_events")
+      .select("id", { count: "exact", head: true })
+      .eq("event_type", "line_follow")
+      .gte("occurred_at", windowStart);
+    countQuery = account.castId
+      ? countQuery.eq("cast_id", account.castId)
+      : countQuery.is("cast_id", null);
+
+    const { count, error } = await countQuery;
+    if (error || count === null || count < FOLLOW_SURGE_THRESHOLD) {
+      return;
+    }
+
+    // 同一アカウントのアラート連投を防ぐ（監査ログを連投抑制の記録に兼用）。
+    const targetId = account.id ?? "default";
+    const cooldownStart = new Date(Date.now() - FOLLOW_SURGE_ALERT_COOLDOWN_MS).toISOString();
+    const { data: recentAlert } = await supabase
+      .from("audit_logs")
+      .select("id")
+      .eq("action", "FOLLOW_SURGE_ALERT")
+      .eq("target_id", targetId)
+      .gte("created_at", cooldownStart)
+      .limit(1)
+      .maybeSingle();
+    if (recentAlert) {
+      return;
+    }
+
+    await notifyManagersOfFollowSurge({
+      accountName: account.name,
+      count,
+      windowMinutes,
+    });
+
+    await writeAuditLog({
+      action: "FOLLOW_SURGE_ALERT",
+      targetType: "line_official_accounts",
+      targetId,
+      success: true,
+      metadata: {
+        account_id: account.id,
+        account_name: account.name,
+        follow_count: count,
+        window_minutes: windowMinutes,
+      },
+      actorStaffId: null,
+    });
+
+    logger.warn("LINE follow surge detected", {
+      accountId: account.id,
+      accountName: account.name,
+      count,
+      windowMinutes,
+    });
+  } catch (err) {
+    logger.warn("LINE follow surge check failed", {
+      accountId: account.id,
       error: err instanceof Error ? err.message : "unknown",
     });
   }
@@ -392,6 +479,9 @@ export async function handleLineWebhook(
             is_new: user.isNew,
           },
         });
+
+        // 追加直後の件数で急増（拡散・荒らし）を検知して管理者へ通知する。
+        await checkFollowSurge(supabase, account);
 
         await syncLineProfileToEndUser(supabase, account, {
           endUserId: user.id,

@@ -57,6 +57,7 @@ export type AuditAction =
   | "END_USER_MERGE"
   | "USER_BLOCKED"
   | "USER_UNBLOCKED"
+  | "FOLLOW_SURGE_ALERT"
   // マスタ管理
   | "PLAN_PRICE_CREATE"
   | "PLAN_PRICE_UPDATE"

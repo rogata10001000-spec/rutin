@@ -198,6 +198,49 @@ export async function notifyStaffOfInboundMessage(params: {
   });
 }
 
+/**
+ * 友だち追加の急増（拡散・荒らしの疑い）を admin / supervisor へ通知する。
+ */
+export async function notifyManagersOfFollowSurge(params: {
+  accountName: string;
+  count: number;
+  windowMinutes: number;
+}) {
+  const supabase = createAdminSupabaseClient();
+  const { data: managers, error } = await supabase
+    .from("staff_profiles")
+    .select("id")
+    .in("role", ["admin", "supervisor"])
+    .eq("active", true);
+
+  if (error) {
+    logger.warn("Failed to resolve managers for follow surge alert", { error: error.message });
+    return;
+  }
+
+  const staffIds = (managers ?? []).map((manager) => manager.id);
+  if (staffIds.length === 0) {
+    return;
+  }
+
+  const payload: PushPayload = {
+    title: "⚠️ 友だち追加が急増しています",
+    body: `${params.accountName}に${params.windowMinutes}分で${params.count}件の追加。拡散・荒らしの可能性があります。`,
+    url: "/users",
+    tag: "follow-surge",
+  };
+
+  const results = await Promise.all(staffIds.map((staffId) => sendPushToStaff(staffId, payload)));
+
+  logger.info("Follow surge alert push attempted", {
+    accountName: params.accountName,
+    count: params.count,
+    staffIds,
+    sent: results.reduce((total, result) => total + result.sent, 0),
+    failed: results.reduce((total, result) => total + result.failed, 0),
+  });
+}
+
 /** @deprecated Use notifyStaffOfInboundMessage instead */
 export async function notifyAssignedCastOfInboundMessage(params: {
   endUserId: string;
