@@ -212,23 +212,18 @@ export async function getInboxItems(
 
   const userIds = users.map((u) => u.id);
 
-  // ===== 一括クエリで関連データを取得 =====
-  // 6本は互いに独立しているので並列実行して往復回数を削減する
-  // （以前は直列で、受信トレイ＝ユーザー選択のたびに再実行され遷移が遅かった）。
+  // ===== 一括クエリで関連データを取得（互いに独立 → 並列実行） =====
+  // メッセージは全件転送せず、DB側で per-user 要約（最新メッセージ・最終受信/送信・
+  // 未読数）に集計する RPC を使う（転送量とJS処理を大幅削減）。既読状態も RPC 内で解決。
   const [
-    { data: allMessages },
+    { data: threadSummaries },
     { data: todayMessages },
     { data: allCheckins },
     { data: allRiskFlags },
     { data: allHistoricalRisks },
-    { data: threadReads },
   ] = await Promise.all([
-    // 全メッセージ（ユーザーメッセージとメイト返信両方）
-    supabase
-      .from("messages")
-      .select("end_user_id, direction, body, created_at")
-      .in("end_user_id", userIds)
-      .order("created_at", { ascending: false }),
+    // スレッド要約（最新メッセージ／最終受信・送信時刻／未読数）
+    supabase.rpc("inbox_thread_summary", { p_user_ids: userIds, p_staff_id: staff.id }),
     // 今日のメイト送信メッセージ
     supabase
       .from("messages")
@@ -255,24 +250,17 @@ export async function getInboxItems(
       .select("end_user_id")
       .in("end_user_id", userIds)
       .in("status", ["resolved", "ack"]),
-    // スタッフごとの既読状態
-    supabase
-      .from("staff_thread_reads")
-      .select("end_user_id, last_read_at")
-      .eq("staff_id", staff.id)
-      .in("end_user_id", userIds),
   ]);
 
   const previousRiskUserIds = new Set(
     (allHistoricalRisks ?? []).map((r) => r.end_user_id)
   );
-  const threadReadMap = new Map(
-    (threadReads ?? []).map((r) => [r.end_user_id, r.last_read_at])
+  const summaryMap = new Map(
+    (threadSummaries ?? []).map((s) => [s.end_user_id, s])
   );
 
   // ===== データをユーザーIDでグループ化 =====
-  
-  const messagesMap = groupByUserId(allMessages ?? []);
+
   const checkinsMap = groupByUserId(
     (allCheckins ?? []).map((c) => ({ ...c, end_user_id: c.end_user_id }))
   );
@@ -289,26 +277,19 @@ export async function getInboxItems(
   // ===== 各ユーザーのデータを処理 =====
   
   const items: InboxItem[] = users.map((user) => {
-    const userMessages = messagesMap.get(user.id) ?? [];
+    const summary = summaryMap.get(user.id) ?? null;
     const userCheckins = checkinsMap.get(user.id) ?? [];
     const userRiskFlags = riskFlagsMap.get(user.id) ?? [];
 
-    const latestMessage = userMessages[0];
-    // 最後のユーザーメッセージを取得
-    const lastUserMsg = userMessages.find((m) => m.direction === "in");
-    // 最後のメイト返信を取得
-    const lastCastMsg = userMessages.find((m) => m.direction === "out");
+    // メッセージ由来の値は DB 集計（RPC）から取得する。
+    const lastInboundAt = summary?.last_inbound_at ?? null; // 最終の受信メッセージ時刻
+    const lastOutboundAt = summary?.last_outbound_at ?? null; // 最終のメイト返信時刻
     // 最後のチェックイン
     const lastCheckin = userCheckins[0];
     // リスクフラグ
     const riskFlag = userRiskFlags[0];
 
-    const lastReadAt = threadReadMap.get(user.id) ?? null;
-    const unreadCount = userMessages.filter((m) => {
-      if (m.direction !== "in") return false;
-      if (!lastReadAt) return true;
-      return new Date(m.created_at).getTime() > new Date(lastReadAt).getTime();
-    }).length;
+    const unreadCount = summary?.unread_count ?? 0;
 
     const planCode = user.plan_code as "light" | "standard" | "premium";
     const slaConfig = planSlaConfig[planCode] ?? planSlaConfig.standard;
@@ -318,11 +299,9 @@ export async function getInboxItems(
     let slaRemainingMinutes: number | null = null;
     let hasUnrepliedMessage = false;
 
-    if (lastUserMsg?.created_at) {
-      const lastMsgTime = new Date(lastUserMsg.created_at);
-      const lastReplyTime = lastCastMsg?.created_at
-        ? new Date(lastCastMsg.created_at)
-        : null;
+    if (lastInboundAt) {
+      const lastMsgTime = new Date(lastInboundAt);
+      const lastReplyTime = lastOutboundAt ? new Date(lastOutboundAt) : null;
 
       // 最後のユーザーメッセージが最後の返信より新しい場合、未返信
       if (!lastReplyTime || lastMsgTime > lastReplyTime) {
@@ -339,7 +318,7 @@ export async function getInboxItems(
     }
 
     // 今日送信したかどうか
-    const lastReplyTime = lastCastMsg?.created_at ? new Date(lastCastMsg.created_at) : null;
+    const lastReplyTime = lastOutboundAt ? new Date(lastOutboundAt) : null;
     const sentTodayMessage = hasSentMessageToday(lastReplyTime, now);
 
     // 返信状態を決定
@@ -356,9 +335,7 @@ export async function getInboxItems(
     const lastCheckinDate = lastCheckin?.date
       ? new Date(lastCheckin.date + "T00:00:00")
       : null;
-    const lastMessageDate = lastUserMsg?.created_at
-      ? new Date(lastUserMsg.created_at)
-      : null;
+    const lastMessageDate = lastInboundAt ? new Date(lastInboundAt) : null;
     const unreported = isUnreported(lastCheckinDate, lastMessageDate, 2, now);
 
     // 誕生日判定
@@ -400,8 +377,8 @@ export async function getInboxItems(
         planCode === "premium" ? 1 : planCode === "standard" ? 2 : 3,
       hasUnrepliedMessage,
       hasSentTodayMessage: sentTodayMessage,
-      lastMessageTimestamp: lastUserMsg?.created_at
-        ? new Date(lastUserMsg.created_at).getTime()
+      lastMessageTimestamp: lastInboundAt
+        ? new Date(lastInboundAt).getTime()
         : undefined,
       isTrial: user.status === "trial",
       daysSinceCreation,
@@ -427,8 +404,8 @@ export async function getInboxItems(
       priorityScore,
       hasRisk: !!riskFlag,
       riskLevel: riskFlag?.risk_level ?? null,
-      lastUserMessageAt: lastUserMsg?.created_at ?? null,
-      lastCastMessageAt: lastCastMsg?.created_at ?? null,
+      lastUserMessageAt: lastInboundAt,
+      lastCastMessageAt: lastOutboundAt,
       unrepliedMinutes,
       slaRemainingMinutes,
       slaWarningMinutes: slaConfig.warningMinutes,
@@ -441,9 +418,9 @@ export async function getInboxItems(
       hasSentTodayMessage: sentTodayMessage,
       todaySentCount: todaySentCountMap.get(user.id) ?? 0,
       replyStatus,
-      lastMessageBody: latestMessage?.body ?? null,
-      lastMessageDirection: (latestMessage?.direction as "in" | "out" | undefined) ?? null,
-      lastMessageAt: latestMessage?.created_at ?? null,
+      lastMessageBody: summary?.last_message_body ?? null,
+      lastMessageDirection: (summary?.last_message_direction as "in" | "out" | null) ?? null,
+      lastMessageAt: summary?.last_message_at ?? null,
       unreadCount,
       hasUnread: unreadCount > 0,
     };

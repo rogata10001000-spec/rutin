@@ -997,6 +997,18 @@ export interface Database {
         Args: Record<string, never>;
         Returns: { cohort_month: string; total_incl_tax: number }[];
       };
+      inbox_thread_summary: {
+        Args: { p_user_ids: string[]; p_staff_id: string };
+        Returns: {
+          end_user_id: string;
+          last_message_body: string | null;
+          last_message_direction: string | null;
+          last_message_at: string | null;
+          last_inbound_at: string | null;
+          last_outbound_at: string | null;
+          unread_count: number;
+        }[];
+      };
     };
     Enums: {
       [_ in never]: never;
