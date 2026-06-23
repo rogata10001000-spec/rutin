@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { InboxItem } from "@/actions/inbox";
 import type { StaffRole } from "@/lib/supabase/types";
 import { BadgePlan, BadgeStatus, BadgeSla, BadgeRisk } from "@/components/common/Badge";
@@ -71,6 +71,7 @@ function ReplyDot({ status }: { status: InboxItem["replyStatus"] }) {
 }
 
 export function InboxList({ items, selectedUserId, role }: InboxListProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   // メイト本人は全員が自分の担当なので「担当: ◯◯」は冗長。非表示にしてノイズを減らす。
   const showAssignee = role !== "cast";
@@ -83,6 +84,15 @@ export function InboxList({ items, selectedUserId, role }: InboxListProps) {
       return `/inbox?${params.toString()}`;
     };
   }, [searchParams]);
+
+  // ホバー時に遷移先（チャット）を先読みしてクリック後の表示を即時化する。
+  // Next.js が同一URLのプリフェッチを重複排除するため、なぞっても過剰には走らない。
+  const handlePrefetch = useCallback(
+    (userId: string) => {
+      router.prefetch(buildHref(userId));
+    },
+    [router, buildHref]
+  );
 
   return (
     <ul className="divide-y divide-stone-100">
@@ -97,6 +107,7 @@ export function InboxList({ items, selectedUserId, role }: InboxListProps) {
             <Link
               href={buildHref(item.id)}
               scroll={false}
+              onMouseEnter={() => handlePrefetch(item.id)}
               aria-current={isSelected ? "true" : undefined}
               className={`block px-4 py-3 pl-5 transition-colors ${
                 isSelected ? "bg-terracotta/10" : "hover:bg-stone-50"
