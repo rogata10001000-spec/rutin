@@ -372,8 +372,20 @@ export async function createSubscriptionCheckoutSession(
     };
   }
 
-  // トライアル: 月額はstandard/premiumのみ、年額は全プランに付与。
-  const trialDays = getTrialPeriodDaysForPlan(parsed.data.planCode, interval);
+  // トライアルの重複付与を防ぐ: 過去に一度でもトライアルを開始した相手には付与しない
+  // （解約→再契約で無料トライアルを無限取得する濫用を防止）。
+  // trial_started_at は初回トライアル開始時に Stripe Webhook が設定する。
+  const { data: priorUser } = await supabase
+    .from("end_users")
+    .select("trial_started_at")
+    .eq("line_user_id", parsed.data.lineUserId)
+    .maybeSingle();
+  const hasUsedTrial = Boolean(priorUser?.trial_started_at);
+
+  // トライアル: 月額はstandard/premiumのみ、年額は全プランに付与。ただし利用済みなら付与しない。
+  const trialDays = hasUsedTrial
+    ? undefined
+    : getTrialPeriodDaysForPlan(parsed.data.planCode, interval);
 
   try {
     const { url, sessionId } = await stripeCreateCheckout({
