@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { UserListItem } from "@/actions/users";
 import { BadgePlan, BadgeStatus, BadgeTag } from "@/components/common/Badge";
+import { getRenewalInfo, formatRenewalDate } from "@/lib/subscription-display";
 
 type UsersTableProps = {
   items: UserListItem[];
@@ -42,6 +43,14 @@ export function UsersTable({ items }: UsersTableProps) {
                     </span>
                   )}
                 </div>
+                {(() => {
+                  const renewal = getRenewalInfo(item);
+                  return renewal.kind !== "none" ? (
+                    <p className="mt-2 text-xs font-medium text-stone-500">
+                      {renewal.label}: {formatRenewalDate(renewal.date)}
+                    </p>
+                  ) : null;
+                })()}
                 {item.assignedCastName && (
                   <p className="mt-2 text-xs font-medium text-stone-500">
                     担当: {item.assignedCastName}
@@ -54,7 +63,7 @@ export function UsersTable({ items }: UsersTableProps) {
       </div>
 
       {/* デスクトップ用テーブル */}
-      <table className="hidden min-w-[960px] divide-y divide-stone-200 lg:table">
+      <table className="hidden min-w-[1080px] divide-y divide-stone-200 lg:table">
         <thead className="bg-stone-50">
           <tr>
             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
@@ -65,6 +74,9 @@ export function UsersTable({ items }: UsersTableProps) {
             </th>
             <th className="whitespace-nowrap px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
               状態
+            </th>
+            <th className="whitespace-nowrap px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
+              更新日／終了日
             </th>
             <th className="whitespace-nowrap px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
               解約
@@ -100,6 +112,21 @@ export function UsersTable({ items }: UsersTableProps) {
               </td>
               <td className="whitespace-nowrap px-6 py-4">
                 <BadgeStatus status={item.status as "trial" | "active" | "past_due" | "paused" | "canceled" | "incomplete"} />
+              </td>
+              <td className="whitespace-nowrap px-6 py-4">
+                {(() => {
+                  const renewal = getRenewalInfo(item);
+                  return renewal.kind !== "none" ? (
+                    <div className="text-sm">
+                      <span className="text-xs text-stone-400">{renewal.label}</span>
+                      <span className="ml-1.5 font-medium text-stone-700">
+                        {formatRenewalDate(renewal.date)}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-stone-400">-</span>
+                  );
+                })()}
               </td>
               <td className="whitespace-nowrap px-6 py-4">
                 {item.cancelAtPeriodEnd ? (

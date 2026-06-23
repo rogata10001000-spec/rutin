@@ -5,6 +5,7 @@ import type { ChatSideInfo } from "@/actions/chat";
 import { format } from "date-fns";
 import { MemoEditor } from "./MemoEditor";
 import { BadgePlan } from "@/components/common/Badge";
+import { getRenewalInfo, formatRenewalDate } from "@/lib/subscription-display";
 
 type ChatSidePanelProps = {
   sideInfo: ChatSideInfo;
@@ -16,6 +17,8 @@ export function ChatSidePanel({ sideInfo, endUserId }: ChatSidePanelProps) {
     ? sideInfo.birthday.slice(5) ===
       new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" }).slice(5)
     : false;
+
+  const renewal = getRenewalInfo(sideInfo);
 
   return (
     <div className="space-y-6">
@@ -41,6 +44,24 @@ export function ChatSidePanel({ sideInfo, endUserId }: ChatSidePanelProps) {
             <dt className="text-stone-500">状態</dt>
             <dd className="font-medium text-stone-700">{sideInfo.status}</dd>
           </div>
+          {renewal.kind !== "none" && (
+            <div className="flex justify-between">
+              <dt className="text-stone-500">
+                {renewal.kind === "trial_end"
+                  ? "トライアル終了"
+                  : renewal.kind === "cancel_at"
+                    ? "解約予定日"
+                    : "次回更新"}
+              </dt>
+              <dd
+                className={`font-medium ${
+                  renewal.kind === "cancel_at" ? "text-amber-700" : "text-stone-700"
+                }`}
+              >
+                {formatRenewalDate(renewal.date)}
+              </dd>
+            </div>
+          )}
           <div className="flex justify-between">
             <dt className="text-stone-500">残高</dt>
             <dd className="font-bold text-terracotta">

@@ -19,6 +19,7 @@ export type UserListItem = {
   createdAt: string;
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: string | null;
+  trialEndAt: string | null;
 };
 
 export type SearchUsersInput = {
@@ -74,6 +75,7 @@ export async function searchUsers(
       assigned_cast_id,
       tags,
       created_at,
+      trial_end_at,
       staff_profiles!end_users_assigned_cast_id_fkey (
         display_name
       ),
@@ -144,6 +146,7 @@ export async function searchUsers(
       createdAt: user.created_at,
       cancelAtPeriodEnd: subscription?.cancel_at_period_end ?? false,
       currentPeriodEnd: subscription?.current_period_end ?? null,
+      trialEndAt: user.trial_end_at ?? null,
     };
   });
 

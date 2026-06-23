@@ -25,6 +25,9 @@ export type ChatSideInfo = {
   assignedCastName: string | null;
   lineAccountName: string | null;
   pointBalance: number;
+  trialEndAt: string | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
   pinnedMemos: { id: string; category: string; body: string }[];
   recentCheckins: { date: string; status: string }[];
 };
@@ -116,6 +119,7 @@ export async function getChatThread(
       plan_code,
       status,
       birthday,
+      trial_end_at,
       assigned_cast_id,
       primary_line_account_id,
       staff_profiles!end_users_assigned_cast_id_fkey (
@@ -123,10 +127,33 @@ export async function getChatThread(
       ),
       line_official_accounts!end_users_primary_line_account_id_fkey (
         name
+      ),
+      subscriptions (
+        cancel_at_period_end,
+        current_period_end,
+        status,
+        created_at
       )
     `)
     .eq("id", input.endUserId)
     .single();
+
+  // 再契約者は古い解約済みサブスクも持つため、解約済み/incomplete を除いた最新を採用。
+  const INACTIVE_SUB_STATUSES = new Set(["canceled", "incomplete"]);
+  const subList = Array.isArray(user?.subscriptions)
+    ? user.subscriptions
+    : user?.subscriptions
+      ? [user.subscriptions]
+      : [];
+  const subscription =
+    (subList as Array<{
+      cancel_at_period_end: boolean;
+      current_period_end: string | null;
+      status: string;
+      created_at: string;
+    }>)
+      .filter((s) => !INACTIVE_SUB_STATUSES.has(s.status))
+      .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))[0] ?? null;
 
   // ポイント残高
   const { data: ledger } = await supabase
@@ -171,6 +198,9 @@ export async function getChatThread(
         assignedCastName: staffProfile?.display_name ?? null,
         lineAccountName: lineAccount?.name ?? null,
         pointBalance,
+        trialEndAt: user?.trial_end_at ?? null,
+        currentPeriodEnd: subscription?.current_period_end ?? null,
+        cancelAtPeriodEnd: subscription?.cancel_at_period_end ?? false,
         pinnedMemos: (pinnedMemos ?? []).map((m) => ({
           id: m.id,
           category: m.category,
