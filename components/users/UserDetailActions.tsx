@@ -49,9 +49,17 @@ export function UserDetailActions({ user, canManage }: UserDetailActionsProps) {
 
   return (
     <>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {/* 主アクション: 最頻の「チャットを開く」を塗りボタンで一番目立たせる */}
+        <Link
+          href={`/inbox?user=${user.id}`}
+          className="rounded-xl bg-terracotta px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#d0694e] hover:shadow-md transition-all"
+        >
+          チャットを開く
+        </Link>
         {canManage && (
           <>
+            {/* 副アクション: 控えめな枠線ボタン */}
             <button
               onClick={() => setEditDialogOpen(true)}
               className="rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm font-bold text-stone-600 shadow-sm hover:bg-stone-50 hover:text-stone-800 transition-colors"
@@ -64,24 +72,21 @@ export function UserDetailActions({ user, canManage }: UserDetailActionsProps) {
             >
               担当変更
             </button>
+            {/* 区切り: 危険操作を視覚的に分離する */}
+            <span className="mx-1 hidden h-6 w-px self-center bg-stone-200 sm:block" aria-hidden />
+            {/* 危険操作: ブロック（解除は復元操作なので控えめな中立色） */}
             <button
               onClick={() => setBlockConfirmOpen(true)}
               className={
                 user.isBlocked
-                  ? "rounded-xl border border-stone-200 bg-white px-4 py-2 text-sm font-bold text-stone-600 shadow-sm hover:bg-stone-50 hover:text-stone-800 transition-colors"
-                  : "rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-bold text-red-600 shadow-sm hover:bg-red-50 transition-colors"
+                  ? "rounded-xl px-3 py-2 text-sm font-bold text-stone-500 hover:bg-stone-100 hover:text-stone-700 transition-colors"
+                  : "rounded-xl px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors"
               }
             >
               {user.isBlocked ? "ブロック解除" : "ブロック"}
             </button>
           </>
         )}
-        <Link
-          href={`/inbox?user=${user.id}`}
-          className="rounded-xl bg-terracotta px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-[#d0694e] hover:shadow-md transition-all"
-        >
-          チャットを開く
-        </Link>
       </div>
 
       <EditUserDialog

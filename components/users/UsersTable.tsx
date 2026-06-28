@@ -37,19 +37,20 @@ export function UsersTable({ items }: UsersTableProps) {
                 <div className="mt-2 flex flex-wrap gap-2">
                   <BadgePlan plan={item.planCode as "light" | "standard" | "premium"} />
                   <BadgeStatus status={item.status as "trial" | "active" | "past_due" | "paused" | "canceled" | "incomplete"} />
-                  {item.cancelAtPeriodEnd && (
-                    <span className="inline-flex items-center whitespace-nowrap rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-                      解約予定
-                    </span>
-                  )}
                 </div>
                 {(() => {
                   const renewal = getRenewalInfo(item);
-                  return renewal.kind !== "none" ? (
-                    <p className="mt-2 text-xs font-medium text-stone-500">
-                      {renewal.label}: {formatRenewalDate(renewal.date)}
+                  if (renewal.kind === "none") return null;
+                  const isCancel = renewal.kind === "cancel_at";
+                  return (
+                    <p
+                      className={`mt-2 text-xs font-medium ${
+                        isCancel ? "text-amber-700" : "text-stone-500"
+                      }`}
+                    >
+                      {isCancel ? "解約予定" : renewal.label}: {formatRenewalDate(renewal.date)}
                     </p>
-                  ) : null;
+                  );
                 })()}
                 {item.assignedCastName && (
                   <p className="mt-2 text-xs font-medium text-stone-500">
@@ -63,7 +64,7 @@ export function UsersTable({ items }: UsersTableProps) {
       </div>
 
       {/* デスクトップ用テーブル */}
-      <table className="hidden min-w-[1080px] divide-y divide-stone-200 lg:table">
+      <table className="hidden min-w-[960px] divide-y divide-stone-200 lg:table">
         <thead className="bg-stone-50">
           <tr>
             <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
@@ -77,9 +78,6 @@ export function UsersTable({ items }: UsersTableProps) {
             </th>
             <th className="whitespace-nowrap px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
               更新日／終了日
-            </th>
-            <th className="whitespace-nowrap px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
-              解約
             </th>
             <th className="whitespace-nowrap px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
               担当
@@ -116,26 +114,25 @@ export function UsersTable({ items }: UsersTableProps) {
               <td className="whitespace-nowrap px-6 py-4">
                 {(() => {
                   const renewal = getRenewalInfo(item);
-                  return renewal.kind !== "none" ? (
+                  if (renewal.kind === "none") {
+                    return <span className="text-sm text-stone-400">-</span>;
+                  }
+                  if (renewal.kind === "cancel_at") {
+                    return (
+                      <span className="inline-flex items-center whitespace-nowrap rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                        解約予定 {formatRenewalDate(renewal.date)}
+                      </span>
+                    );
+                  }
+                  return (
                     <div className="text-sm">
                       <span className="text-xs text-stone-400">{renewal.label}</span>
                       <span className="ml-1.5 font-medium text-stone-700">
                         {formatRenewalDate(renewal.date)}
                       </span>
                     </div>
-                  ) : (
-                    <span className="text-sm text-stone-400">-</span>
                   );
                 })()}
-              </td>
-              <td className="whitespace-nowrap px-6 py-4">
-                {item.cancelAtPeriodEnd ? (
-                  <span className="inline-flex items-center whitespace-nowrap rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-                    解約予定
-                  </span>
-                ) : (
-                  <span className="text-sm text-stone-400">-</span>
-                )}
               </td>
               <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">
                 {item.assignedCastName ?? "-"}

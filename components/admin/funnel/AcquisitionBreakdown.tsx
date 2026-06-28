@@ -16,7 +16,9 @@ export function AcquisitionBreakdown({ data }: { data: AcquisitionAnalytics }) {
       </div>
 
       {data.sources.length === 0 ? (
-        <p className="py-6 text-center text-sm text-stone-400">対象期間のデータがありません</p>
+        <p className="py-6 text-center text-sm text-stone-400">
+          この期間に追加されたユーザーがいません。流入元は、LIFF入口（<code>?src=</code>付きURL）から友だち追加されたときに記録されます。
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">

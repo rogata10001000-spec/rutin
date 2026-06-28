@@ -19,7 +19,9 @@ export function CohortTable({ data }: { data: CohortAnalytics }) {
       </p>
 
       {cohorts.length === 0 ? (
-        <p className="mt-4 text-sm text-stone-400">まだデータがありません</p>
+        <p className="mt-4 text-sm text-stone-400">
+          まだデータがありません。契約を開始したユーザーが増えると、開始月ごとの継続率がここに表示されます。
+        </p>
       ) : (
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-sm">

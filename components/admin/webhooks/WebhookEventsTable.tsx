@@ -4,6 +4,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import type { WebhookEvent } from "@/actions/admin/webhooks";
+import { EmptyState } from "@/components/common/EmptyState";
 
 type WebhookEventsTableProps = {
   items: WebhookEvent[];
@@ -18,9 +19,12 @@ export function WebhookEventsTable({ items }: WebhookEventsTableProps) {
 
   if (items.length === 0) {
     return (
-      <p className="py-12 text-center text-sm text-stone-400">
-        Webhookイベントがありません
-      </p>
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
+        <EmptyState
+          title="Webhookイベントはまだありません"
+          description="LINE・Stripe からの通知（メッセージ受信・決済・解約など）を受信すると、ここに記録されます。フィルタ条件を変えると過去のイベントが見つかることがあります。"
+        />
+      </div>
     );
   }
 

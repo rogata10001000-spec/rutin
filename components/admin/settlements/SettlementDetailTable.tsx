@@ -9,8 +9,11 @@ type SettlementDetailTableProps = {
 export function SettlementDetailTable({ items }: SettlementDetailTableProps) {
   if (items.length === 0) {
     return (
-      <div className="p-6 text-center text-stone-500">
-        明細がありません
+      <div className="p-6 text-center text-sm text-stone-500">
+        この精算バッチには明細がありません。
+        <span className="mt-1 block text-stone-400">
+          対象期間にメイトへの配分対象となる売上が計上されると、ここに明細が作成されます。
+        </span>
       </div>
     );
   }

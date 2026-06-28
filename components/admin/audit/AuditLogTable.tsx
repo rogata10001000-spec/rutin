@@ -4,6 +4,7 @@ import { Fragment } from "react";
 import type { AuditLogEntry } from "@/actions/audit";
 import { format } from "date-fns";
 import { useState } from "react";
+import { EmptyState } from "@/components/common/EmptyState";
 
 type AuditLogTableProps = {
   items: AuditLogEntry[];
@@ -14,8 +15,11 @@ export function AuditLogTable({ items }: AuditLogTableProps) {
 
   if (items.length === 0) {
     return (
-      <div className="p-12 text-center text-stone-500 bg-white rounded-2xl border border-stone-200">
-        監査ログがありません
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
+        <EmptyState
+          title="監査ログはまだありません"
+          description="スタッフの操作（編集・送信・設定変更・精算など）が行われると、ここに時系列で記録されます。フィルタを変えると過去のログが見つかることがあります。"
+        />
       </div>
     );
   }
