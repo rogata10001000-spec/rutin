@@ -189,7 +189,7 @@ export function ChatContainer({
                 {sideInfo.assignedCastName ?? "担当未割当"}
               </p>
               {sideInfo.lineAccountName && (
-                <span className="inline-flex items-center whitespace-nowrap rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+                <span className="hidden items-center whitespace-nowrap rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 sm:inline-flex">
                   {sideInfo.lineAccountName}
                 </span>
               )}

@@ -188,7 +188,7 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="名前で検索"
-            className="w-full rounded-xl border border-stone-200 bg-white py-2 pl-9 pr-9 text-sm text-stone-700 shadow-sm focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta"
+            className="w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-9 pr-9 text-sm text-stone-700 shadow-sm focus:border-terracotta focus:outline-none focus:ring-1 focus:ring-terracotta"
           />
           {searchInput && (
             <button
@@ -231,7 +231,7 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
           <button
             type="button"
             onClick={() => updateFilter("reply", null)}
-            className={`whitespace-nowrap rounded-lg bg-stone-100 px-2.5 py-1 text-xs font-bold text-stone-700 transition ${
+            className={`whitespace-nowrap rounded-lg bg-stone-100 px-2.5 py-1.5 text-xs font-bold text-stone-700 transition ${
               !currentFilters.replyStatus ? "ring-2 ring-stone-300" : "opacity-90 hover:opacity-100"
             }`}
           >
@@ -240,7 +240,7 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
           <button
             type="button"
             onClick={() => updateFilter("reply", "unreplied")}
-            className={`whitespace-nowrap rounded-lg bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700 transition ${
+            className={`whitespace-nowrap rounded-lg bg-red-100 px-2.5 py-1.5 text-xs font-bold text-red-700 transition ${
               currentFilters.replyStatus === "unreplied" ? "ring-2 ring-red-300" : "opacity-90 hover:opacity-100"
             }`}
           >
@@ -249,13 +249,13 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
           <button
             type="button"
             onClick={() => updateFilter("reply", "not_sent_today")}
-            className={`whitespace-nowrap rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700 transition ${
+            className={`whitespace-nowrap rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs font-bold text-amber-700 transition ${
               currentFilters.replyStatus === "not_sent_today" ? "ring-2 ring-amber-300" : "opacity-90 hover:opacity-100"
             }`}
           >
             今日未送信 {summary.notSentToday}
           </button>
-          <span className="whitespace-nowrap rounded-lg bg-green-100 px-2.5 py-1 text-xs font-bold text-green-700">
+          <span className="whitespace-nowrap rounded-lg bg-green-100 px-2.5 py-1.5 text-xs font-bold text-green-700">
             対応済み {summary.replied}
           </span>
         </div>

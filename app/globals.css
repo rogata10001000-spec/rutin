@@ -152,6 +152,18 @@
   }
 }
 
+/* iOS Safari は入力欄の計算フォントサイズが 16px 未満だとフォーカス時に自動ズームし、
+   全画面レイアウトが崩れる。モバイルでは最低 16px にしてズームを抑止する。
+   text-sm 等のユーティリティ(クラス)に勝つため !important を付ける。
+   見た目はわずかに大きくなる程度で、可読性・タップしやすさはむしろ向上する。 */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 /* スクロールバー（Stone系に調整） */
 ::-webkit-scrollbar {
   width: 8px;
