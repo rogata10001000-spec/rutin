@@ -4,7 +4,7 @@ export default function AnalyticsPage() {
   return (
     <div className="rounded-xl border border-amber-200 bg-amber-50 p-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-stone-800">
+        <h1 className="text-2xl font-bold text-stone-900">
           アナリティクス
         </h1>
         <p className="mt-2 text-sm text-amber-800">

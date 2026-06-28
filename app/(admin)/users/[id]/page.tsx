@@ -5,6 +5,7 @@ import { UserDetailCards } from "@/components/users/UserDetailCards";
 import { UserDetailActions } from "@/components/users/UserDetailActions";
 import { getCurrentStaff } from "@/lib/auth";
 import { ErrorState } from "@/components/common/ErrorState";
+import { BackButton } from "@/components/common/BackButton";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,11 @@ export default async function UserDetailPage({
 
   return (
     <div>
+      {/* 戻る（遷移元へ。直リンク時はユーザー一覧へ） */}
+      <div className="mb-4">
+        <BackButton fallbackHref="/users" />
+      </div>
+
       {/* ヘッダー */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>

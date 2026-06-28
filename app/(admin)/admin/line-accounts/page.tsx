@@ -18,7 +18,7 @@ export default async function LineAccountsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-stone-800">
+        <h1 className="text-2xl font-bold text-stone-900">
           LINE公式アカウント
         </h1>
         <p className="mt-1 text-sm text-stone-500">

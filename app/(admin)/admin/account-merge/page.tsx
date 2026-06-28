@@ -13,7 +13,7 @@ export default async function AccountMergePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-stone-800">アカウント統合</h1>
+        <h1 className="text-2xl font-bold text-stone-900">アカウント統合</h1>
         <p className="mt-1 text-sm text-stone-500">
           同一人物が複数のアカウント（LINE・メール）に分かれている場合に、1つへ統合できます。
           統合元のデータは統合先へ移動し、統合元は削除されます。

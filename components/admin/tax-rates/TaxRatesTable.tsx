@@ -59,7 +59,7 @@ export function TaxRatesTable({ items }: TaxRatesTableProps) {
       </div>
 
       {items.length > 0 ? (
-        <div className="overflow-hidden rounded-xl border border-stone-200">
+        <div className="overflow-x-auto rounded-xl border border-stone-200">
           <table className="min-w-full divide-y divide-stone-200">
             <thead className="bg-stone-50">
               <tr>

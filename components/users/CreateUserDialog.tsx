@@ -253,7 +253,7 @@ export function CreateUserDialog({ open, onClose }: CreateUserDialogProps) {
                 disabled={submitting}
                 className="rounded-xl bg-terracotta px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-[#d0694e] focus:outline-none focus:ring-2 focus:ring-terracotta focus:ring-offset-2 disabled:opacity-50"
               >
-                {submitting ? "作成中..." : "作成"}
+                {submitting ? "作成中..." : "ユーザーを作成"}
               </button>
             </div>
           </form>

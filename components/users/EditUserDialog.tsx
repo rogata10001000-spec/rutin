@@ -266,7 +266,7 @@ export function EditUserDialog({ open, user, onClose }: EditUserDialogProps) {
                 disabled={submitting}
                 className="rounded-xl bg-terracotta px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-[#d0694e] focus:outline-none focus:ring-2 focus:ring-terracotta focus:ring-offset-2 disabled:opacity-50"
               >
-                {submitting ? "保存中..." : "保存"}
+                {submitting ? "保存中..." : "変更を保存"}
               </button>
             </div>
           </form>

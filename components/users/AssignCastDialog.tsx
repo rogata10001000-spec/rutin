@@ -240,7 +240,7 @@ export function AssignCastDialog({ open, user, onClose }: AssignCastDialogProps)
                 disabled={submitting}
                 className="rounded-xl bg-terracotta px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-[#d0694e] focus:outline-none focus:ring-2 focus:ring-terracotta focus:ring-offset-2 disabled:opacity-50"
               >
-                {submitting ? "変更中..." : "変更する"}
+                {submitting ? "変更中..." : "担当を変更"}
               </button>
             </div>
           </form>
