@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import type { Message, ChatSideInfo } from "@/actions/chat";
 import type { StaffRole } from "@/lib/supabase/types";
 import { sendMessage, sendProxyMessage } from "@/actions/messages";
@@ -12,6 +13,7 @@ import { NextUserButton } from "./NextUserButton";
 import { useToast } from "@/components/common/Toast";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { BadgePlan } from "@/components/common/Badge";
+import { ChatSidePanel } from "./ChatSidePanel";
 import { resolveChatMediaUrl } from "@/lib/chat-media";
 import { useMessageRealtime } from "@/hooks/useMessageRealtime";
 
@@ -35,11 +37,29 @@ export function ChatContainer({
   const [proxyMode, setProxyMode] = useState(false);
   const [proxyConfirmOpen, setProxyConfirmOpen] = useState(false);
   const [pendingMessage, setPendingMessage] = useState("");
+  // モバイル/タブレットでは右パネル(プロフィール・メモ等)が無いため、
+  // ドロワーで開けるようにする。会話を切り替えたら閉じる。
+  const [infoOpen, setInfoOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[]>(initialMessages);
   const { showToast, ToastContainer } = useToast();
 
   const canProxy = staffRole === "admin" || staffRole === "supervisor";
+
+  // ドロワー表示中は背景スクロールを止める
+  useEffect(() => {
+    if (!infoOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [infoOpen]);
+
+  // 会話(ユーザー)が切り替わったらドロワーを閉じる
+  useEffect(() => {
+    setInfoOpen(false);
+  }, [endUserId]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -197,6 +217,18 @@ export function ChatContainer({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            {/* モバイル/タブレット用: プロフィール・メモを開く（xl では右パネルが常時表示） */}
+            <button
+              type="button"
+              onClick={() => setInfoOpen(true)}
+              aria-label="プロフィール・メモを表示"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-3 text-sm font-medium text-stone-600 shadow-sm transition-colors hover:bg-stone-50 xl:hidden"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="hidden sm:inline">情報</span>
+            </button>
             <NextUserButton currentUserId={endUserId} />
             {canProxy && (
               <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition-colors hover:bg-stone-50">
@@ -238,6 +270,37 @@ export function ChatContainer({
         onCancel={() => setProxyConfirmOpen(false)}
         loading={sending}
       />
+
+      {/* モバイル/タブレット用 情報ドロワー（プロフィール・契約・ピン留めメモ・チェックイン）。
+          全画面オーバーレイは transform を持つ祖先で壊れないよう body 直下へ portal する。 */}
+      {infoOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-50 xl:hidden" role="dialog" aria-modal="true">
+            <div
+              className="absolute inset-0 bg-stone-900/30 backdrop-blur-sm"
+              onClick={() => setInfoOpen(false)}
+            />
+            <div className="absolute inset-y-0 right-0 flex w-[88%] max-w-sm flex-col bg-stone-50 shadow-soft-lg">
+              <div className="flex shrink-0 items-center justify-between border-b border-stone-200 bg-white px-4 py-3">
+                <h3 className="font-bold text-stone-800">プロフィール・メモ</h3>
+                <button
+                  type="button"
+                  onClick={() => setInfoOpen(false)}
+                  aria-label="閉じる"
+                  className="rounded-lg p-2 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto overscroll-contain p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                <ChatSidePanel sideInfo={sideInfo} endUserId={endUserId} />
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       <ToastContainer />
     </div>
