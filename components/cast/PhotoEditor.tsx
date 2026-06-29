@@ -6,11 +6,13 @@ import {
   DndContext,
   closestCenter,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import {
   arrayMove,
   SortableContext,
@@ -89,18 +91,20 @@ function SortablePhoto({
       <button
         {...attributes}
         {...listeners}
-        className="absolute left-2 top-2 flex size-8 cursor-grab items-center justify-center rounded-lg bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+        aria-label="ドラッグして並べ替え（長押しで持ち上げ）"
+        className="absolute left-2 top-2 flex size-9 touch-none cursor-grab items-center justify-center rounded-lg bg-black/50 text-white opacity-100 transition-opacity active:cursor-grabbing sm:size-8 sm:opacity-0 sm:group-hover:opacity-100"
       >
-        <span className="material-symbols-outlined text-[18px]">drag_indicator</span>
+        <span className="material-symbols-outlined text-[20px]">drag_indicator</span>
       </button>
 
       {/* 削除ボタン */}
       <button
         onClick={() => onDelete(photo.id)}
         disabled={isDeleting}
-        className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-lg bg-red-500 text-white opacity-0 transition-opacity hover:bg-red-600 group-hover:opacity-100 disabled:opacity-50"
+        aria-label="写真を削除"
+        className="absolute right-2 top-2 flex size-9 items-center justify-center rounded-lg bg-red-500 text-white opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-50 sm:size-8 sm:opacity-0 sm:group-hover:opacity-100"
       >
-        <span className="material-symbols-outlined text-[18px]">delete</span>
+        <span className="material-symbols-outlined text-[20px]">delete</span>
       </button>
 
       {/* キャプション編集 */}
@@ -149,12 +153,16 @@ export function PhotoEditor({
   const [photos, setPhotos] = useState<CastPhoto[]>(initialPhotos);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // マウスは小移動で即ドラッグ。タッチは長押し(200ms)で持ち上げ＋移動許容を設け、
+  // 通常スクロールと両立させる（グローバルルール: タッチDnDは長押しで持ち上げ）。
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -357,7 +365,7 @@ export function PhotoEditor({
                 <SortablePhoto
                   key={photo.id}
                   photo={photo}
-                  onDelete={handleDelete}
+                  onDelete={(id) => setPendingDeleteId(id)}
                   onCaptionChange={handleCaptionChange}
                   isDeleting={deleting === photo.id}
                 />
@@ -371,12 +379,28 @@ export function PhotoEditor({
       <div className="rounded-lg bg-stone-50 p-4 text-sm text-stone-600">
         <p className="font-medium">使い方</p>
         <ul className="mt-2 list-inside list-disc space-y-1">
-          <li>ドラッグ&ドロップで写真の順序を変更できます</li>
+          <li>ドラッグ&ドロップ（スマホは長押しで持ち上げ）で写真の順序を変更できます</li>
           <li>写真をクリックするとキャプションを編集できます</li>
           <li>1枚目の写真がメイト一覧のサムネイルになります</li>
           <li>対応形式: JPEG、PNG、WebP（最大5MB）</li>
         </ul>
       </div>
+
+      {/* 削除確認（誤タップ防止・不可逆操作） */}
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        title="この写真を削除しますか？"
+        description="削除すると元に戻せません。メイト一覧やプロフィールからも表示されなくなります。"
+        confirmLabel="削除する"
+        variant="danger"
+        loading={deleting !== null}
+        onConfirm={() => {
+          const id = pendingDeleteId;
+          setPendingDeleteId(null);
+          if (id) void handleDelete(id);
+        }}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </div>
   );
 }
