@@ -209,6 +209,11 @@ export async function getInboxItems(
   const now = new Date();
   const todayJst = now.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
   const todayStart = new Date(todayJst + "T00:00:00+09:00");
+  // チェックインは「最新1件」しか使わないため、全履歴ではなく直近のみ取得して
+  // ホットパス（受信トレイ/ダッシュボード）の転送量が件数に比例して膨らむのを防ぐ。
+  // 90日より古い最終チェックインは表示されなくなるが、その場合は実質「未報告」であり実害はない。
+  const checkinSince = new Date(now.getTime() - 90 * 86400000)
+    .toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
 
   const userIds = users.map((u) => u.id);
 
@@ -231,11 +236,12 @@ export async function getInboxItems(
       .in("end_user_id", userIds)
       .eq("direction", "out")
       .gte("created_at", todayStart.toISOString()),
-    // 全チェックイン
+    // チェックイン（直近90日・最新1件のみ利用）
     supabase
       .from("checkins")
       .select("end_user_id, date")
       .in("end_user_id", userIds)
+      .gte("date", checkinSince)
       .order("date", { ascending: false }),
     // 全リスクフラグ（openのみ）
     supabase

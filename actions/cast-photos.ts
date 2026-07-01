@@ -10,14 +10,18 @@ import {
   updateCaptionSchema,
 } from "@/schemas/cast-photos";
 import { Result, toZodErrorMessage } from "./types";
-import {
-  createServerSupabaseClient,
-  createAdminSupabaseClient,
-} from "@/lib/supabase/server";
+import { createAdminSupabaseClient } from "@/lib/supabase/server";
+import { getCurrentStaff } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 
 const BUCKET_NAME = "cast-photos";
 const MAX_PHOTOS_PER_CAST = 5;
+
+// この操作を行えるスタッフか（本人 or admin/SV）。
+// 認証・在籍(active)判定は getCurrentStaff に集約し、各関数での重複実装を排除する。
+function canManageCast(staff: { id: string; role: string }, castId: string): boolean {
+  return staff.role === "admin" || staff.role === "supervisor" || staff.id === castId;
+}
 
 // =====================================
 // 型定義
@@ -137,40 +141,15 @@ export async function uploadCastPhoto(
     };
   }
 
-  const supabase = await createServerSupabaseClient();
   const adminSupabase = createAdminSupabaseClient();
 
-  // 認証チェック
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return {
-      ok: false,
-      error: { code: "UNAUTHORIZED", message: "ログインが必要です" },
-    };
+  // 認証・在籍・権限（本人 or admin/SV）チェック
+  const staff = await getCurrentStaff();
+  if (!staff) {
+    return { ok: false, error: { code: "UNAUTHORIZED", message: "ログインが必要です" } };
   }
-
-  // 権限チェック
-  const { data: staffProfile } = await adminSupabase
-    .from("staff_profiles")
-    .select("id, role")
-    .eq("id", user.id)
-    .single();
-
-  if (!staffProfile) {
-    return {
-      ok: false,
-      error: { code: "FORBIDDEN", message: "スタッフ権限がありません" },
-    };
-  }
-
-  const isAdminOrSupervisor = ["admin", "supervisor"].includes(staffProfile.role);
-  const isSelf = staffProfile.id === castId;
-
-  if (!isAdminOrSupervisor && !isSelf) {
-    return {
-      ok: false,
-      error: { code: "FORBIDDEN", message: "この操作を行う権限がありません" },
-    };
+  if (!canManageCast(staff, castId)) {
+    return { ok: false, error: { code: "FORBIDDEN", message: "この操作を行う権限がありません" } };
   }
 
   // 5枚制限チェック
@@ -250,7 +229,7 @@ export async function uploadCastPhoto(
       cast_id: castId,
       storage_path: storagePath,
     }),
-    actorStaffId: user.id,
+    actorStaffId: staff.id,
   });
 
   // キャッシュを無効化
@@ -276,16 +255,12 @@ export async function deleteCastPhoto(photoId: string): Promise<DeleteCastPhotoR
     };
   }
 
-  const supabase = await createServerSupabaseClient();
   const adminSupabase = createAdminSupabaseClient();
 
-  // 認証チェック
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return {
-      ok: false,
-      error: { code: "UNAUTHORIZED", message: "ログインが必要です" },
-    };
+  // 認証・在籍チェック
+  const staff = await getCurrentStaff();
+  if (!staff) {
+    return { ok: false, error: { code: "UNAUTHORIZED", message: "ログインが必要です" } };
   }
 
   // 写真情報を取得
@@ -302,28 +277,9 @@ export async function deleteCastPhoto(photoId: string): Promise<DeleteCastPhotoR
     };
   }
 
-  // 権限チェック
-  const { data: staffProfile } = await adminSupabase
-    .from("staff_profiles")
-    .select("id, role")
-    .eq("id", user.id)
-    .single();
-
-  if (!staffProfile) {
-    return {
-      ok: false,
-      error: { code: "FORBIDDEN", message: "スタッフ権限がありません" },
-    };
-  }
-
-  const isAdminOrSupervisor = ["admin", "supervisor"].includes(staffProfile.role);
-  const isSelf = staffProfile.id === photo.cast_id;
-
-  if (!isAdminOrSupervisor && !isSelf) {
-    return {
-      ok: false,
-      error: { code: "FORBIDDEN", message: "この操作を行う権限がありません" },
-    };
+  // 権限チェック（本人 or admin/SV）
+  if (!canManageCast(staff, photo.cast_id)) {
+    return { ok: false, error: { code: "FORBIDDEN", message: "この操作を行う権限がありません" } };
   }
 
   // ストレージから削除
@@ -359,7 +315,7 @@ export async function deleteCastPhoto(photoId: string): Promise<DeleteCastPhotoR
       cast_id: photo.cast_id,
       storage_path: photo.storage_path,
     }),
-    actorStaffId: user.id,
+    actorStaffId: staff.id,
   });
 
   // キャッシュを無効化
@@ -388,40 +344,15 @@ export async function reorderCastPhotos(
     };
   }
 
-  const supabase = await createServerSupabaseClient();
   const adminSupabase = createAdminSupabaseClient();
 
-  // 認証チェック
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return {
-      ok: false,
-      error: { code: "UNAUTHORIZED", message: "ログインが必要です" },
-    };
+  // 認証・在籍・権限（本人 or admin/SV）チェック
+  const staff = await getCurrentStaff();
+  if (!staff) {
+    return { ok: false, error: { code: "UNAUTHORIZED", message: "ログインが必要です" } };
   }
-
-  // 権限チェック
-  const { data: staffProfile } = await adminSupabase
-    .from("staff_profiles")
-    .select("id, role")
-    .eq("id", user.id)
-    .single();
-
-  if (!staffProfile) {
-    return {
-      ok: false,
-      error: { code: "FORBIDDEN", message: "スタッフ権限がありません" },
-    };
-  }
-
-  const isAdminOrSupervisor = ["admin", "supervisor"].includes(staffProfile.role);
-  const isSelf = staffProfile.id === castId;
-
-  if (!isAdminOrSupervisor && !isSelf) {
-    return {
-      ok: false,
-      error: { code: "FORBIDDEN", message: "この操作を行う権限がありません" },
-    };
+  if (!canManageCast(staff, castId)) {
+    return { ok: false, error: { code: "FORBIDDEN", message: "この操作を行う権限がありません" } };
   }
 
   // 各写真の順序を更新
@@ -451,7 +382,7 @@ export async function reorderCastPhotos(
       cast_id: castId,
       new_order: photoIds,
     }),
-    actorStaffId: user.id,
+    actorStaffId: staff.id,
   });
 
   // キャッシュを無効化
@@ -480,16 +411,12 @@ export async function updateCaption(
     };
   }
 
-  const supabase = await createServerSupabaseClient();
   const adminSupabase = createAdminSupabaseClient();
 
-  // 認証チェック
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return {
-      ok: false,
-      error: { code: "UNAUTHORIZED", message: "ログインが必要です" },
-    };
+  // 認証・在籍チェック
+  const staff = await getCurrentStaff();
+  if (!staff) {
+    return { ok: false, error: { code: "UNAUTHORIZED", message: "ログインが必要です" } };
   }
 
   // 写真情報を取得
@@ -506,28 +433,9 @@ export async function updateCaption(
     };
   }
 
-  // 権限チェック
-  const { data: staffProfile } = await adminSupabase
-    .from("staff_profiles")
-    .select("id, role")
-    .eq("id", user.id)
-    .single();
-
-  if (!staffProfile) {
-    return {
-      ok: false,
-      error: { code: "FORBIDDEN", message: "スタッフ権限がありません" },
-    };
-  }
-
-  const isAdminOrSupervisor = ["admin", "supervisor"].includes(staffProfile.role);
-  const isSelf = staffProfile.id === photo.cast_id;
-
-  if (!isAdminOrSupervisor && !isSelf) {
-    return {
-      ok: false,
-      error: { code: "FORBIDDEN", message: "この操作を行う権限がありません" },
-    };
+  // 権限チェック（本人 or admin/SV）
+  if (!canManageCast(staff, photo.cast_id)) {
+    return { ok: false, error: { code: "FORBIDDEN", message: "この操作を行う権限がありません" } };
   }
 
   // キャプションを更新
