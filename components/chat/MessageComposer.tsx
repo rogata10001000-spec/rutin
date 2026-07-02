@@ -50,6 +50,14 @@ export function MessageComposer({
     setBody(savedDraft ?? "");
   }, [endUserId]);
 
+  // チャットを開いたら即タイプできるようフォーカスする。
+  // タッチ端末はキーボードが暴発して画面を覆うため、マウス環境（pointer: fine）のみ。
+  useEffect(() => {
+    if (window.matchMedia("(pointer: fine)").matches) {
+      textareaRef.current?.focus();
+    }
+  }, [endUserId]);
+
   // 下書きの自動保存（デバウンス）
   useEffect(() => {
     if (saveTimeoutRef.current) {

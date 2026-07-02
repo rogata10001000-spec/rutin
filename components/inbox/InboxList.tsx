@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { InboxItem } from "@/actions/inbox";
 import type { StaffRole } from "@/lib/supabase/types";
@@ -54,6 +54,20 @@ function getPreviewText(item: InboxItem): string {
 function getUnreadBadgeLabel(unreadCount: number): string {
   if (unreadCount > 99) return "99+";
   return String(unreadCount);
+}
+
+// 行タップ後〜チャット表示までの待ち時間を可視化するスピナー（Link配下でのみ動作）
+function RowPendingSpinner() {
+  const { pending } = useLinkStatus();
+  if (!pending) return null;
+  return (
+    <span className="absolute right-3 top-1/2 -translate-y-1/2" aria-hidden>
+      <svg className="h-4 w-4 animate-spin text-terracotta" viewBox="0 0 24 24" fill="none">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+      </svg>
+    </span>
+  );
 }
 
 // 返信状態の小バッジ
@@ -259,12 +273,15 @@ export function InboxList({
                 href={buildHref(item.id)}
                 scroll={false}
                 onMouseEnter={() => handlePrefetch(item.id)}
+                // タッチにはホバーが無いため、指が触れた瞬間（click発火前）に先読みを開始する
+                onPointerDown={() => handlePrefetch(item.id)}
                 aria-current={isSelected ? "true" : undefined}
-                className={`block px-4 py-3 pl-5 transition-colors ${
+                className={`block px-4 py-3 pl-5 transition-colors active:bg-stone-100 ${
                   isSelected ? "bg-terracotta/10" : "hover:bg-stone-50"
                 }`}
               >
                 {rowInner}
+                <RowPendingSpinner />
               </Link>
             )}
           </li>

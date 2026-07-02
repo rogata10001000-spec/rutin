@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createServerSupabaseClient } from "./supabase/server";
 import type { StaffRole } from "./supabase/types";
 import jwt from "jsonwebtoken";
@@ -6,9 +7,12 @@ import { getServerEnv } from "@/lib/env";
 import { USER_SESSION_COOKIE } from "@/lib/constants";
 
 /**
- * 現在ログイン中のスタッフ情報を取得
+ * 現在ログイン中のスタッフ情報を取得。
+ * React cache() で「同一リクエスト内」はデデュープする:
+ * 1ページ描画で複数の Server Action/RSC がそれぞれ認証すると、
+ * auth.getUser()（Authサーバーへの往復）＋staff_profiles 照会が何度も走るため。
  */
-export async function getCurrentStaff() {
+export const getCurrentStaff = cache(async () => {
   const supabase = await createServerSupabaseClient();
 
   const {
@@ -35,7 +39,7 @@ export async function getCurrentStaff() {
     displayName: profile.display_name,
     email: user.email,
   };
-}
+});
 
 /**
  * 現在のスタッフのロールを取得

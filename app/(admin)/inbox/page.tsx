@@ -56,17 +56,20 @@ export default async function InboxPage({
 
   const selectedUserId = params.user;
 
+  // 認証はReact cacheでリクエスト内デデュープされるため先に解決し、
+  // メイトには不要な担当フィルタ候補（getCastOptions）の取得をスキップする。
+  const staff = await getCurrentStaff();
+
   // データを並列で取得（ユーザー選択時はチャットスレッドも）
-  const [result, castsResult, staff, chatResult] = await Promise.all([
+  const [result, castsResult, chatResult] = await Promise.all([
     getInboxItems({ filters }),
-    getCastOptions(),
-    getCurrentStaff(),
+    staff?.role === "cast" ? Promise.resolve(null) : getCastOptions(),
     selectedUserId
       ? getChatThread({ endUserId: selectedUserId })
       : Promise.resolve(null),
   ]);
 
-  const casts = castsResult.ok
+  const casts = castsResult?.ok
     ? castsResult.data.casts.map((c) => ({ id: c.id, displayName: c.displayName }))
     : [];
 

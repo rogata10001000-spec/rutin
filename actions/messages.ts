@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { sendMessageSchema, sendProxyMessageSchema } from "@/schemas/messages";
 import { Result, toZodErrorMessage } from "./types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -110,12 +111,15 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
 
   const supabase = await createServerSupabaseClient();
 
-  // end_user取得（line_user_id）
-  const { data: user } = await supabase
-    .from("end_users")
-    .select("id, line_user_id, status")
-    .eq("id", parsed.data.endUserId)
-    .single();
+  // end_user取得と送信元アカウント解決は互いに独立 → 並列で往復を1回分削減
+  const [{ data: user }, sendAccount] = await Promise.all([
+    supabase
+      .from("end_users")
+      .select("id, line_user_id, status")
+      .eq("id", parsed.data.endUserId)
+      .single(),
+    getSendAccountForEndUser(parsed.data.endUserId),
+  ]);
 
   if (!user) {
     return {
@@ -124,23 +128,23 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
     };
   }
 
-  // 送信元アカウント解決（担当メイトの公式LINE → 無ければ共通）
-  const sendAccount = await getSendAccountForEndUser(user.id);
-
   // LINE送信
   try {
     await pushTextMessage(sendAccount.credentials, user.line_user_id, parsed.data.body);
   } catch (err) {
-    // LINE送信失敗は監査ログに記録して返す
-    await writeAuditLog({
-      action: "SEND_MESSAGE",
-      targetType: "end_users",
-      targetId: user.id,
-      success: false,
-      metadata: buildAuditMetadata({
-        body: parsed.data.body.slice(0, 100),
-        error: err instanceof Error ? err.message : "Unknown error",
-      }),
+    // LINE送信失敗は監査ログに記録して返す（応答はブロックしない）
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+    after(async () => {
+      await writeAuditLog({
+        action: "SEND_MESSAGE",
+        targetType: "end_users",
+        targetId: user.id,
+        success: false,
+        metadata: buildAuditMetadata({
+          body: parsed.data.body.slice(0, 100),
+          error: errorMessage,
+        }),
+      });
     });
 
     return {
@@ -170,20 +174,23 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
     };
   }
 
-  // 監査ログ
-  await writeAuditLog({
-    action: "SEND_MESSAGE",
-    targetType: "messages",
-    targetId: message.id,
-    success: true,
-    metadata: buildAuditMetadata({
-      end_user_id: user.id,
-      body_length: parsed.data.body.length,
-    }),
+  // 監査ログ・メトリクスは送信成功の応答をブロックしない。
+  // after() は promise を返すコールバックの完了を待つため、
+  // 旧来の「awaitなし呼びっぱなし」（サーバーレスでは実行途中で凍結され記録が欠落しうる）
+  // と違い完了が保証される。
+  after(async () => {
+    await writeAuditLog({
+      action: "SEND_MESSAGE",
+      targetType: "messages",
+      targetId: message.id,
+      success: true,
+      metadata: buildAuditMetadata({
+        end_user_id: user.id,
+        body_length: parsed.data.body.length,
+      }),
+    });
+    await recordResponseMetric(user.id, auth.id, message.id);
   });
-
-  // レスポンスメトリクス記録（非同期、失敗しても送信は成功）
-  recordResponseMetric(user.id, auth.id, message.id);
 
   revalidatePath("/inbox");
   revalidatePath(`/chat/${user.id}`);
@@ -226,12 +233,15 @@ export async function sendProxyMessage(
 
   const supabase = await createServerSupabaseClient();
 
-  // end_user取得
-  const { data: user } = await supabase
-    .from("end_users")
-    .select("id, line_user_id, assigned_cast_id")
-    .eq("id", parsed.data.endUserId)
-    .single();
+  // end_user取得と送信元アカウント解決は互いに独立 → 並列
+  const [{ data: user }, sendAccount] = await Promise.all([
+    supabase
+      .from("end_users")
+      .select("id, line_user_id, assigned_cast_id")
+      .eq("id", parsed.data.endUserId)
+      .single(),
+    getSendAccountForEndUser(parsed.data.endUserId),
+  ]);
 
   if (!user) {
     return {
@@ -239,9 +249,6 @@ export async function sendProxyMessage(
       error: { code: "NOT_FOUND", message: "ユーザーが見つかりません" },
     };
   }
-
-  // 送信元アカウント解決（担当メイトの公式LINE → 無ければ共通）
-  const sendAccount = await getSendAccountForEndUser(user.id);
 
   // LINE送信
   try {
@@ -289,24 +296,24 @@ export async function sendProxyMessage(
     };
   }
 
-  // 監査ログ
-  await writeAuditLog({
-    action: "PROXY_SEND",
-    targetType: "messages",
-    targetId: message.id,
-    success: true,
-    metadata: buildAuditMetadata(
-      {
-        end_user_id: user.id,
-        body_length: parsed.data.body.length,
-        proxy_for_cast_id: user.assigned_cast_id,
-      },
-      { reason: parsed.data.reason }
-    ),
+  // 監査ログ・メトリクスは応答をブロックしない（after内で完了保証）
+  after(async () => {
+    await writeAuditLog({
+      action: "PROXY_SEND",
+      targetType: "messages",
+      targetId: message.id,
+      success: true,
+      metadata: buildAuditMetadata(
+        {
+          end_user_id: user.id,
+          body_length: parsed.data.body.length,
+          proxy_for_cast_id: user.assigned_cast_id,
+        },
+        { reason: parsed.data.reason }
+      ),
+    });
+    await recordResponseMetric(user.id, auth.id, message.id);
   });
-
-  // レスポンスメトリクス記録
-  recordResponseMetric(user.id, auth.id, message.id);
 
   revalidatePath("/inbox");
   revalidatePath(`/chat/${user.id}`);
