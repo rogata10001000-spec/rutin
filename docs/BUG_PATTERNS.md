@@ -107,3 +107,27 @@
 **チェック:**
 - [ ] 完了画面は trial / 金額などビジネス文脈を表示
 - [ ] 運用は `/admin/webhooks` で processed を確認
+
+---
+
+## パターン I: 変更スコープ未検証の認可（Unscoped Mutation / Privilege Escalation）
+
+**定義:** 「誰が・どの行を触れるか（操作可否）」は検証するが、「どの列を・どんな値にできるか（変更の中身）」を制約していない。結果、権限のない列（`role` / `active` / `status` / 価格 / ポイント / `assigned_cast_id` / `is_blocked` 等）を書き換えられる＝権限昇格・データ改ざん。
+
+**現れ方（3型）:**
+- **I-a. RLS の `UPDATE` で `WITH CHECK` 省略**: Postgres は省略時 `USING` を流用する。`USING` が**更新で不変な識別子**（`id = auth.uid()` 等）だけで満たされると、他の特権列を自由に変更できてしまう。
+  - 実例: `staff_profiles_update` が `using(id = auth.uid() or is_admin())` のみ → cast が自分の行の `role='admin'` に書き換え可能だった。
+- **I-b. no-op な認可**: `with check (true)` / `... or true` / `using (true)`（書き込み系）。
+  - 実例: `audit_logs_insert (with check true)` = 監査ログ偽造、`ai_drafts_insert (... or true)` = 無制限挿入。
+- **I-c. アプリ層の Mass Assignment**: サーバーアクションがアクセス可否だけ確認し、クライアント入力の列を**allow-list せず**そのまま `update` に流す（`.update(parsed.data)` / `.update({...input})`）。
+
+**安全な形（重要な判定基準）:**
+- RLS UPDATE の `USING` が**ロールベース**（`is_admin()` 等、行の列値に依存しない）なら安全。
+- `USING` が**可変の所有列**（`cast_id` / `end_user_id` / `is_global` 等）を参照していれば、`WITH CHECK` 省略時の USING 流用は**むしろ保護的**（別所有者へ付け替えるとチェック失敗）。→ `memos` / `cast_photos` / `message_templates` はこれで安全。
+- **危険なのは「USING が不変の識別子(`id`)だけ ＋ 別の特権列が自由に可変」の組み合わせ**のみ。
+
+**チェック:**
+- [ ] `UPDATE`/`FOR ALL` の RLS は、識別子ベースなら**必ず `WITH CHECK` を明示**し、特権列の変更を禁止する（または UPDATE を admin 限定にし、本人編集は service_role の Server Action で列を限定する）
+- [ ] 書き込み系ポリシーに `with check (true)` / `or true` / `using (true)` を置かない
+- [ ] サーバーアクションの `update` は**列を明示**（`parsed.data` の丸ごと流し込み禁止）。role/status/価格/points/assigned_cast_id/is_blocked/active 等は該当ロールのみ設定可
+- [ ] INSERT ポリシーは所有者列（`created_by`/`requested_by`/`staff_id`）を `= auth.uid()` に固定（なりすまし防止）
