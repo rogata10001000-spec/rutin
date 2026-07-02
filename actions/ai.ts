@@ -13,6 +13,8 @@ const AI_PROVIDER_KEY = getServerEnv().AI_PROVIDER_KEY;
 
 export type GenerateAiDraftsInput = {
   endUserId: string;
+  /** 任意の共通指示（一括生成などで「今回の返信に反映してほしいこと」を渡す） */
+  instruction?: string;
 };
 
 export type AiDraft = {
@@ -130,7 +132,7 @@ export async function generateAiDrafts(
         messages: [
           {
             role: "user",
-            content: buildAiPrompt(contextSnapshot),
+            content: buildAiPrompt(contextSnapshot, parsed.data.instruction ?? null),
           },
         ],
       }),
@@ -208,12 +210,15 @@ export async function generateAiDrafts(
 /**
  * AIプロンプト構築
  */
-function buildAiPrompt(context: {
-  messages: { direction: string; body: string }[];
-  pinnedMemos: { category: string; latest_body: string }[];
-  checkins: { date: string; status: string }[];
-  castStyle: string | null;
-}): string {
+function buildAiPrompt(
+  context: {
+    messages: { direction: string; body: string }[];
+    pinnedMemos: { category: string; latest_body: string }[];
+    checkins: { date: string; status: string }[];
+    castStyle: string | null;
+  },
+  instruction: string | null
+): string {
   const messageHistory = context.messages
     .reverse()
     .map((m) => `${m.direction === "in" ? "ユーザー" : "メイト"}: ${m.body}`)
@@ -240,7 +245,7 @@ ${memos || "（なし）"}
 
 ## 直近7日のチェックイン
 ${checkinStatus || "（なし）"}
-
+${instruction ? `\n## メイトからの指示（今回の返信で必ず反映すること）\n${instruction}\n` : ""}
 ## 出力形式
 以下の3パターンで返信案を作成してください。各返信は100文字程度で、Bot感のない人間らしい文章にしてください。
 

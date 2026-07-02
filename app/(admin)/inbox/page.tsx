@@ -2,7 +2,7 @@ import { getInboxItems, type InboxFilters as InboxFiltersType } from "@/actions/
 import { getCastOptions } from "@/actions/assignments";
 import { getChatThread } from "@/actions/chat";
 import { getCurrentStaff } from "@/lib/auth";
-import { InboxList } from "@/components/inbox/InboxList";
+import { BulkSendController } from "@/components/inbox/BulkSendController";
 import { InboxFilters } from "@/components/inbox/InboxFilters";
 import { InboxAutoRefresh } from "@/components/inbox/InboxAutoRefresh";
 import { ThreadReadMarker } from "@/components/inbox/ThreadReadMarker";
@@ -116,24 +116,16 @@ export default async function InboxPage({
           />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          {result.ok ? (
-            items.length > 0 ? (
-              <InboxList items={items} selectedUserId={selectedUserId} role={staff?.role} />
-            ) : (
-              <div className="p-6">
-                <EmptyState
-                  title="該当するユーザーがいません"
-                  description="フィルタ条件を変更してみてください"
-                />
-              </div>
-            )
-          ) : (
+        {result.ok ? (
+          // 一覧＋「まとめて送信」（選択モード・一斉送信・AI一括下書き）一式
+          <BulkSendController items={items} selectedUserId={selectedUserId} role={staff?.role} />
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <div className="m-4 rounded-xl bg-red-50 p-4 text-center text-destructive">
               {result.error.message}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </aside>
 
       {/* 中央 + 右ペイン: チャット */}
