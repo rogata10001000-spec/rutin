@@ -120,15 +120,23 @@ async function DashboardKpis({ isAdmin }: { isAdmin: boolean }) {
             未返信 <span className="font-bold">{unreplied}</span> 件、今日未送信{" "}
             <span className="font-bold">{notSentToday}</span> 件の対応が必要です。
           </p>
-          <Link
-            href="/inbox?reply=unreplied"
-            className="ml-auto inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-amber-600"
-          >
-            受信トレイで対応
-            <span className="material-symbols-outlined text-[16px]" aria-hidden>
-              arrow_forward
-            </span>
-          </Link>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <Link
+              href="/inbox?reply=not_sent_today&bulkSelect=1"
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-700 shadow-sm transition-colors hover:bg-amber-100"
+            >
+              まとめて送る
+            </Link>
+            <Link
+              href="/inbox?reply=unreplied"
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-amber-600"
+            >
+              受信トレイで対応
+              <span className="material-symbols-outlined text-[16px]" aria-hidden>
+                arrow_forward
+              </span>
+            </Link>
+          </div>
         </div>
       ) : summary ? (
         <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">

@@ -281,20 +281,36 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
         </div>
       )}
 
-      {/* 未対応警告バナー（コンパクト） */}
+      {/* 未対応警告バナー（絞り込み＋まとめて送るの直行導線） */}
       {summary && summary.notSentToday > 0 && (
-        <button
-          onClick={() =>
-            updateMultipleFilters([
-              { key: "todaySentZero", value: "true" },
-              { key: "sort", value: "today_sent_asc" },
-            ])
-          }
-          className="flex w-full items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
-        >
-          <span aria-hidden>⏰</span>
-          {summary.notSentToday}人に今日まだ対応していません。タップで絞り込み
-        </button>
+        <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+          <button
+            onClick={() =>
+              updateMultipleFilters([
+                { key: "todaySentZero", value: "true" },
+                { key: "sort", value: "today_sent_asc" },
+              ])
+            }
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium text-amber-800 transition-colors hover:text-amber-900"
+          >
+            <span aria-hidden>⏰</span>
+            <span className="min-w-0">
+              {summary.notSentToday}人に今日まだ対応していません。タップで絞り込み
+            </span>
+          </button>
+          <button
+            onClick={() =>
+              updateMultipleFilters([
+                { key: "todaySentZero", value: "true" },
+                { key: "sort", value: "today_sent_asc" },
+                { key: "bulkSelect", value: "1" },
+              ])
+            }
+            className="shrink-0 whitespace-nowrap rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-amber-600"
+          >
+            まとめて送る
+          </button>
+        </div>
       )}
 
       {/* 詳細フィルタ（折りたたみ） */}

@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { InboxItem } from "@/actions/inbox";
 import type { StaffRole } from "@/lib/supabase/types";
+import { listMyScheduledMessages } from "@/actions/scheduled-messages";
 import { InboxList } from "./InboxList";
 import { BulkComposeModal } from "./BulkComposeModal";
 import { BulkAiModal } from "./BulkAiModal";
+import { BulkTagModal } from "./BulkTagModal";
+import { BulkAssignModal } from "./BulkAssignModal";
+import { ScheduledListModal } from "./ScheduledListModal";
 import { BulkReviewPanel, type BulkTargetUser } from "./BulkReviewPanel";
 import { EmptyState } from "@/components/common/EmptyState";
 
@@ -18,20 +22,60 @@ type BulkSendControllerProps = {
   items: InboxItem[];
   selectedUserId?: string;
   role?: StaffRole;
+  availableTags?: string[];
+  /** ?bulkSelect=1 で開かれたとき、選択モード＋表示中全選択で開始する（ダッシュボード等からの直行導線） */
+  initialSelectAll?: boolean;
 };
 
 /**
  * 受信トレイの「まとめて送信」一式。
  * 選択モードのトグル・全選択・下部アクションバー・本文作成/AI開始モーダル・
- * レビューキューの配線を担う（一覧のスクロール領域ごとレンダリングする）。
+ * レビューキュー・予約一覧・一括タグ/担当変更の配線を担う。
  */
-export function BulkSendController({ items, selectedUserId, role }: BulkSendControllerProps) {
+export function BulkSendController({
+  items,
+  selectedUserId,
+  role,
+  availableTags = [],
+  initialSelectAll = false,
+}: BulkSendControllerProps) {
   const router = useRouter();
   const [selectionMode, setSelectionMode] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [composeOpen, setComposeOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [tagOpen, setTagOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [scheduledOpen, setScheduledOpen] = useState(false);
+  const [scheduledCount, setScheduledCount] = useState(0);
   const [review, setReview] = useState<ReviewState | null>(null);
+
+  const isManager = role === "admin" || role === "supervisor";
+
+  // 予約中件数（バッジ表示用）
+  const refreshScheduledCount = useCallback(() => {
+    void listMyScheduledMessages().then((result) => {
+      if (result.ok) setScheduledCount(result.data.items.length);
+    });
+  }, []);
+
+  useEffect(() => {
+    refreshScheduledCount();
+  }, [refreshScheduledCount]);
+
+  // ダッシュボード等からの直行導線: 選択モード＋表示中を全選択で開始
+  const consumedInitRef = useRef(false);
+  useEffect(() => {
+    if (!initialSelectAll || consumedInitRef.current || items.length === 0) return;
+    consumedInitRef.current = true;
+    setSelectionMode(true);
+    setChecked(new Set(items.map((item) => item.id)));
+    // URLから bulkSelect を除去（リロード時の再発火を防ぐ）
+    const url = new URL(window.location.href);
+    url.searchParams.delete("bulkSelect");
+    router.replace(url.pathname + url.search, { scroll: false });
+  }, [initialSelectAll, items, router]);
 
   // 表示中アイテムのうち選択されているもの（フィルタ変更で消えたIDは自然に落ちる）
   const selectedItems = useMemo(
@@ -47,6 +91,7 @@ export function BulkSendController({ items, selectedUserId, role }: BulkSendCont
         planCode: item.planCode,
         lastMessageBody: item.lastMessageBody,
         lastMessageDirection: item.lastMessageDirection,
+        lastCheckinDate: item.lastCheckinDate,
       })),
     [selectedItems]
   );
@@ -77,7 +122,20 @@ export function BulkSendController({ items, selectedUserId, role }: BulkSendCont
       setReview(null);
       if (didSendAny) {
         exitSelection();
+        refreshScheduledCount();
         // 返信状態・今日の送信数などを一覧へ反映
+        router.refresh();
+      }
+    },
+    [exitSelection, refreshScheduledCount, router]
+  );
+
+  const handleBulkOpDone = useCallback(
+    (didUpdate: boolean) => {
+      setTagOpen(false);
+      setAssignOpen(false);
+      if (didUpdate) {
+        exitSelection();
         router.refresh();
       }
     },
@@ -90,7 +148,7 @@ export function BulkSendController({ items, selectedUserId, role }: BulkSendCont
   return (
     <>
       {/* ツールバー */}
-      {(items.length > 0 || selectionMode) && (
+      {(items.length > 0 || selectionMode || scheduledCount > 0) && (
         <div className="shrink-0 border-b border-stone-100 px-3 py-2">
           {selectionMode ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -111,7 +169,19 @@ export function BulkSendController({ items, selectedUserId, role }: BulkSendCont
               </button>
             </div>
           ) : (
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-between gap-2">
+              {scheduledCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setScheduledOpen(true)}
+                  className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-bold text-indigo-700 transition-colors hover:bg-indigo-100"
+                >
+                  <span aria-hidden>🕒</span>
+                  予約 {scheduledCount}件
+                </button>
+              ) : (
+                <span />
+              )}
               <button
                 type="button"
                 onClick={() => setSelectionMode(true)}
@@ -173,6 +243,58 @@ export function BulkSendController({ items, selectedUserId, role }: BulkSendCont
             <span aria-hidden>✨</span>
             AIで下書き生成
           </button>
+          {isManager && (
+            <button
+              type="button"
+              onClick={() => setMoreOpen(true)}
+              disabled={count === 0}
+              aria-label="その他の一括操作"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-white text-stone-600 shadow-sm transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h.01M12 12h.01M19 12h.01" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* その他の一括操作（Admin/SV） */}
+      {moreOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center sm:p-4">
+          <div className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" onClick={() => setMoreOpen(false)} />
+          <div className="relative z-10 w-full rounded-t-2xl bg-white p-5 shadow-soft-lg sm:max-w-sm sm:rounded-2xl">
+            <h2 className="text-base font-bold text-stone-800">{count}人への一括操作</h2>
+            <div className="mt-3 space-y-2 pb-[env(safe-area-inset-bottom)]">
+              <button
+                type="button"
+                onClick={() => {
+                  setMoreOpen(false);
+                  setTagOpen(true);
+                }}
+                className="inline-flex h-12 w-full items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-700 shadow-sm transition-colors hover:bg-stone-50"
+              >
+                <span aria-hidden>🏷</span> タグを追加
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMoreOpen(false);
+                  setAssignOpen(true);
+                }}
+                className="inline-flex h-12 w-full items-center gap-3 rounded-xl border border-stone-200 bg-white px-4 text-sm font-bold text-stone-700 shadow-sm transition-colors hover:bg-stone-50"
+              >
+                <span aria-hidden>👤</span> 担当メイトを変更
+              </button>
+              <button
+                type="button"
+                onClick={() => setMoreOpen(false)}
+                className="inline-flex h-11 w-full items-center justify-center rounded-xl text-sm font-bold text-stone-500 transition-colors hover:bg-stone-100"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -196,6 +318,34 @@ export function BulkSendController({ items, selectedUserId, role }: BulkSendCont
           onStart={(instruction) => {
             setAiOpen(false);
             setReview({ mode: "ai", instruction });
+          }}
+        />
+      )}
+
+      {/* 一括タグ付け（Admin/SV） */}
+      {tagOpen && (
+        <BulkTagModal
+          count={count}
+          endUserIds={selectedItems.map((item) => item.id)}
+          availableTags={availableTags}
+          onClose={handleBulkOpDone}
+        />
+      )}
+
+      {/* 一括担当変更（Admin/SV） */}
+      {assignOpen && (
+        <BulkAssignModal
+          targets={selectedItems.map((item) => ({ id: item.id, displayName: item.displayName }))}
+          onClose={handleBulkOpDone}
+        />
+      )}
+
+      {/* 予約中の送信一覧 */}
+      {scheduledOpen && (
+        <ScheduledListModal
+          onClose={(changed) => {
+            setScheduledOpen(false);
+            if (changed) refreshScheduledCount();
           }}
         />
       )}

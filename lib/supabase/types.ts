@@ -508,6 +508,20 @@ type MessageTemplatesRow = {
   staff_id: string | null;
   is_global: boolean;
   sort_order: number;
+  usage_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type ScheduledMessagesRow = {
+  id: string;
+  end_user_id: string;
+  created_by: string;
+  body: string;
+  scheduled_at: string;
+  status: "pending" | "sending" | "sent" | "failed" | "canceled";
+  sent_message_id: string | null;
+  error_message: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -911,12 +925,24 @@ export interface Database {
       };
       message_templates: {
         Row: MessageTemplatesRow;
-        Insert: Omit<MessageTemplatesRow, "id" | "created_at" | "updated_at" | "sort_order" | "is_global"> & {
+        Insert: Omit<MessageTemplatesRow, "id" | "created_at" | "updated_at" | "sort_order" | "is_global" | "usage_count"> & {
           id?: string;
           sort_order?: number;
           is_global?: boolean;
+          usage_count?: number;
         };
         Update: Partial<Omit<MessageTemplatesRow, "id" | "created_at">>;
+        Relationships: [];
+      };
+      scheduled_messages: {
+        Row: ScheduledMessagesRow;
+        Insert: Omit<ScheduledMessagesRow, "id" | "created_at" | "updated_at" | "status" | "sent_message_id" | "error_message"> & {
+          id?: string;
+          status?: ScheduledMessagesRow["status"];
+          sent_message_id?: string | null;
+          error_message?: string | null;
+        };
+        Update: Partial<Omit<ScheduledMessagesRow, "id" | "created_at">>;
         Relationships: [];
       };
       step_messages: {

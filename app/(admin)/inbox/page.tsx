@@ -28,6 +28,7 @@ type SearchParams = {
   q?: string;
   tags?: string;
   user?: string;
+  bulkSelect?: string;
 };
 
 export default async function InboxPage({
@@ -79,7 +80,8 @@ export default async function InboxPage({
   // 選択中ユーザーへ戻る/解除するリンク（フィルタ維持）
   const listOnlyParams = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (key !== "user" && value) listOnlyParams.set(key, value);
+    // bulkSelect は一度きりの導線用なので戻りリンクへは引き継がない
+    if (key !== "user" && key !== "bulkSelect" && value) listOnlyParams.set(key, value);
   }
   const backToListHref = listOnlyParams.toString()
     ? `/inbox?${listOnlyParams.toString()}`
@@ -117,8 +119,14 @@ export default async function InboxPage({
         </div>
 
         {result.ok ? (
-          // 一覧＋「まとめて送信」（選択モード・一斉送信・AI一括下書き）一式
-          <BulkSendController items={items} selectedUserId={selectedUserId} role={staff?.role} />
+          // 一覧＋「まとめて送信」（選択モード・一斉送信・AI一括下書き・予約・一括操作）一式
+          <BulkSendController
+            items={items}
+            selectedUserId={selectedUserId}
+            role={staff?.role}
+            availableTags={availableTags}
+            initialSelectAll={params.bulkSelect === "1"}
+          />
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <div className="m-4 rounded-xl bg-red-50 p-4 text-center text-destructive">

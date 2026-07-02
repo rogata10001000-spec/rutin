@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { getMessageTemplates, type MessageTemplate } from "@/actions/templates";
+import {
+  getMessageTemplates,
+  incrementTemplateUsage,
+  type MessageTemplate,
+} from "@/actions/templates";
 import { useToast } from "@/components/common/Toast";
 
 type TemplateSelectorProps = {
@@ -77,6 +81,8 @@ export function TemplateSelector({ onSelect }: TemplateSelectorProps) {
                           onClick={() => {
                             onSelect(template.body);
                             setOpen(false);
+                            // 使用回数を学習（失敗しても選択は妨げない）
+                            void incrementTemplateUsage(template.id);
                           }}
                           className="w-full px-3 py-2.5 text-left hover:bg-stone-50 transition-colors"
                         >

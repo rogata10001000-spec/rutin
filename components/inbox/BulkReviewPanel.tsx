@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { sendMessage } from "@/actions/messages";
 import { generateAiDrafts, type AiDraft } from "@/actions/ai";
+import { scheduleBulkMessages } from "@/actions/scheduled-messages";
 import { BadgePlan } from "@/components/common/Badge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useToast } from "@/components/common/Toast";
@@ -14,6 +15,7 @@ export type BulkTargetUser = {
   planCode: "light" | "standard" | "premium";
   lastMessageBody: string | null;
   lastMessageDirection: "in" | "out" | null;
+  lastCheckinDate: string | null;
 };
 
 type ItemStatus =
@@ -22,6 +24,7 @@ type ItemStatus =
   | "ready" // 下書きあり・未送信
   | "sending"
   | "sent"
+  | "scheduled" // 予約済み（cronが後で送信）
   | "failed" // 送信失敗（再試行可）
   | "skipped";
 
@@ -49,9 +52,35 @@ const VARIANT_LABELS: Record<AiDraft["type"], string> = {
   suggest: "提案",
 };
 
-/** {名前} を各ユーザーの表示名に置き換える */
-export function applyNamePlaceholder(text: string, displayName: string): string {
-  return text.replaceAll("{名前}", displayName);
+const PLAN_LABELS: Record<BulkTargetUser["planCode"], string> = {
+  light: "Light",
+  standard: "Standard",
+  premium: "Premium",
+};
+
+/** {名前}・{プラン}・{最終チェックイン} を各ユーザーの値に置き換える */
+export function applyPlaceholders(text: string, user: BulkTargetUser): string {
+  const checkin = user.lastCheckinDate
+    ? new Date(user.lastCheckinDate + "T00:00:00").toLocaleDateString("ja-JP", {
+        month: "numeric",
+        day: "numeric",
+      })
+    : "まだ記録なし";
+  return text
+    .replaceAll("{名前}", user.displayName)
+    .replaceAll("{プラン}", PLAN_LABELS[user.planCode])
+    .replaceAll("{最終チェックイン}", checkin);
+}
+
+/** 予約プリセット（JST）: dayOffset日後の hour:00 のISO時刻とラベル */
+function jstPreset(dayOffset: number, hour: number): { iso: string; label: string } {
+  const nowJst = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+  const base = new Date(`${nowJst}T00:00:00+09:00`);
+  base.setTime(base.getTime() + dayOffset * 86400000);
+  const ymd = base.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+  const iso = new Date(`${ymd}T${String(hour).padStart(2, "0")}:00:00+09:00`).toISOString();
+  const dayLabel = dayOffset === 0 ? "今日" : dayOffset === 1 ? "明日" : `${dayOffset}日後`;
+  return { iso, label: `${dayLabel} ${hour}:00` };
 }
 
 /** 並列数を制限して非同期処理を実行する小さなプール */
@@ -86,7 +115,7 @@ export function BulkReviewPanel({
   const [items, setItems] = useState<QueueItem[]>(() =>
     users.map((user) => ({
       user,
-      text: mode === "same" ? applyNamePlaceholder(initialText, user.displayName) : "",
+      text: mode === "same" ? applyPlaceholders(initialText, user) : "",
       variants: null,
       status: mode === "same" ? "ready" : "generating",
       error: null,
@@ -97,6 +126,7 @@ export function BulkReviewPanel({
   const [bulkSending, setBulkSending] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [confirmSendAllOpen, setConfirmSendAllOpen] = useState(false);
+  const [schedulePick, setSchedulePick] = useState<{ iso: string; label: string } | null>(null);
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
 
   // 非同期処理から最新の items を読むためのミラー
@@ -225,6 +255,41 @@ export function BulkReviewPanel({
     [items]
   );
 
+  // 予約送信（残りの ready/failed をまとめて予約し、cron に委ねる）
+  const handleScheduleAll = useCallback(
+    async (iso: string, label: string) => {
+      const targets = itemsRef.current
+        .map((it, i) => ({ it, i }))
+        .filter(({ it }) => (it.status === "ready" || it.status === "failed") && it.text.trim());
+      if (targets.length === 0) return;
+
+      const result = await scheduleBulkMessages({
+        scheduledAt: iso,
+        messages: targets.map(({ it }) => ({ endUserId: it.user.id, body: it.text.trim() })),
+      });
+
+      if (!result.ok) {
+        showToast(result.error.message, "error");
+        return;
+      }
+
+      setConfirmSendAllOpen(false);
+      didSendRef.current = true; // 一覧の予約バッジ更新のため refresh 対象にする
+      setItems((prev) =>
+        prev.map((it) =>
+          (it.status === "ready" || it.status === "failed") && it.text.trim()
+            ? { ...it, status: "scheduled" as const, error: null }
+            : it
+        )
+      );
+      showToast(`${result.data.count}人分を予約しました（${label}）`, "success");
+      if (findNextPending(-1) === null) {
+        setDoneView(true);
+      }
+    },
+    [findNextPending, showToast]
+  );
+
   const handleSendAll = useCallback(async () => {
     setConfirmSendAllOpen(false);
     bulkCancelRef.current = false;
@@ -276,10 +341,12 @@ export function BulkReviewPanel({
 
   // ===== 集計 =====
   const sentCount = items.filter((it) => it.status === "sent").length;
+  const scheduledCount = items.filter((it) => it.status === "scheduled").length;
   const skippedCount = items.filter((it) => it.status === "skipped").length;
   const failedCount = items.filter((it) => it.status === "failed").length;
   const generatingCount = items.filter((it) => it.status === "generating").length;
-  const progressPct = items.length > 0 ? Math.round((sentCount / items.length) * 100) : 0;
+  const progressPct =
+    items.length > 0 ? Math.round(((sentCount + scheduledCount) / items.length) * 100) : 0;
 
   const item = items[current];
 
@@ -319,6 +386,7 @@ export function BulkReviewPanel({
               </h2>
               <p className="mt-0.5 text-xs text-stone-500">
                 送信済み {sentCount} / {items.length} 人
+                {scheduledCount > 0 && ` ・予約 ${scheduledCount}`}
                 {generatingCount > 0 && `（AI生成中 ${generatingCount}人）`}
                 {skippedCount > 0 && ` ・スキップ ${skippedCount}`}
                 {failedCount > 0 && ` ・失敗 ${failedCount}`}
@@ -336,14 +404,14 @@ export function BulkReviewPanel({
                   中断（{bulkProgress?.done ?? 0}/{bulkProgress?.total ?? 0}）
                 </button>
               ) : (
-                sendableCount > 1 &&
+                sendableCount > 0 &&
                 !doneView && (
                   <button
                     type="button"
                     onClick={() => setConfirmSendAllOpen(true)}
                     className="whitespace-nowrap rounded-lg border border-terracotta/40 bg-terracotta/5 px-3 py-1.5 text-xs font-bold text-terracotta transition-colors hover:bg-terracotta/10"
                   >
-                    残り{sendableCount}人にすべて送信
+                    残り{sendableCount}人を一括送信/予約
                   </button>
                 )
               )}
@@ -376,7 +444,12 @@ export function BulkReviewPanel({
               </svg>
             </div>
             <div>
-              <p className="text-lg font-bold text-stone-800">{sentCount}人に送信しました</p>
+              <p className="text-lg font-bold text-stone-800">
+                {sentCount > 0 && `${sentCount}人に送信しました`}
+                {sentCount > 0 && scheduledCount > 0 && " ・ "}
+                {scheduledCount > 0 && `${scheduledCount}人分を予約しました`}
+                {sentCount === 0 && scheduledCount === 0 && "確認を終了しました"}
+              </p>
               {(skippedCount > 0 || failedCount > 0) && (
                 <p className="mt-1 text-sm text-stone-500">
                   {skippedCount > 0 && `スキップ ${skippedCount}人`}
@@ -438,6 +511,11 @@ export function BulkReviewPanel({
                 {item.status === "sent" && (
                   <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
                     送信済み
+                  </span>
+                )}
+                {item.status === "scheduled" && (
+                  <span className="shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+                    予約済み
                   </span>
                 )}
                 {item.status === "skipped" && (
@@ -536,13 +614,15 @@ export function BulkReviewPanel({
                     value={item.text}
                     onChange={(e) => updateItem(current, { text: e.target.value })}
                     onKeyDown={handleKeyDown}
-                    readOnly={item.status === "sent" || bulkSending}
+                    readOnly={item.status === "sent" || item.status === "scheduled" || bulkSending}
                     rows={6}
                     placeholder="送信する内容を入力…"
                     className={`block min-h-[10rem] w-full flex-1 resize-none rounded-xl border px-4 py-3 text-sm leading-relaxed shadow-sm transition-all focus:outline-none ${
                       item.status === "sent"
                         ? "border-emerald-200 bg-emerald-50/50 text-stone-500"
-                        : "border-stone-200 bg-stone-50 text-stone-900 focus:border-terracotta focus:bg-white focus:ring-1 focus:ring-terracotta"
+                        : item.status === "scheduled"
+                          ? "border-indigo-200 bg-indigo-50/50 text-stone-500"
+                          : "border-stone-200 bg-stone-50 text-stone-900 focus:border-terracotta focus:bg-white focus:ring-1 focus:ring-terracotta"
                     }`}
                   />
                   <div className="mt-1 flex items-center justify-between text-[11px] text-stone-400">
@@ -555,7 +635,7 @@ export function BulkReviewPanel({
 
             {/* ===== フッター操作 ===== */}
             <div className="shrink-0 border-t border-stone-100 bg-white px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-              {item.status === "sent" ? (
+              {item.status === "sent" || item.status === "scheduled" ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -613,16 +693,83 @@ export function BulkReviewPanel({
         ) : null}
       </div>
 
-      {/* 一括送信の確認 */}
-      <ConfirmDialog
-        open={confirmSendAllOpen}
-        title={`残り${sendableCount}人にまとめて送信しますか？`}
-        description="現在の下書きの内容のまま、確認せずに順番に送信します。送信後は取り消せません。"
-        confirmLabel={`${sendableCount}人に送信する`}
-        variant="default"
-        onConfirm={() => void handleSendAll()}
-        onCancel={() => setConfirmSendAllOpen(false)}
-      />
+      {/* 一括送信/予約の選択 */}
+      {confirmSendAllOpen && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center sm:items-center sm:p-4">
+          <div
+            className="absolute inset-0 bg-stone-900/30 backdrop-blur-sm"
+            onClick={() => {
+              setConfirmSendAllOpen(false);
+              setSchedulePick(null);
+            }}
+          />
+          <div className="relative z-10 w-full rounded-t-2xl bg-white p-5 shadow-soft-lg sm:max-w-md sm:rounded-2xl">
+            <h3 className="text-base font-bold text-stone-800">
+              残り{sendableCount}人の下書きをまとめて処理
+            </h3>
+            <p className="mt-1 text-xs text-stone-500">
+              現在の下書きの内容のまま送信します。送信後は取り消せません。
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSchedulePick(null);
+                void handleSendAll();
+              }}
+              className="mt-4 inline-flex h-11 w-full items-center justify-center rounded-xl bg-terracotta text-sm font-bold text-white shadow-md transition-colors hover:bg-[#d0694e]"
+            >
+              今すぐ{sendableCount}人に送信
+            </button>
+
+            <div className="mt-4 border-t border-stone-100 pt-3">
+              <p className="text-xs font-bold text-stone-500">または予約して送信（取り消し可）</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[jstPreset(0, 19), jstPreset(1, 8), jstPreset(1, 12)]
+                  .filter((p) => new Date(p.iso).getTime() > Date.now() + 60_000)
+                  .map((p) => (
+                    <button
+                      key={p.iso}
+                      type="button"
+                      onClick={() => setSchedulePick(p)}
+                      className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-bold transition-colors ${
+                        schedulePick?.iso === p.iso
+                          ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                          : "border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+              </div>
+              <button
+                type="button"
+                disabled={!schedulePick}
+                onClick={() => {
+                  if (schedulePick) {
+                    void handleScheduleAll(schedulePick.iso, schedulePick.label);
+                    setSchedulePick(null);
+                  }
+                }}
+                className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 text-sm font-bold text-indigo-700 transition-colors hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {schedulePick ? `${schedulePick.label} に予約する` : "時刻を選んで予約"}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmSendAllOpen(false);
+                setSchedulePick(null);
+              }}
+              className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-xl text-sm font-bold text-stone-500 transition-colors hover:bg-stone-100"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 閉じる確認（未送信の下書きが残っている場合） */}
       <ConfirmDialog

@@ -19,19 +19,19 @@ export function BulkComposeModal({ count, onCancel, onProceed }: BulkComposeModa
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const insertName = () => {
+  const insertVar = (token: string) => {
     const el = textareaRef.current;
     if (!el) {
-      setText((t) => `${t}{名前}`);
+      setText((t) => `${t}${token}`);
       return;
     }
     const start = el.selectionStart ?? text.length;
     const end = el.selectionEnd ?? text.length;
-    const next = `${text.slice(0, start)}{名前}${text.slice(end)}`;
+    const next = `${text.slice(0, start)}${token}${text.slice(end)}`;
     setText(next);
     requestAnimationFrame(() => {
       el.focus();
-      const pos = start + "{名前}".length;
+      const pos = start + token.length;
       el.setSelectionRange(pos, pos);
     });
   };
@@ -64,7 +64,7 @@ export function BulkComposeModal({ count, onCancel, onProceed }: BulkComposeModa
             className="block min-h-[11rem] w-full resize-none rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-relaxed text-stone-900 shadow-sm transition-all focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
           />
           <div className="flex items-center justify-between text-[11px] text-stone-400">
-            <span>{"{名前}"} は各ユーザーの表示名に置き換わります</span>
+            <span>{"{名前} {プラン} {最終チェックイン}"} は各ユーザーの値に置き換わります</span>
             <span className="tabular-nums">{text.length}文字</span>
           </div>
         </div>
@@ -72,13 +72,16 @@ export function BulkComposeModal({ count, onCancel, onProceed }: BulkComposeModa
         {/* ツールバー（テンプレのポップアップが上方向＝テキストエリア側に開くため、スクロール外に置く） */}
         <div className="flex shrink-0 flex-wrap items-center gap-2 px-5 pb-1">
           <TemplateSelector onSelect={(body) => setText(body)} />
-          <button
-            type="button"
-            onClick={insertName}
-            className="whitespace-nowrap rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-bold text-stone-600 shadow-sm transition-colors hover:bg-stone-50"
-          >
-            {"{名前}"}を挿入
-          </button>
+          {["{名前}", "{プラン}", "{最終チェックイン}"].map((token) => (
+            <button
+              key={token}
+              type="button"
+              onClick={() => insertVar(token)}
+              className="whitespace-nowrap rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-bold text-stone-600 shadow-sm transition-colors hover:bg-stone-50"
+            >
+              {token}
+            </button>
+          ))}
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-2 border-t border-stone-100 bg-white px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-4">

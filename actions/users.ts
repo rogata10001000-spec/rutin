@@ -624,3 +624,76 @@ export async function createEndUser(
 
   return { ok: true, data: { id: newUser.id } };
 }
+
+export type BulkAddTagResult = Result<{ updated: number }>;
+
+/**
+ * 複数ユーザーへタグを一括追加（Admin/Supervisor）。
+ * 既に同じタグを持つユーザーはそのまま（重複追加しない）。
+ */
+export async function bulkAddTag(input: {
+  endUserIds: string[];
+  tag: string;
+}): Promise<BulkAddTagResult> {
+  const staff = await getCurrentStaff();
+  if (!staff) {
+    return { ok: false, error: { code: "UNAUTHORIZED", message: "ログインが必要です" } };
+  }
+  if (staff.role !== "admin" && staff.role !== "supervisor") {
+    return { ok: false, error: { code: "FORBIDDEN", message: "この操作を行う権限がありません" } };
+  }
+
+  const tag = input.tag.trim();
+  if (!tag || tag.length > 20) {
+    return { ok: false, error: { code: "ZOD_ERROR", message: "タグは1〜20文字で入力してください" } };
+  }
+  const ids = [...new Set(input.endUserIds)].filter(Boolean);
+  if (ids.length === 0 || ids.length > 500) {
+    return { ok: false, error: { code: "ZOD_ERROR", message: "対象は1〜500人で指定してください" } };
+  }
+
+  const supabase = await createServerSupabaseClient();
+
+  const { data: users, error: fetchError } = await supabase
+    .from("end_users")
+    .select("id, tags")
+    .in("id", ids);
+
+  if (fetchError) {
+    return { ok: false, error: { code: "UNKNOWN", message: "対象の取得に失敗しました" } };
+  }
+
+  const targets = (users ?? []).filter((u) => !(u.tags ?? []).includes(tag));
+
+  // 少人数ずつ並列更新（RLS: end_users_update は Admin/SV のみ）
+  let updated = 0;
+  const CHUNK = 10;
+  for (let i = 0; i < targets.length; i += CHUNK) {
+    const chunk = targets.slice(i, i + CHUNK);
+    const results = await Promise.all(
+      chunk.map((u) =>
+        supabase
+          .from("end_users")
+          .update({ tags: [...(u.tags ?? []), tag], updated_at: new Date().toISOString() })
+          .eq("id", u.id)
+          .select("id")
+      )
+    );
+    updated += results.filter((r) => !r.error && (r.data?.length ?? 0) > 0).length;
+  }
+
+  await writeAuditLog({
+    action: "USER_PROFILE_UPDATE",
+    targetType: "end_users",
+    targetId: ids[0],
+    success: true,
+    metadata: {
+      kind: "bulk_add_tag",
+      tag,
+      requested: ids.length,
+      updated,
+    },
+  });
+
+  return { ok: true, data: { updated } };
+}

@@ -1,6 +1,6 @@
 "use server";
 
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentStaff } from "@/lib/auth";
 import { Result } from "./types";
 
@@ -29,10 +29,12 @@ export async function getMessageTemplates(): Promise<GetTemplatesResult> {
 
   const supabase = await createServerSupabaseClient();
 
+  // よく使うテンプレほど上に出す（使用回数 → カテゴリ → 並び順）
   const { data, error } = await supabase
     .from("message_templates")
     .select("id, category, title, body, is_global, staff_id")
     .or(`is_global.eq.true,staff_id.eq.${staff.id}`)
+    .order("usage_count", { ascending: false })
     .order("category")
     .order("sort_order");
 
@@ -132,4 +134,30 @@ export async function saveMessageTemplate(
   }
 
   return { ok: true, data: { templateId: data.id } };
+}
+
+/**
+ * テンプレート使用回数のカウントアップ（並び順の学習用・fire-and-forget想定）。
+ * 共有テンプレ(is_global)はRLSで一般スタッフが更新できないため、
+ * 認証確認のうえ service_role でカウントだけ更新する。
+ */
+export async function incrementTemplateUsage(templateId: string): Promise<void> {
+  const staff = await getCurrentStaff();
+  if (!staff || !templateId) return;
+
+  const admin = createAdminSupabaseClient();
+  // 自分のテンプレ or 共有テンプレのみ（他人の個人テンプレは対象外）
+  const { data: template } = await admin
+    .from("message_templates")
+    .select("id, usage_count, staff_id, is_global")
+    .eq("id", templateId)
+    .maybeSingle();
+
+  if (!template) return;
+  if (!template.is_global && template.staff_id !== staff.id) return;
+
+  await admin
+    .from("message_templates")
+    .update({ usage_count: (template.usage_count ?? 0) + 1 })
+    .eq("id", templateId);
 }

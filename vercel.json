@@ -5,6 +5,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/jobs/scheduled-messages",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/jobs/daily-summary",
       "schedule": "0 13 * * *"
     },
