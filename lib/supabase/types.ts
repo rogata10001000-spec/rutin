@@ -513,6 +513,14 @@ type MessageTemplatesRow = {
   updated_at: string;
 };
 
+type OperatorNotificationRecipientsRow = {
+  id: string;
+  event_type: "new_member";
+  end_user_id: string;
+  created_by: string | null;
+  created_at: string;
+};
+
 type ScheduledMessagesRow = {
   id: string;
   end_user_id: string;
@@ -932,6 +940,16 @@ export interface Database {
           usage_count?: number;
         };
         Update: Partial<Omit<MessageTemplatesRow, "id" | "created_at">>;
+        Relationships: [];
+      };
+      operator_notification_recipients: {
+        Row: OperatorNotificationRecipientsRow;
+        Insert: Omit<OperatorNotificationRecipientsRow, "id" | "created_at" | "event_type" | "created_by"> & {
+          id?: string;
+          event_type?: "new_member";
+          created_by?: string | null;
+        };
+        Update: Partial<Omit<OperatorNotificationRecipientsRow, "id" | "created_at">>;
         Relationships: [];
       };
       scheduled_messages: {

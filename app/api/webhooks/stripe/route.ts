@@ -1,5 +1,7 @@
 import Stripe from "stripe";
+import { after } from "next/server";
 import { verifyStripeSignature, toSubscriptionStatus, createBillingPortalSession } from "@/lib/stripe";
+import { notifyOperatorsOfNewMember } from "@/lib/operator-notifications";
 import { getServerEnv } from "@/lib/env";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { withWebhookIdempotency } from "@/lib/webhook";
@@ -596,6 +598,22 @@ export async function handleCheckoutSessionCompleted(
 
     // 同時申込レースでの定員超過を検知（決済済みのため割当は維持、運用へ通知）
     await warnIfCastOverCapacity(supabase, castId);
+
+    // 新規会員登録を運営の通知先へLINE通知（新規サブスク作成時のみ）。
+    // Webhookは withWebhookIdempotency で1イベント1回のため二重通知にならない。
+    // 応答をブロックしないよう after() で送る（完了は保証される）。
+    if (!subError) {
+      const notifyPlan = planCode;
+      const notifyStatus = subscriptionStatus;
+      const notifyUserId = user.id;
+      after(() =>
+        notifyOperatorsOfNewMember(supabase, {
+          endUserId: notifyUserId,
+          planCode: notifyPlan,
+          status: notifyStatus,
+        })
+      );
+    }
 
     // 監査ログ
     await writeAuditLog({
