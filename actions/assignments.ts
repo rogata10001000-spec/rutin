@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { assignCastSchema } from "@/schemas/assignments";
 import { Result, toZodErrorMessage } from "./types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -178,12 +179,20 @@ export async function assignCast(input: AssignCastInput): Promise<AssignCastResu
 
   const supabase = await createServerSupabaseClient();
 
-  // end_user取得
-  const { data: user } = await supabase
-    .from("end_users")
-    .select("id, assigned_cast_id, line_user_id, status, primary_line_account_id")
-    .eq("id", parsed.data.endUserId)
-    .single();
+  // end_user取得とメイト存在確認は互いに独立 → 並列で往復を1回分削減
+  // （エラー判定の順序は従来どおり「ユーザー不在 → メイト不在」を維持）
+  const [{ data: user }, { data: toCast }] = await Promise.all([
+    supabase
+      .from("end_users")
+      .select("id, assigned_cast_id, line_user_id, status, primary_line_account_id")
+      .eq("id", parsed.data.endUserId)
+      .single(),
+    supabase
+      .from("staff_profiles")
+      .select("id, role, display_name")
+      .eq("id", parsed.data.toCastId)
+      .single(),
+  ]);
 
   if (!user) {
     return {
@@ -191,13 +200,6 @@ export async function assignCast(input: AssignCastInput): Promise<AssignCastResu
       error: { code: "NOT_FOUND", message: "ユーザーが見つかりません" },
     };
   }
-
-  // toCastが存在するか確認
-  const { data: toCast } = await supabase
-    .from("staff_profiles")
-    .select("id, role, display_name")
-    .eq("id", parsed.data.toCastId)
-    .single();
 
   if (!toCast) {
     return {
@@ -242,49 +244,68 @@ export async function assignCast(input: AssignCastInput): Promise<AssignCastResu
     };
   }
 
-  // 監査ログ
-  await writeAuditLog({
-    action: "ASSIGN_CAST",
-    targetType: "cast_assignments",
-    targetId: assignment.id,
-    success: true,
-    metadata: buildAuditMetadata(
-      {
-        end_user_id: user.id,
-        from_cast_id: fromCastId,
-        to_cast_id: parsed.data.toCastId,
-      },
-      { reason: parsed.data.reason }
-    ),
-  });
+  // ここまでで担当変更は確定済み。監査ログと新メイトの友だち追加案内は
+  // 失敗しても結果を変えない後処理なので、操作したスタッフを待たせず応答後に実行する。
+  // after() は promise を返すコールバックの完了を待つため、サーバーレスでも記録が欠落しない。
+  const assignmentId = assignment.id;
+  const endUserId = user.id;
+  const endUserLineId = user.line_user_id;
+  const endUserStatus = user.status;
+  const primaryLineAccountId = user.primary_line_account_id;
+  const toCastId = parsed.data.toCastId;
+  const reason = parsed.data.reason;
+  const castName = (toCast as { display_name?: string }).display_name ?? "新しい担当メイト";
 
-  // 担当変更で新メイトの公式LINEがあり、まだその会話に乗っていない契約者には
-  // 新メイトの友だち追加を案内する（best-effort、現在会話中のアカウントから送信）。
-  if (user.line_user_id && !["incomplete", "canceled"].includes(user.status)) {
+  after(async () => {
     try {
-      const mateAccount = await getLineAccountForCast(parsed.data.toCastId);
-      if (
-        mateAccount?.friendAddUrl &&
-        mateAccount.id &&
-        mateAccount.id !== user.primary_line_account_id
-      ) {
-        const castName =
-          (toCast as { display_name?: string }).display_name ?? "新しい担当メイト";
-        const currentAccount = await getSendAccountForEndUser(user.id);
-        await pushTextMessage(
-          currentAccount.credentials,
-          user.line_user_id,
-          `担当メイトが ${castName} に変更になりました。\nこれからは ${castName} の公式LINEで直接やり取りができます。\n下記から友だち追加してください。\n${mateAccount.friendAddUrl}`
-        );
-      }
+      await writeAuditLog({
+        action: "ASSIGN_CAST",
+        targetType: "cast_assignments",
+        targetId: assignmentId,
+        success: true,
+        metadata: buildAuditMetadata(
+          {
+            end_user_id: endUserId,
+            from_cast_id: fromCastId,
+            to_cast_id: toCastId,
+          },
+          { reason }
+        ),
+      });
     } catch (err) {
-      logger.error("Cast reassignment LINE invite failed", {
-        endUserId: user.id,
-        toCastId: parsed.data.toCastId,
+      logger.error("assignCast: 監査ログの記録に失敗", {
+        endUserId,
+        assignmentId,
         error: err instanceof Error ? err.message : "unknown",
       });
     }
-  }
+
+    // 担当変更で新メイトの公式LINEがあり、まだその会話に乗っていない契約者には
+    // 新メイトの友だち追加を案内する（best-effort、現在会話中のアカウントから送信）。
+    if (endUserLineId && !["incomplete", "canceled"].includes(endUserStatus)) {
+      try {
+        const mateAccount = await getLineAccountForCast(toCastId);
+        if (
+          mateAccount?.friendAddUrl &&
+          mateAccount.id &&
+          mateAccount.id !== primaryLineAccountId
+        ) {
+          const currentAccount = await getSendAccountForEndUser(endUserId);
+          await pushTextMessage(
+            currentAccount.credentials,
+            endUserLineId,
+            `担当メイトが ${castName} に変更になりました。\nこれからは ${castName} の公式LINEで直接やり取りができます。\n下記から友だち追加してください。\n${mateAccount.friendAddUrl}`
+          );
+        }
+      } catch (err) {
+        logger.error("Cast reassignment LINE invite failed", {
+          endUserId,
+          toCastId,
+          error: err instanceof Error ? err.message : "unknown",
+        });
+      }
+    }
+  });
 
   revalidatePath("/inbox");
   revalidatePath("/users");

@@ -17,6 +17,7 @@ import {
   formatTrialDaysLabel,
 } from "@/lib/trial";
 import { buildSubscribeCastUrl } from "@/lib/subscribe-paths";
+import { CheckoutSubmitButton } from "./CheckoutSubmitButton";
 
 const planLabels: Record<PlanCode, string> = {
   light: "ライト",
@@ -302,17 +303,10 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                   <input type="hidden" name="castId" value={cast.id} />
                   <input type="hidden" name="planCode" value={planCode} />
                   <input type="hidden" name="interval" value={interval} />
-                  <button
-                    type="submit"
-                    disabled={!canCheckout}
-                    className={`w-full rounded-full py-3 text-sm font-bold shadow-lg transition-all active:scale-95 ${
-                      canCheckout
-                        ? "bg-primary text-white shadow-primary/30 hover:bg-primary-dark"
-                        : "cursor-not-allowed bg-zinc-100 text-zinc-400 shadow-none"
-                    }`}
-                  >
-                    {canCheckout ? buttonLabel : "選択できません"}
-                  </button>
+                  <CheckoutSubmitButton
+                    canCheckout={canCheckout}
+                    label={canCheckout ? buttonLabel : "選択できません"}
+                  />
                 </form>
               </div>
             );

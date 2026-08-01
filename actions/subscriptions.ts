@@ -1,6 +1,7 @@
 "use server";
 
 import { logger } from "@/lib/logger";
+import { after } from "next/server";
 import {
   createSubscriptionCheckoutSchema,
   listAvailableCastsSchema,
@@ -357,15 +358,17 @@ export async function createSubscriptionCheckoutSession(
     };
   }
 
-  // 既存ユーザーチェック（同じLINE IDで既にアクティブなサブスクがあるか）
+  // end_users.line_user_id は unique なので、同じLINE IDの行は最大1件。
+  // 「契約中チェック」と「トライアル利用歴チェック」は同じ1行を見るため、1クエリにまとめる
+  // （従来は同一条件で2回問い合わせていた）。
   const { data: existingUser } = await supabase
     .from("end_users")
-    .select("id, status")
+    .select("id, status, trial_started_at")
     .eq("line_user_id", parsed.data.lineUserId)
-    .not("status", "in", '("incomplete","canceled")')
-    .single();
+    .maybeSingle();
 
-  if (existingUser) {
+  // 既存ユーザーチェック（同じLINE IDで既にアクティブなサブスクがあるか）
+  if (existingUser && !["incomplete", "canceled"].includes(existingUser.status)) {
     return {
       ok: false,
       error: { code: "CONFLICT", message: "既に契約中のプランがあります" },
@@ -375,12 +378,7 @@ export async function createSubscriptionCheckoutSession(
   // トライアルの重複付与を防ぐ: 過去に一度でもトライアルを開始した相手には付与しない
   // （解約→再契約で無料トライアルを無限取得する濫用を防止）。
   // trial_started_at は初回トライアル開始時に Stripe Webhook が設定する。
-  const { data: priorUser } = await supabase
-    .from("end_users")
-    .select("trial_started_at")
-    .eq("line_user_id", parsed.data.lineUserId)
-    .maybeSingle();
-  const hasUsedTrial = Boolean(priorUser?.trial_started_at);
+  const hasUsedTrial = Boolean(existingUser?.trial_started_at);
 
   // トライアル: 月額はstandard/premiumのみ、年額は全プランに付与。ただし利用済みなら付与しない。
   const trialDays = hasUsedTrial
@@ -403,26 +401,45 @@ export async function createSubscriptionCheckoutSession(
       throw new Error("Checkout URL is null");
     }
 
-    // カゴ落ちリカバリ配信の起点を記録（未契約=incomplete のみ。決済完了で status が変わり対象外になる）
-    await supabase
-      .from("end_users")
-      .update({ checkout_started_at: new Date().toISOString() })
-      .eq("line_user_id", parsed.data.lineUserId)
-      .eq("status", "incomplete");
+    // ここから先はユーザーに返す決済ページURLに影響しない後処理。
+    // Stripe がURLを返した時点で待たせる理由がないため after() に逃がす
+    // （promise を返すコールバックなので、サーバーレスでも完了は保証される）。
+    const checkoutLineUserId = parsed.data.lineUserId;
+    const checkoutCastId = parsed.data.castId;
+    const checkoutPlanCode = parsed.data.planCode;
+    const checkoutTrialDays = trialDays;
+    const checkoutSessionId = sessionId;
+    // 「カートに入れた時刻」は後処理の実行時刻ではなく操作時刻を記録する
+    const checkoutStartedAt = new Date().toISOString();
 
-    // 監査ログ
-    await writeAuditLog({
-      action: "SUBSCRIPTION_CHECKOUT_CREATE",
-      targetType: "checkout_sessions",
-      targetId: sessionId,
-      success: true,
-      metadata: buildAuditMetadata({
-        line_user_id: parsed.data.lineUserId,
-        cast_id: parsed.data.castId,
-        plan_code: parsed.data.planCode,
-        trial_days: trialDays ?? 0,
-      }),
-      actorStaffId: null, // ユーザー操作
+    after(async () => {
+      try {
+        // カゴ落ちリカバリ配信の起点を記録（未契約=incomplete のみ。決済完了で status が変わり対象外になる）
+        await supabase
+          .from("end_users")
+          .update({ checkout_started_at: checkoutStartedAt })
+          .eq("line_user_id", checkoutLineUserId)
+          .eq("status", "incomplete");
+
+        await writeAuditLog({
+          action: "SUBSCRIPTION_CHECKOUT_CREATE",
+          targetType: "checkout_sessions",
+          targetId: checkoutSessionId,
+          success: true,
+          metadata: buildAuditMetadata({
+            line_user_id: checkoutLineUserId,
+            cast_id: checkoutCastId,
+            plan_code: checkoutPlanCode,
+            trial_days: checkoutTrialDays ?? 0,
+          }),
+          actorStaffId: null, // ユーザー操作
+        });
+      } catch (err) {
+        logger.error("subscriptions: checkout後処理に失敗", {
+          sessionId: checkoutSessionId,
+          error: err instanceof Error ? err.message : "unknown",
+        });
+      }
     });
 
     return { ok: true, data: { checkoutUrl: url } };

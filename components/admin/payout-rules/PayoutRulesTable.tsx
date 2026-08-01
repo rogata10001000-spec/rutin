@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { PayoutRule } from "@/actions/admin/payout-rules";
 import { deactivatePayoutRule } from "@/actions/admin/payout-rules";
@@ -15,22 +15,54 @@ type PayoutRulesTableProps = {
 export function PayoutRulesTable({ items }: PayoutRulesTableProps) {
   const router = useRouter();
   const { showToast, ToastContainer } = useToast();
-  const [deactivating, setDeactivating] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+  // 無効化は即座に見た目を反映する（サーバー応答を待たない）
+  const [optimisticItems, setOptimisticItems] = useOptimistic(
+    items,
+    (state, ruleId: string) =>
+      state.map((i) => (i.id === ruleId ? { ...i, active: false } : i))
+  );
+  // 確認ダイアログの対象（confirm state）と送信中の行（async state）は別に持つ。
+  // 1つの state で兼ねると、確認中と送信中を区別できず連打で二重送信になる。
+  const [pendingDeactivateId, setPendingDeactivateId] = useState<string | null>(null);
+  const [deactivatingIds, setDeactivatingIds] = useState<ReadonlySet<string>>(new Set());
 
-  const handleDeactivate = async (ruleId: string) => {
-    try {
-      const result = await deactivatePayoutRule({ ruleId });
-      if (result.ok) {
-        showToast("ルールを無効化しました", "success");
-        router.refresh();
-      } else {
-        showToast(result.error.message, "error");
+  const handleDeactivate = (ruleId: string) => {
+    if (deactivatingIds.has(ruleId)) return;
+    setDeactivatingIds((prev) => new Set(prev).add(ruleId));
+    // 確認は済んだので待たずに閉じる（開いたままだと楽観表示が見えない）
+    setPendingDeactivateId(null);
+
+    startTransition(async () => {
+      setOptimisticItems(ruleId);
+      try {
+        const result = await deactivatePayoutRule({ ruleId });
+        if (result.ok) {
+          showToast("ルールを無効化しました", "success");
+          // 楽観表示はこのトランジションが終わると破棄されるため、
+          // 同じトランジション内で最新のサーバー props を取り込んでから終える
+          router.refresh();
+        } else {
+          showToast(
+            result.error.code === "FORBIDDEN" || result.error.code === "UNAUTHORIZED"
+              ? `${result.error.message}。権限のある管理者に操作を依頼してください`
+              : `${result.error.message}。表示は元に戻しました。時間をおいてもう一度お試しください`,
+            "error"
+          );
+        }
+      } catch {
+        showToast(
+          "通信に失敗し、ルールを無効化できませんでした。通信状況を確認してもう一度お試しください",
+          "error"
+        );
+      } finally {
+        setDeactivatingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(ruleId);
+          return next;
+        });
       }
-    } catch {
-      showToast("無効化に失敗しました", "error");
-    } finally {
-      setDeactivating(null);
-    }
+    });
   };
 
   if (items.length === 0) {
@@ -72,7 +104,7 @@ export function PayoutRulesTable({ items }: PayoutRulesTableProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-200 bg-white">
-              {items.map((item) => (
+              {optimisticItems.map((item) => (
                 <tr key={item.id} className="transition-colors hover:bg-stone-50/50">
                   <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-stone-700">
                     {item.ruleType === "subscription_share" ? "サブスク" : "ギフト"}
@@ -120,8 +152,10 @@ export function PayoutRulesTable({ items }: PayoutRulesTableProps) {
                   <td className="whitespace-nowrap px-6 py-4">
                     {item.active && (
                       <button
-                        onClick={() => setDeactivating(item.id)}
-                        className="text-sm font-bold text-red-500 hover:text-red-700"
+                        onClick={() => setPendingDeactivateId(item.id)}
+                        disabled={deactivatingIds.has(item.id)}
+                        aria-busy={deactivatingIds.has(item.id)}
+                        className="text-sm font-bold text-red-500 hover:text-red-700 disabled:opacity-50"
                       >
                         無効化
                       </button>
@@ -134,14 +168,16 @@ export function PayoutRulesTable({ items }: PayoutRulesTableProps) {
         </div>
       </div>
 
+      {/* 確認したら即座に閉じて楽観表示に切り替えるため、loading は渡さない
+          （閉じたダイアログの loading は表示されず、状態が食い違う） */}
       <ConfirmDialog
-        open={!!deactivating}
+        open={pendingDeactivateId !== null}
         title="ルールの無効化"
         description="このルールを無効化しますか？"
         confirmLabel="無効化"
         variant="danger"
-        onConfirm={() => deactivating && handleDeactivate(deactivating)}
-        onCancel={() => setDeactivating(null)}
+        onConfirm={() => pendingDeactivateId && handleDeactivate(pendingDeactivateId)}
+        onCancel={() => setPendingDeactivateId(null)}
       />
 
       <ToastContainer />

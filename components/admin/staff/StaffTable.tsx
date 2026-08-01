@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { StaffMember } from "@/actions/admin/staff";
@@ -31,7 +31,17 @@ const genderLabel: Record<"female" | "male" | "other", string> = {
 export function StaffTable({ items, viewerRole }: StaffTableProps) {
   const router = useRouter();
   const { showToast, ToastContainer } = useToast();
-  const [toggling, setToggling] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+  // 新規受付の切替は即座に見た目を反映する（サーバー応答を待たない）
+  const [optimisticItems, setOptimisticItems] = useOptimistic(
+    items,
+    (state, castId: string) =>
+      state.map((i) =>
+        i.id === castId ? { ...i, acceptingNewUsers: !i.acceptingNewUsers } : i
+      )
+  );
+  // 行ごとの送信中フラグ（全体を止めず、連打だけを防ぐ）
+  const [togglingIds, setTogglingIds] = useState<ReadonlySet<string>>(new Set());
   const [resettingPassword, setResettingPassword] = useState<string | null>(null);
   const [pendingReset, setPendingReset] = useState<StaffMember | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -42,30 +52,49 @@ export function StaffTable({ items, viewerRole }: StaffTableProps) {
     temporaryPassword: string;
   } | null>(null);
 
-  const handleToggleAccepting = async (castId: string, current: boolean) => {
-    setToggling(castId);
-    try {
-      const result = await setCastAcceptingStatus({
-        castId,
-        acceptingNewUsers: !current,
-      });
+  const handleToggleAccepting = (castId: string, current: boolean) => {
+    if (togglingIds.has(castId)) return;
+    setTogglingIds((prev) => new Set(prev).add(castId));
 
-      if (result.ok) {
+    startTransition(async () => {
+      setOptimisticItems(castId);
+      try {
+        const result = await setCastAcceptingStatus({
+          castId,
+          acceptingNewUsers: !current,
+        });
+
+        if (result.ok) {
+          showToast(
+            result.data.acceptingNewUsers
+              ? "新規受付を開始しました"
+              : "新規受付を停止しました",
+            "success"
+          );
+          // 楽観表示はこのトランジションが終わると破棄されるため、
+          // 同じトランジション内で最新のサーバー props を取り込んでから終える
+          router.refresh();
+        } else {
+          showToast(
+            result.error.code === "FORBIDDEN" || result.error.code === "UNAUTHORIZED"
+              ? `${result.error.message}。権限のある管理者に操作を依頼してください`
+              : `${result.error.message}。表示は元に戻しました。時間をおいてもう一度お試しください`,
+            "error"
+          );
+        }
+      } catch {
         showToast(
-          result.data.acceptingNewUsers
-            ? "新規受付を開始しました"
-            : "新規受付を停止しました",
-          "success"
+          "通信に失敗し、新規受付を切り替えられませんでした。通信状況を確認してもう一度お試しください",
+          "error"
         );
-        router.refresh();
-      } else {
-        showToast(result.error.message, "error");
+      } finally {
+        setTogglingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(castId);
+          return next;
+        });
       }
-    } catch {
-      showToast("更新に失敗しました", "error");
-    } finally {
-      setToggling(null);
-    }
+    });
   };
 
   const handleEditClick = (staff: StaffMember) => {
@@ -186,7 +215,7 @@ export function StaffTable({ items, viewerRole }: StaffTableProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-200 bg-white">
-                {items.map((item) => {
+                {optimisticItems.map((item) => {
                   const role = roleConfig[item.role];
                   return (
                     <tr key={item.id} className="transition-colors hover:bg-stone-50/50">
@@ -240,7 +269,8 @@ export function StaffTable({ items, viewerRole }: StaffTableProps) {
                             onClick={() =>
                               handleToggleAccepting(item.id, item.acceptingNewUsers)
                             }
-                            disabled={toggling === item.id}
+                            disabled={togglingIds.has(item.id)}
+                            aria-busy={togglingIds.has(item.id)}
                             className={`rounded-lg px-3 py-1 text-xs font-bold transition-colors disabled:opacity-50 ${
                               item.acceptingNewUsers
                                 ? "bg-sage/20 text-sage-800 hover:bg-sage/30"

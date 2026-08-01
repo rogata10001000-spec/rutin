@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useOptimistic, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { UserDetail } from "@/actions/users";
@@ -21,30 +21,49 @@ export function UserDetailActions({ user, canManage }: UserDetailActionsProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
-  const [blocking, setBlocking] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  // ブロック状態は即座に見た目を反映する（サーバー応答を待たない）
+  const [isBlocked, setOptimisticBlocked] = useOptimistic(
+    user.isBlocked,
+    (_state, next: boolean) => next
+  );
 
-  const handleToggleBlock = async () => {
-    setBlocking(true);
-    try {
-      const result = await setEndUserBlocked({
-        endUserId: user.id,
-        blocked: !user.isBlocked,
-      });
-      if (result.ok) {
+  const handleToggleBlock = () => {
+    if (isPending) return;
+    const next = !isBlocked;
+    // 確認は済んだので待たずに閉じる（開いたままだと楽観表示が見えない）
+    setBlockConfirmOpen(false);
+
+    startTransition(async () => {
+      setOptimisticBlocked(next);
+      try {
+        const result = await setEndUserBlocked({
+          endUserId: user.id,
+          blocked: next,
+        });
+        if (result.ok) {
+          showToast(
+            next ? "ユーザーをブロックしました" : "ブロックを解除しました",
+            "success"
+          );
+          // setEndUserBlocked は revalidatePath を呼ばないため、
+          // ここで再取得しないと楽観表示がトランジション終了時に元へ戻る
+          router.refresh();
+        } else {
+          showToast(
+            result.error.code === "FORBIDDEN" || result.error.code === "UNAUTHORIZED"
+              ? `${result.error.message}。権限のある管理者に操作を依頼してください`
+              : `${result.error.message}。表示は元に戻しました。時間をおいてもう一度お試しください`,
+            "error"
+          );
+        }
+      } catch {
         showToast(
-          user.isBlocked ? "ブロックを解除しました" : "ユーザーをブロックしました",
-          "success"
+          "通信に失敗し、ブロック状態を変更できませんでした。通信状況を確認してもう一度お試しください",
+          "error"
         );
-        setBlockConfirmOpen(false);
-        router.refresh();
-      } else {
-        showToast(result.error.message, "error");
       }
-    } catch {
-      showToast("操作に失敗しました", "error");
-    } finally {
-      setBlocking(false);
-    }
+    });
   };
 
   return (
@@ -77,13 +96,15 @@ export function UserDetailActions({ user, canManage }: UserDetailActionsProps) {
             {/* 危険操作: ブロック（解除は復元操作なので控えめな中立色） */}
             <button
               onClick={() => setBlockConfirmOpen(true)}
+              disabled={isPending}
+              aria-busy={isPending}
               className={
-                user.isBlocked
-                  ? "rounded-xl px-3 py-2 text-sm font-bold text-stone-500 hover:bg-stone-100 hover:text-stone-700 transition-colors"
-                  : "rounded-xl px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors"
+                isBlocked
+                  ? "rounded-xl px-3 py-2 text-sm font-bold text-stone-500 hover:bg-stone-100 hover:text-stone-700 transition-colors disabled:opacity-50"
+                  : "rounded-xl px-3 py-2 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
               }
             >
-              {user.isBlocked ? "ブロック解除" : "ブロック"}
+              {isBlocked ? "ブロック解除" : "ブロック"}
             </button>
           </>
         )}
@@ -101,19 +122,20 @@ export function UserDetailActions({ user, canManage }: UserDetailActionsProps) {
         onClose={() => setAssignDialogOpen(false)}
       />
 
+      {/* 確認したら即座に閉じて楽観表示に切り替えるため、loading は渡さない
+          （閉じたダイアログの loading は表示されず、状態が食い違う） */}
       <ConfirmDialog
         open={blockConfirmOpen}
-        title={user.isBlocked ? "ブロックを解除しますか？" : "このユーザーをブロックしますか？"}
+        title={isBlocked ? "ブロックを解除しますか？" : "このユーザーをブロックしますか？"}
         description={
-          user.isBlocked
+          isBlocked
             ? `${user.nickname}さんのブロックを解除します。以降のメッセージは通常どおり受信・表示されます。`
             : `${user.nickname}さんをブロックします。以降この相手からのLINEは保存・通知・案内をすべて停止し、管理画面にも表示されません。`
         }
-        confirmLabel={user.isBlocked ? "ブロック解除" : "ブロックする"}
-        variant={user.isBlocked ? "default" : "danger"}
+        confirmLabel={isBlocked ? "ブロック解除" : "ブロックする"}
+        variant={isBlocked ? "default" : "danger"}
         onConfirm={handleToggleBlock}
         onCancel={() => setBlockConfirmOpen(false)}
-        loading={blocking}
       />
 
       <ToastContainer />

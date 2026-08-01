@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { getUserFromServerCookies } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
@@ -317,23 +318,21 @@ export async function changeMyPlan(input: {
     };
   }
 
-  // DB を即時反映（Webhook でも再同期される）。
+  // DB を即時反映（Webhook でも再同期される）。2テーブルへの反映は互いに独立 → 並列。
   // Stripe は更新済みのため、ここでの書込失敗は致命的にせず警告ログのみ（Webhook が後追いで整合させる）。
-  const { error: subUpdateError } = await supabase
-    .from("subscriptions")
-    .update({ plan_code: newPlan, applied_stripe_price_id: newPriceId })
-    .eq("id", subscription.id);
+  const [{ error: subUpdateError }, { error: userUpdateError }] = await Promise.all([
+    supabase
+      .from("subscriptions")
+      .update({ plan_code: newPlan, applied_stripe_price_id: newPriceId })
+      .eq("id", subscription.id),
+    supabase.from("end_users").update({ plan_code: newPlan }).eq("id", ctx.endUserId),
+  ]);
   if (subUpdateError) {
     logger.warn("changeMyPlan: subscriptions DB反映に失敗（Webhookで再同期予定）", {
       subscriptionId: subscription.id,
       error: subUpdateError.message,
     });
   }
-
-  const { error: userUpdateError } = await supabase
-    .from("end_users")
-    .update({ plan_code: newPlan })
-    .eq("id", ctx.endUserId);
   if (userUpdateError) {
     logger.warn("changeMyPlan: end_users DB反映に失敗（Webhookで再同期予定）", {
       endUserId: ctx.endUserId,
@@ -341,39 +340,58 @@ export async function changeMyPlan(input: {
     });
   }
 
-  // プラン変更のライフサイクルイベントを記録。
-  // 自己解決の変更はDBを先に更新するため Webhook 側の差分検知が空振りする。
-  // ここで明示記録し、ファネル分析の計上漏れを防ぐ（source_ref で冪等）。
-  await recordSubscriptionLifecycleEvent(supabase, {
-    endUserId: ctx.endUserId,
-    castId: ctx.assignedCastId,
-    eventType: "plan_change",
-    planCode: newPlan,
-    sourceRefType: "self:plan_change",
-    sourceRefId: `${subscription.id}:${new Date().toISOString()}`,
-    metadata: {
-      line_user_id: ctx.lineUserId,
-      previous_plan_code: subscription.plan_code,
-      new_plan_code: newPlan,
-      changed_by: "end_user_self",
-    },
-  });
+  // ライフサイクルイベントと監査ログは記帳のみで、プラン変更の結果を左右しない。
+  // 本人を待たせないよう応答後に実行する（after は promise を返すコールバックの完了を待つ）。
+  const endUserId = ctx.endUserId;
+  const assignedCastId = ctx.assignedCastId;
+  const lineUserId = ctx.lineUserId;
+  const subscriptionId = subscription.id;
+  const previousPlanCode = subscription.plan_code;
+  // 記録する時刻は後処理の実行時刻ではなく操作時刻
+  const changedAt = new Date().toISOString();
 
-  await writeAuditLog({
-    action: "CHANGE_SUBSCRIPTION_PRICE",
-    targetType: "subscriptions",
-    targetId: subscription.id,
-    success: true,
-    metadata: buildAuditMetadata(
-      {
-        line_user_id: ctx.lineUserId,
-        new_plan_code: newPlan,
-        new_stripe_price_id: newPriceId,
-        changed_by: "end_user_self",
-      },
-      { before: { plan_code: subscription.plan_code } }
-    ),
-    actorStaffId: null,
+  after(async () => {
+    try {
+      // プラン変更のライフサイクルイベントを記録。
+      // 自己解決の変更はDBを先に更新するため Webhook 側の差分検知が空振りする。
+      // ここで明示記録し、ファネル分析の計上漏れを防ぐ（source_ref で冪等）。
+      await recordSubscriptionLifecycleEvent(supabase, {
+        endUserId,
+        castId: assignedCastId,
+        eventType: "plan_change",
+        planCode: newPlan,
+        sourceRefType: "self:plan_change",
+        sourceRefId: `${subscriptionId}:${changedAt}`,
+        metadata: {
+          line_user_id: lineUserId,
+          previous_plan_code: previousPlanCode,
+          new_plan_code: newPlan,
+          changed_by: "end_user_self",
+        },
+      });
+
+      await writeAuditLog({
+        action: "CHANGE_SUBSCRIPTION_PRICE",
+        targetType: "subscriptions",
+        targetId: subscriptionId,
+        success: true,
+        metadata: buildAuditMetadata(
+          {
+            line_user_id: lineUserId,
+            new_plan_code: newPlan,
+            new_stripe_price_id: newPriceId,
+            changed_by: "end_user_self",
+          },
+          { before: { plan_code: previousPlanCode } }
+        ),
+        actorStaffId: null,
+      });
+    } catch (err) {
+      logger.error("changeMyPlan: 記帳（ライフサイクル/監査ログ）に失敗", {
+        subscriptionId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   });
 
   return { ok: true, data: { planCode: newPlan } };
@@ -445,37 +463,57 @@ export async function cancelMySubscription(
     })
     .eq("id", subscription.id);
 
-  await recordSubscriptionLifecycleEvent(supabase, {
-    endUserId: ctx.endUserId,
-    castId: ctx.assignedCastId,
-    eventType: "cancel_scheduled",
-    planCode: subscription.plan_code,
-    sourceRefType: "subscription:self_cancel",
-    sourceRefId: `${subscription.id}:${new Date().toISOString()}`,
-    metadata: {
-      line_user_id: ctx.lineUserId,
-      cancel_at_period_end: true,
-      current_period_end: currentPeriodEnd,
-      changed_by: "end_user_self",
-      cancel_reason_code: reasonCode,
-      cancel_reason_detail: reasonDetail,
-    },
-  });
+  // 解約予定は Stripe・DB とも確定済み。ライフサイクルイベントと監査ログは記帳のみで
+  // 結果を左右しないため、本人を待たせず応答後に実行する。
+  const endUserId = ctx.endUserId;
+  const assignedCastId = ctx.assignedCastId;
+  const lineUserId = ctx.lineUserId;
+  const subscriptionId = subscription.id;
+  const planCode = subscription.plan_code;
+  const canceledPeriodEnd = currentPeriodEnd;
+  // 記録する時刻は後処理の実行時刻ではなく操作時刻
+  const canceledAt = new Date().toISOString();
 
-  await writeAuditLog({
-    action: "SUBSCRIPTION_SYNC",
-    targetType: "subscriptions",
-    targetId: subscription.id,
-    success: true,
-    metadata: buildAuditMetadata({
-      line_user_id: ctx.lineUserId,
-      cancel_at_period_end: true,
-      changed_by: "end_user_self",
-      operation: "schedule_cancellation",
-      cancel_reason_code: reasonCode,
-      cancel_reason_detail: reasonDetail,
-    }),
-    actorStaffId: null,
+  after(async () => {
+    try {
+      await recordSubscriptionLifecycleEvent(supabase, {
+        endUserId,
+        castId: assignedCastId,
+        eventType: "cancel_scheduled",
+        planCode,
+        sourceRefType: "subscription:self_cancel",
+        sourceRefId: `${subscriptionId}:${canceledAt}`,
+        metadata: {
+          line_user_id: lineUserId,
+          cancel_at_period_end: true,
+          current_period_end: canceledPeriodEnd,
+          changed_by: "end_user_self",
+          cancel_reason_code: reasonCode,
+          cancel_reason_detail: reasonDetail,
+        },
+      });
+
+      await writeAuditLog({
+        action: "SUBSCRIPTION_SYNC",
+        targetType: "subscriptions",
+        targetId: subscriptionId,
+        success: true,
+        metadata: buildAuditMetadata({
+          line_user_id: lineUserId,
+          cancel_at_period_end: true,
+          changed_by: "end_user_self",
+          operation: "schedule_cancellation",
+          cancel_reason_code: reasonCode,
+          cancel_reason_detail: reasonDetail,
+        }),
+        actorStaffId: null,
+      });
+    } catch (err) {
+      logger.error("cancelMySubscription: 記帳（ライフサイクル/監査ログ）に失敗", {
+        subscriptionId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   });
 
   return { ok: true, data: { currentPeriodEnd } };
@@ -526,32 +564,50 @@ export async function resumeMySubscription(): Promise<ResumeMySubscriptionResult
     .update({ cancel_at_period_end: false })
     .eq("id", subscription.id);
 
-  await recordSubscriptionLifecycleEvent(supabase, {
-    endUserId: ctx.endUserId,
-    castId: ctx.assignedCastId,
-    eventType: "resume",
-    planCode: subscription.plan_code,
-    sourceRefType: "subscription:self_resume",
-    sourceRefId: `${subscription.id}:${new Date().toISOString()}`,
-    metadata: {
-      line_user_id: ctx.lineUserId,
-      cancel_at_period_end: false,
-      changed_by: "end_user_self",
-    },
-  });
+  // 解約予定の取り消しは確定済み。記帳（ライフサイクル/監査ログ）は応答後に実行する。
+  const endUserId = ctx.endUserId;
+  const assignedCastId = ctx.assignedCastId;
+  const lineUserId = ctx.lineUserId;
+  const subscriptionId = subscription.id;
+  const planCode = subscription.plan_code;
+  // 記録する時刻は後処理の実行時刻ではなく操作時刻
+  const resumedAt = new Date().toISOString();
 
-  await writeAuditLog({
-    action: "SUBSCRIPTION_SYNC",
-    targetType: "subscriptions",
-    targetId: subscription.id,
-    success: true,
-    metadata: buildAuditMetadata({
-      line_user_id: ctx.lineUserId,
-      cancel_at_period_end: false,
-      changed_by: "end_user_self",
-      operation: "resume_subscription",
-    }),
-    actorStaffId: null,
+  after(async () => {
+    try {
+      await recordSubscriptionLifecycleEvent(supabase, {
+        endUserId,
+        castId: assignedCastId,
+        eventType: "resume",
+        planCode,
+        sourceRefType: "subscription:self_resume",
+        sourceRefId: `${subscriptionId}:${resumedAt}`,
+        metadata: {
+          line_user_id: lineUserId,
+          cancel_at_period_end: false,
+          changed_by: "end_user_self",
+        },
+      });
+
+      await writeAuditLog({
+        action: "SUBSCRIPTION_SYNC",
+        targetType: "subscriptions",
+        targetId: subscriptionId,
+        success: true,
+        metadata: buildAuditMetadata({
+          line_user_id: lineUserId,
+          cancel_at_period_end: false,
+          changed_by: "end_user_self",
+          operation: "resume_subscription",
+        }),
+        actorStaffId: null,
+      });
+    } catch (err) {
+      logger.error("resumeMySubscription: 記帳（ライフサイクル/監査ログ）に失敗", {
+        subscriptionId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   });
 
   return { ok: true, data: { resumed: true } };
@@ -607,20 +663,36 @@ export async function pauseMySubscription(): Promise<PauseMySubscriptionResult> 
     };
   }
 
-  await supabase.from("subscriptions").update({ status: "paused" }).eq("id", subscription.id);
-  await supabase.from("end_users").update({ status: "paused" }).eq("id", ctx.endUserId);
+  // 2テーブルへの状態反映は互いに独立 → 並列で往復を1回分削減
+  await Promise.all([
+    supabase.from("subscriptions").update({ status: "paused" }).eq("id", subscription.id),
+    supabase.from("end_users").update({ status: "paused" }).eq("id", ctx.endUserId),
+  ]);
 
-  await writeAuditLog({
-    action: "SUBSCRIPTION_SYNC",
-    targetType: "subscriptions",
-    targetId: subscription.id,
-    success: true,
-    metadata: buildAuditMetadata({
-      line_user_id: ctx.lineUserId,
-      changed_by: "end_user_self",
-      operation: "pause_subscription",
-    }),
-    actorStaffId: null,
+  // 一時停止は確定済み。監査ログは応答をブロックせず after() で記録する。
+  const lineUserId = ctx.lineUserId;
+  const subscriptionId = subscription.id;
+
+  after(async () => {
+    try {
+      await writeAuditLog({
+        action: "SUBSCRIPTION_SYNC",
+        targetType: "subscriptions",
+        targetId: subscriptionId,
+        success: true,
+        metadata: buildAuditMetadata({
+          line_user_id: lineUserId,
+          changed_by: "end_user_self",
+          operation: "pause_subscription",
+        }),
+        actorStaffId: null,
+      });
+    } catch (err) {
+      logger.error("pauseMySubscription: 監査ログの記録に失敗", {
+        subscriptionId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   });
 
   return { ok: true, data: { paused: true } };
@@ -660,21 +732,38 @@ export async function resumeMyPausedSubscription(): Promise<ResumePausedSubscrip
     };
   }
 
-  await supabase.from("subscriptions").update({ status: nextStatus }).eq("id", subscription.id);
-  await supabase.from("end_users").update({ status: nextStatus }).eq("id", ctx.endUserId);
+  // 2テーブルへの状態反映は互いに独立 → 並列で往復を1回分削減
+  await Promise.all([
+    supabase.from("subscriptions").update({ status: nextStatus }).eq("id", subscription.id),
+    supabase.from("end_users").update({ status: nextStatus }).eq("id", ctx.endUserId),
+  ]);
 
-  await writeAuditLog({
-    action: "SUBSCRIPTION_SYNC",
-    targetType: "subscriptions",
-    targetId: subscription.id,
-    success: true,
-    metadata: buildAuditMetadata({
-      line_user_id: ctx.lineUserId,
-      changed_by: "end_user_self",
-      operation: "resume_paused_subscription",
-      new_status: nextStatus,
-    }),
-    actorStaffId: null,
+  // 再開は確定済み。監査ログは応答をブロックせず after() で記録する。
+  const lineUserId = ctx.lineUserId;
+  const subscriptionId = subscription.id;
+  const resumedStatus = nextStatus;
+
+  after(async () => {
+    try {
+      await writeAuditLog({
+        action: "SUBSCRIPTION_SYNC",
+        targetType: "subscriptions",
+        targetId: subscriptionId,
+        success: true,
+        metadata: buildAuditMetadata({
+          line_user_id: lineUserId,
+          changed_by: "end_user_self",
+          operation: "resume_paused_subscription",
+          new_status: resumedStatus,
+        }),
+        actorStaffId: null,
+      });
+    } catch (err) {
+      logger.error("resumeMyPausedSubscription: 監査ログの記録に失敗", {
+        subscriptionId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   });
 
   return { ok: true, data: { status: nextStatus } };

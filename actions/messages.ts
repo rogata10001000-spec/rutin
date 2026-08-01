@@ -192,7 +192,10 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
     await recordResponseMetric(user.id, auth.id, message.id);
   });
 
-  revalidatePath("/inbox");
+  // /inbox は revalidate しない。Server Action で revalidatePath すると
+  // 「一覧を再レンダリングした RSC ペイロード」が応答に載り、返信完了が一覧の
+  // 再取得（最も重いクエリ）を待つことになる。一覧側は InboxAutoRefresh が
+  // Realtime を受けてまとめて更新する。
   revalidatePath(`/chat/${user.id}`);
 
   return { ok: true, data: { messageId: message.id } };
@@ -315,7 +318,7 @@ export async function sendProxyMessage(
     await recordResponseMetric(user.id, auth.id, message.id);
   });
 
-  revalidatePath("/inbox");
+  // 上と同じ理由で /inbox は revalidate しない（Realtime 経由でまとめて反映される）。
   revalidatePath(`/chat/${user.id}`);
 
   return { ok: true, data: { messageId: message.id } };

@@ -1,9 +1,30 @@
 "use client";
 
 import { useState } from "react";
-import { CastDetailModal } from "./CastDetailModal";
+import dynamic from "next/dynamic";
 import type { AvailableCast } from "@/actions/subscriptions";
 import type { StaffGender } from "@/lib/supabase/types";
+
+/**
+ * 詳細モーダルは Swiper（JS＋CSS）を抱えているが、開くのはカードをタップした後。
+ * 初回描画（＝申込導線の1画面目）で読み込まないよう遅延読み込みにし、
+ * さらに「選択中のメイトがいるときだけマウント」してタップ時に初めて取得させる。
+ */
+const CastDetailModal = dynamic(
+  () => import("./CastDetailModal").then((m) => m.CastDetailModal),
+  {
+    ssr: false,
+    // 取得中の一瞬もタップに反応したことが分かるよう、モーダルと同じ暗幕を先に出す
+    loading: () => (
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+        aria-hidden
+      >
+        <div className="size-10 animate-spin rounded-full border-4 border-white/30 border-t-white" />
+      </div>
+    ),
+  }
+);
 
 const GENDER_LABEL: Record<StaffGender, string> = {
   female: "女性",
@@ -94,11 +115,13 @@ export function CastList({ casts }: CastListProps) {
         })}
       </div>
 
-      <CastDetailModal
-        cast={selectedCast}
-        isOpen={selectedCast !== null}
-        onClose={() => setSelectedCast(null)}
-      />
+      {selectedCast !== null && (
+        <CastDetailModal
+          cast={selectedCast}
+          isOpen
+          onClose={() => setSelectedCast(null)}
+        />
+      )}
     </>
   );
 }

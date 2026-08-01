@@ -2,6 +2,7 @@
 
 import { logger } from "@/lib/logger";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { memoSchema } from "@/schemas/memos";
 import { Result, toZodErrorMessage } from "./types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -246,21 +247,36 @@ export async function upsertMemo(input: UpsertMemoInput): Promise<UpsertMemoResu
     logger.error("memos: failed to create revision", { error: revError.message });
   }
 
-  // 監査ログ
-  await writeAuditLog({
-    action,
-    targetType: "memos",
-    targetId: memoId,
-    success: true,
-    metadata: buildAuditMetadata(
-      {
-        end_user_id: parsed.data.endUserId,
-        category: parsed.data.category,
-        pinned: parsed.data.pinned,
-        body_length: parsed.data.body.length,
-      },
-      { before: beforeData }
-    ),
+  // メモ本体と履歴は保存済み。監査ログは失敗しても結果を変えない後処理なので
+  // 応答をブロックせず after() で記録する（promise を返すので完了は保証される）。
+  const auditAction = action;
+  const auditBefore = beforeData;
+  const savedMemoId = memoId;
+  const { endUserId, category, pinned, body } = parsed.data;
+
+  after(async () => {
+    try {
+      await writeAuditLog({
+        action: auditAction,
+        targetType: "memos",
+        targetId: savedMemoId,
+        success: true,
+        metadata: buildAuditMetadata(
+          {
+            end_user_id: endUserId,
+            category,
+            pinned,
+            body_length: body.length,
+          },
+          { before: auditBefore }
+        ),
+      });
+    } catch (err) {
+      logger.error("upsertMemo: 監査ログの記録に失敗", {
+        memoId: savedMemoId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   });
 
   revalidatePath(`/users/${parsed.data.endUserId}`);
@@ -317,17 +333,31 @@ export async function deleteMemo(input: DeleteMemoInput): Promise<DeleteMemoResu
     };
   }
 
-  // 監査ログ
-  await writeAuditLog({
-    action: "DELETE_MEMO",
-    targetType: "memos",
-    targetId: input.memoId,
-    success: true,
-    metadata: buildAuditMetadata({
-      end_user_id: memo.end_user_id,
-      category: memo.category,
-      body_length: memo.latest_body?.length ?? 0,
-    }),
+  // 削除は確定済み。監査ログは応答をブロックせず after() で記録する。
+  const deletedMemoId = input.memoId;
+  const deletedEndUserId = memo.end_user_id;
+  const deletedCategory = memo.category;
+  const deletedBodyLength = memo.latest_body?.length ?? 0;
+
+  after(async () => {
+    try {
+      await writeAuditLog({
+        action: "DELETE_MEMO",
+        targetType: "memos",
+        targetId: deletedMemoId,
+        success: true,
+        metadata: buildAuditMetadata({
+          end_user_id: deletedEndUserId,
+          category: deletedCategory,
+          body_length: deletedBodyLength,
+        }),
+      });
+    } catch (err) {
+      logger.error("deleteMemo: 監査ログの記録に失敗", {
+        memoId: deletedMemoId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   });
 
   revalidatePath(`/users/${memo.end_user_id}`);
@@ -477,13 +507,25 @@ export async function markBirthdayCongratulated(
     };
   }
 
-  // 監査ログ
-  await writeAuditLog({
-    action: "BIRTHDAY_SENT",
-    targetType: "birthday_congrats",
-    targetId: data.id,
-    success: true,
-    metadata: { end_user_id: input.endUserId, year },
+  // 記録は確定済み。監査ログは応答をブロックせず after() で記録する。
+  const congratsId = data.id;
+  const congratsEndUserId = input.endUserId;
+
+  after(async () => {
+    try {
+      await writeAuditLog({
+        action: "BIRTHDAY_SENT",
+        targetType: "birthday_congrats",
+        targetId: congratsId,
+        success: true,
+        metadata: { end_user_id: congratsEndUserId, year },
+      });
+    } catch (err) {
+      logger.error("markBirthdayCongratulated: 監査ログの記録に失敗", {
+        congratsId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   });
 
   revalidatePath(`/users/${input.endUserId}`);

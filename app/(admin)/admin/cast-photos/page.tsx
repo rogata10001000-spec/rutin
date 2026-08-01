@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { getStaffList } from "@/actions/admin/staff";
-import { getCastPhotos } from "@/actions/cast-photos";
+import { getCastPhotosForCasts } from "@/actions/cast-photos";
 
 export const dynamic = "force-dynamic";
 
@@ -28,22 +28,21 @@ export default async function CastPhotosPage() {
   // メイトのみフィルタ
   const casts = staffResult.data.items.filter((s) => s.role === "cast");
 
-  // 各メイトの写真情報を取得
-  const castsWithPhotos: CastWithPhotos[] = await Promise.all(
-    casts.map(async (cast) => {
-      const photosResult = await getCastPhotos(cast.id);
-      const photos = photosResult.ok ? photosResult.data.photos : [];
+  // 全メイトの写真を1クエリでまとめて取得する（メイトごとに引くと人数ぶんのクエリになる）。
+  const photosResult = await getCastPhotosForCasts(casts.map((c) => c.id));
+  const photosByCastId = photosResult.ok ? photosResult.data.photosByCastId : {};
 
-      return {
-        id: cast.id,
-        displayName: cast.displayName,
-        photoCount: photos.length,
-        firstPhotoUrl: photos[0]?.url ?? null,
-        active: cast.active,
-        acceptingNewUsers: cast.acceptingNewUsers,
-      };
-    })
-  );
+  const castsWithPhotos: CastWithPhotos[] = casts.map((cast) => {
+    const photos = photosByCastId[cast.id] ?? [];
+    return {
+      id: cast.id,
+      displayName: cast.displayName,
+      photoCount: photos.length,
+      firstPhotoUrl: photos[0]?.url ?? null,
+      active: cast.active,
+      acceptingNewUsers: cast.acceptingNewUsers,
+    };
+  });
 
   // 写真が少ないメイトを先に表示
   const sortedCasts = [...castsWithPhotos].sort((a, b) => {

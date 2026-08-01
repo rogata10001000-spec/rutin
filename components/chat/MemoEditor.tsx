@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   getUserMemos,
@@ -29,6 +29,8 @@ export function MemoEditor({ endUserId }: MemoEditorProps) {
   const [formPinned, setFormPinned] = useState(false);
   const [formBody, setFormBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
 
   const loadMemos = useCallback(async () => {
     const result = await getUserMemos(endUserId);
@@ -38,9 +40,35 @@ export function MemoEditor({ endUserId }: MemoEditorProps) {
     setLoading(false);
   }, [endUserId]);
 
+  // 表示されるまでメモを取得しない。
+  // 受信トレイのサイドパネルは狭い画面では `hidden`（display:none）で常時マウントされており、
+  // そのまま読み込むと「見えないパネルのための取得」がスレッドを開くたびに走る
+  // （モバイルで情報ドロワーを開くと2つ目のインスタンスがもう一度取得する）。
+  // display:none の要素は交差しないので、IntersectionObserver で実際に見えたときだけ取得する。
   useEffect(() => {
-    loadMemos();
-  }, [loadMemos]);
+    const el = rootRef.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+    void loadMemos();
+  }, [visible, loadMemos]);
 
   const openNewMemo = () => {
     setIsNewMemo(true);
@@ -72,25 +100,49 @@ export function MemoEditor({ endUserId }: MemoEditorProps) {
       return;
     }
 
+    const target = editingMemo;
+    const category = formCategory;
+    const pinned = formPinned;
+    const body = formBody;
+    // ピン留めの有無が変わったときだけ、サーバー描画のピン留め一覧を取り直す必要がある。
+    const pinnedChanged = target ? target.pinned !== pinned : pinned;
+    const previousMemos = memos;
+
+    // 楽観的に一覧へ反映し、保存の往復を待たずにフォームを閉じる。
+    const optimisticId = target?.id ?? `pending-${crypto.randomUUID()}`;
+    const optimistic: Memo = {
+      id: optimisticId,
+      endUserId,
+      category,
+      categoryLabel:
+        MEMO_CATEGORIES.find((c) => c.value === category)?.label ?? category,
+      pinned,
+      body,
+      updatedAt: new Date().toISOString(),
+    };
+    setMemos((prev) =>
+      target
+        ? prev.map((m) => (m.id === target.id ? optimistic : m))
+        : [optimistic, ...prev]
+    );
+    closeEditor();
     setSubmitting(true);
+
     try {
-      const result = await upsertMemo({
-        endUserId,
-        category: formCategory,
-        pinned: formPinned,
-        body: formBody,
-      });
+      const result = await upsertMemo({ endUserId, category, pinned, body });
 
       if (result.ok) {
         showToast("メモを保存しました", "success");
-        closeEditor();
-        await loadMemos();
-        router.refresh();
+        // 正式なID・更新日時・並び順に揃える（表示は既に更新済みなので待たせない）。
+        void loadMemos();
+        if (pinnedChanged) router.refresh();
       } else {
+        setMemos(previousMemos);
         showToast(result.error.message, "error");
       }
     } catch {
-      showToast("保存に失敗しました", "error");
+      setMemos(previousMemos);
+      showToast("メモを保存できませんでした。通信を確認してもう一度お試しください", "error");
     } finally {
       setSubmitting(false);
     }
@@ -101,7 +153,10 @@ export function MemoEditor({ endUserId }: MemoEditorProps) {
 
   return (
     <>
-      <div className="rounded-2xl border border-stone-200 bg-white p-4 shadow-soft">
+      <div
+        ref={rootRef}
+        className="rounded-2xl border border-stone-200 bg-white p-4 shadow-soft"
+      >
         <div className="mb-3 flex items-center justify-between">
           <h3 className="font-bold text-stone-800">メモ編集</h3>
           <button

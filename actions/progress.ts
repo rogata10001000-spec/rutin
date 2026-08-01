@@ -114,47 +114,34 @@ export async function getNextUnrepliedUser(
 
   const userIds = allUsers.map((u) => u.id);
 
-  // 今日まだ送信していないユーザーを探す
-  const { data: todayOutMessages } = await supabase
-    .from("messages")
-    .select("end_user_id")
-    .eq("direction", "out")
-    .gte("created_at", todayStart.toISOString())
-    .in("end_user_id", userIds);
+  // 「最終受信/最終送信/本日の送信数」は受信トレイと同じ集計RPCから受け取る。
+  // 旧実装は担当ユーザー全員分の messages を無制限に取得してJS側で畳んでいたため、
+  // 会話を開くたびに全メッセージ履歴を転送していた（件数に比例して重くなる）。
+  const { data: summaries } = await supabase.rpc("inbox_thread_summary", {
+    p_user_ids: userIds,
+    p_staff_id: staff.id,
+    p_today_start: todayStart.toISOString(),
+  });
 
-  const repliedIds = new Set(
-    (todayOutMessages ?? []).map((m) => m.end_user_id)
-  );
+  const summaryMap = new Map((summaries ?? []).map((s) => [s.end_user_id, s]));
 
-  // 未返信ユーザーを優先
-  const { data: allMessages } = await supabase
-    .from("messages")
-    .select("end_user_id, direction, created_at")
-    .in("end_user_id", userIds)
-    .order("created_at", { ascending: false });
-
-  const messagesMap = new Map<string, (typeof allMessages extends (infer T)[] | null ? T : never)[]>();
-  for (const msg of allMessages ?? []) {
-    const existing = messagesMap.get(msg.end_user_id);
-    if (existing) {
-      existing.push(msg);
-    } else {
-      messagesMap.set(msg.end_user_id, [msg]);
-    }
-  }
-
-  // 未返信ユーザーを探す
+  // 未返信（最後の受信のほうが最後の送信より新しい）ユーザーを優先
   for (const user of allUsers) {
-    const msgs = messagesMap.get(user.id) ?? [];
-    const lastIn = msgs.find((m) => m.direction === "in");
-    const lastOut = msgs.find((m) => m.direction === "out");
-    if (lastIn && (!lastOut || new Date(lastIn.created_at) > new Date(lastOut.created_at))) {
+    const summary = summaryMap.get(user.id);
+    const lastInboundAt = summary?.last_inbound_at ?? null;
+    const lastOutboundAt = summary?.last_outbound_at ?? null;
+    if (
+      lastInboundAt &&
+      (!lastOutboundAt || new Date(lastInboundAt) > new Date(lastOutboundAt))
+    ) {
       return { ok: true, data: { user: { id: user.id, nickname: user.nickname } } };
     }
   }
 
   // 未返信なければ今日未送信ユーザーを探す
-  const unsentToday = allUsers.find((u) => !repliedIds.has(u.id));
+  const unsentToday = allUsers.find(
+    (u) => (summaryMap.get(u.id)?.today_sent_count ?? 0) === 0
+  );
   if (unsentToday) {
     return {
       ok: true,

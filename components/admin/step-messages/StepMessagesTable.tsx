@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   deleteStepMessage,
@@ -34,8 +34,15 @@ export function StepMessagesTable({ items }: StepMessagesTableProps) {
   const { showToast, ToastContainer } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<StepMessage | null>(null);
+  const [, startTransition] = useTransition();
+  // 削除は即座に行を消す（サーバー応答を待たない）
+  const [optimisticItems, setOptimisticItems] = useOptimistic(
+    items,
+    (state, id: string) => state.filter((i) => i.id !== id)
+  );
+  // 確認ダイアログの対象（confirm state）と送信中の行（async state）は別に持つ
   const [pendingDelete, setPendingDelete] = useState<StepMessage | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<ReadonlySet<string>>(new Set());
 
   const openCreate = () => {
     setEditItem(null);
@@ -46,23 +53,44 @@ export function StepMessagesTable({ items }: StepMessagesTableProps) {
     setDialogOpen(true);
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!pendingDelete) return;
-    setDeleting(true);
-    try {
-      const result = await deleteStepMessage(pendingDelete.id);
-      if (result.ok) {
-        showToast("削除しました", "success");
-        router.refresh();
-      } else {
-        showToast(result.error.message, "error");
+    const id = pendingDelete.id;
+    if (deletingIds.has(id)) return;
+    setDeletingIds((prev) => new Set(prev).add(id));
+    // 確認は済んだので待たずに閉じる（開いたままだと行が消えるのが見えない）
+    setPendingDelete(null);
+
+    startTransition(async () => {
+      setOptimisticItems(id);
+      try {
+        const result = await deleteStepMessage(id);
+        if (result.ok) {
+          showToast("削除しました", "success");
+          // 楽観表示はこのトランジションが終わると破棄されるため、
+          // 同じトランジション内で最新のサーバー props を取り込んでから終える
+          router.refresh();
+        } else {
+          showToast(
+            result.error.code === "FORBIDDEN" || result.error.code === "UNAUTHORIZED"
+              ? `${result.error.message}。権限のある管理者に操作を依頼してください`
+              : `${result.error.message}。削除したステップは一覧に戻しました。時間をおいてもう一度お試しください`,
+            "error"
+          );
+        }
+      } catch {
+        showToast(
+          "通信に失敗し、ステップを削除できませんでした。通信状況を確認してもう一度お試しください",
+          "error"
+        );
+      } finally {
+        setDeletingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
-    } catch {
-      showToast("削除に失敗しました", "error");
-    } finally {
-      setDeleting(false);
-      setPendingDelete(null);
-    }
+    });
   };
 
   return (
@@ -79,7 +107,7 @@ export function StepMessagesTable({ items }: StepMessagesTableProps) {
         </button>
       </div>
 
-      {items.length === 0 ? (
+      {optimisticItems.length === 0 ? (
         <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
           <EmptyState
             title="ステップがまだありません"
@@ -103,7 +131,7 @@ export function StepMessagesTable({ items }: StepMessagesTableProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100 bg-white">
-                {items.map((item) => (
+                {optimisticItems.map((item) => (
                   <tr key={item.id} className="transition-colors hover:bg-stone-50/50">
                     <td className="whitespace-nowrap px-4 py-3">
                       <span
@@ -144,7 +172,9 @@ export function StepMessagesTable({ items }: StepMessagesTableProps) {
                         </button>
                         <button
                           onClick={() => setPendingDelete(item)}
-                          className="rounded-lg px-3 py-1 text-xs font-bold text-red-600 hover:bg-red-50"
+                          disabled={deletingIds.has(item.id)}
+                          aria-busy={deletingIds.has(item.id)}
+                          className="rounded-lg px-3 py-1 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-50"
                         >
                           削除
                         </button>
@@ -164,6 +194,8 @@ export function StepMessagesTable({ items }: StepMessagesTableProps) {
         onClose={() => setDialogOpen(false)}
       />
 
+      {/* 確認したら即座に閉じて楽観表示に切り替えるため、loading は渡さない
+          （閉じたダイアログの loading は表示されず、状態が食い違う） */}
       <ConfirmDialog
         open={pendingDelete !== null}
         title="ステップを削除しますか？"
@@ -174,7 +206,6 @@ export function StepMessagesTable({ items }: StepMessagesTableProps) {
         }
         confirmLabel="削除する"
         variant="danger"
-        loading={deleting}
         onConfirm={handleDelete}
         onCancel={() => setPendingDelete(null)}
       />

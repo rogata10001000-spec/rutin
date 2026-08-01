@@ -20,10 +20,24 @@ export const BIRTHDAY_TEMPLATES = [
 
 type BirthdayWidgetProps = {
   endUserId: string;
+  /** サーバー取得済みの誕生日（yyyy-mm-dd）。null なら未登録。 */
+  birthday?: string | null;
   onInsertTemplate: (text: string) => void;
 };
 
-export function BirthdayWidget({ endUserId, onInsertTemplate }: BirthdayWidgetProps) {
+/** 誕生日（yyyy-mm-dd）が日本時間の今日と同じ月日かどうか。 */
+function isBirthdayTodayJst(birthday: string | null | undefined): boolean {
+  if (!birthday) return false;
+  // サーバー(UTC)とブラウザ(端末TZ)で結果が食い違わないよう、必ずTZを明示して比較する。
+  const todayJst = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+  return birthday.slice(5, 10) === todayJst.slice(5, 10);
+}
+
+export function BirthdayWidget({
+  endUserId,
+  birthday = null,
+  onInsertTemplate,
+}: BirthdayWidgetProps) {
   const router = useRouter();
   const { showToast, ToastContainer } = useToast();
   const [status, setStatus] = useState<BirthdayStatus | null>(null);
@@ -39,9 +53,17 @@ export function BirthdayWidget({ endUserId, onInsertTemplate }: BirthdayWidgetPr
     setLoading(false);
   }, [endUserId]);
 
+  // 誕生日当日でなければ問い合わせない。
+  // 年に364日は表示しないウィジェットのために、会話を開くたび2クエリ走っていた。
+  const isBirthdayToday = isBirthdayTodayJst(birthday);
+
   useEffect(() => {
-    loadStatus();
-  }, [loadStatus]);
+    if (!isBirthdayToday) {
+      setLoading(false);
+      return;
+    }
+    void loadStatus();
+  }, [isBirthdayToday, loadStatus]);
 
   const handleInsertTemplate = (template: string) => {
     onInsertTemplate(template);
@@ -75,7 +97,7 @@ export function BirthdayWidget({ endUserId, onInsertTemplate }: BirthdayWidgetPr
   };
 
   // 誕生日でない、または読み込み中の場合は何も表示しない
-  if (loading || !status || !status.isBirthdayToday) {
+  if (!isBirthdayToday || loading || !status || !status.isBirthdayToday) {
     return null;
   }
 

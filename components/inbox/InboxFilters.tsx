@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import type { InboxSummary } from "@/actions/inbox";
 import { Select } from "@/components/common/Select";
 
@@ -34,6 +34,9 @@ type InboxFiltersProps = {
 export function InboxFilters({ currentFilters, casts = [], summary, availableTags = [] }: InboxFiltersProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // 絞り込みは重い一覧クエリを再実行する。押した直後に反応が無いとチップが死んで見えるため、
+  // 遷移中であることを表示する。
+  const [isFiltering, startFiltering] = useTransition();
 
   // 検索ボックスはローカル state + デバウンスでURLに反映
   const [searchInput, setSearchInput] = useState(currentFilters.query ?? "");
@@ -70,7 +73,9 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
 
   const updateFilter = useCallback(
     (key: string, value: string | null) => {
-      router.push(buildUrl([{ key, value }]));
+      startFiltering(() => {
+        router.push(buildUrl([{ key, value }]));
+      });
     },
     [router, buildUrl]
   );
@@ -78,7 +83,9 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
   // 複数のフィルタを同時に更新するためのヘルパー
   const updateMultipleFilters = useCallback(
     (updates: Array<{ key: string; value: string | null }>) => {
-      router.push(buildUrl(updates));
+      startFiltering(() => {
+        router.push(buildUrl(updates));
+      });
     },
     [router, buildUrl]
   );
@@ -174,7 +181,10 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
     }`;
 
   return (
-    <div className="space-y-3">
+    <div
+      aria-busy={isFiltering}
+      className={`space-y-3 transition-opacity ${isFiltering ? "opacity-60" : ""}`}
+    >
       {/* 検索 + 絞り込みトグル（常時表示・最小高さ） */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">

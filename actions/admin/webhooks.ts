@@ -112,34 +112,40 @@ export async function getWebhookStats(): Promise<GetWebhookStatsResult> {
   weekAgo.setHours(0, 0, 0, 0);
   const weekAgoStr = weekAgo.toISOString();
 
-  // 今日の統計
-  const { count: totalToday } = await supabase
-    .from("webhook_events")
-    .select("id", { count: "exact", head: true })
-    .gte("received_at", todayStr);
-
-  const { count: successToday } = await supabase
-    .from("webhook_events")
-    .select("id", { count: "exact", head: true })
-    .gte("received_at", todayStr)
-    .eq("success", true);
-
-  // 今週の統計
-  const { count: totalWeek } = await supabase
-    .from("webhook_events")
-    .select("id", { count: "exact", head: true })
-    .gte("received_at", weekAgoStr);
-
-  const { count: successWeek } = await supabase
-    .from("webhook_events")
-    .select("id", { count: "exact", head: true })
-    .gte("received_at", weekAgoStr)
-    .eq("success", true);
-
-  const { count: needsAttention } = await supabase
-    .from("webhook_events")
-    .select("id", { count: "exact", head: true })
-    .eq("success", false);
+  // 5本の件数クエリは互いに独立 → 直列に積むと管理ダッシュボードの表示がその分待たされる。
+  // Promise.all で1往復ぶんの待ち時間にまとめる（各件数の扱いは従来どおり null なら 0 とみなす）。
+  const [
+    { count: totalToday },
+    { count: successToday },
+    { count: totalWeek },
+    { count: successWeek },
+    { count: needsAttention },
+  ] = await Promise.all([
+    // 今日の統計
+    supabase
+      .from("webhook_events")
+      .select("id", { count: "exact", head: true })
+      .gte("received_at", todayStr),
+    supabase
+      .from("webhook_events")
+      .select("id", { count: "exact", head: true })
+      .gte("received_at", todayStr)
+      .eq("success", true),
+    // 今週の統計
+    supabase
+      .from("webhook_events")
+      .select("id", { count: "exact", head: true })
+      .gte("received_at", weekAgoStr),
+    supabase
+      .from("webhook_events")
+      .select("id", { count: "exact", head: true })
+      .gte("received_at", weekAgoStr)
+      .eq("success", true),
+    supabase
+      .from("webhook_events")
+      .select("id", { count: "exact", head: true })
+      .eq("success", false),
+  ]);
 
   return {
     ok: true,

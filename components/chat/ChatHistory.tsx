@@ -70,13 +70,21 @@ export function ChatHistory({ messages }: ChatHistoryProps) {
                       rel="noopener noreferrer"
                       className="block"
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={message.mediaUrl}
-                        alt="受信した画像"
-                        loading="lazy"
-                        className="max-h-72 w-auto max-w-full rounded-lg object-contain"
-                      />
+                      {/*
+                        画像のデコード完了で吹き出しの高さが変わると、最下部へ自動スクロール
+                        している履歴の表示位置が飛ぶ。先に固定比率の枠で場所を確保し、
+                        中身は object-contain で歪ませずに収める。
+                      */}
+                      <div className="relative aspect-[3/4] w-56 max-w-full overflow-hidden rounded-lg bg-stone-100">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={message.mediaUrl}
+                          alt="受信した画像"
+                          loading="lazy"
+                          decoding="async"
+                          className="absolute inset-0 size-full object-contain"
+                        />
+                      </div>
                     </a>
                   ) : message.messageType === "image" ? (
                     <p className="italic opacity-80">画像を読み込めませんでした</p>

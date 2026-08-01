@@ -1,6 +1,7 @@
 "use server";
 
 import { logger } from "@/lib/logger";
+import { after } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentStaff, canAccessUser } from "@/lib/auth";
 import { Result } from "./types";
@@ -425,24 +426,34 @@ export async function updateEndUser(
     };
   }
 
-  // 監査ログ
-  await writeAuditLog({
-    action: "USER_PROFILE_UPDATE",
-    targetType: "end_users",
-    targetId: endUserId,
-    success: true,
-    metadata: {
-      before: {
-        nickname: currentUser.nickname,
-        birthday: currentUser.birthday,
-        tags: currentUser.tags,
-      },
-      after: {
-        nickname,
-        birthday: birthday ?? null,
-        tags,
-      },
-    },
+  // 更新は確定済み。監査ログは失敗しても結果を変えない後処理なので、
+  // 応答をブロックせず after() で記録する（promise を返すので完了は保証される）。
+  const auditBefore = {
+    nickname: currentUser.nickname,
+    birthday: currentUser.birthday,
+    tags: currentUser.tags,
+  };
+  const auditAfter = {
+    nickname,
+    birthday: birthday ?? null,
+    tags,
+  };
+
+  after(async () => {
+    try {
+      await writeAuditLog({
+        action: "USER_PROFILE_UPDATE",
+        targetType: "end_users",
+        targetId: endUserId,
+        success: true,
+        metadata: { before: auditBefore, after: auditAfter },
+      });
+    } catch (err) {
+      logger.error("updateEndUser: 監査ログの記録に失敗", {
+        endUserId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   });
 
   return { ok: true, data: { id: endUserId } };
@@ -491,12 +502,25 @@ export async function setEndUserBlocked(input: {
     };
   }
 
-  await writeAuditLog({
-    action: input.blocked ? "USER_BLOCKED" : "USER_UNBLOCKED",
-    targetType: "end_users",
-    targetId: input.endUserId,
-    success: true,
-    metadata: { blocked: input.blocked },
+  // ブロック切替は確定済み。監査ログは応答をブロックせず after() で記録する。
+  const blockedEndUserId = input.endUserId;
+  const blocked = input.blocked;
+
+  after(async () => {
+    try {
+      await writeAuditLog({
+        action: blocked ? "USER_BLOCKED" : "USER_UNBLOCKED",
+        targetType: "end_users",
+        targetId: blockedEndUserId,
+        success: true,
+        metadata: { blocked },
+      });
+    } catch (err) {
+      logger.error("setEndUserBlocked: 監査ログの記録に失敗", {
+        endUserId: blockedEndUserId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   });
 
   return { ok: true, data: { id: input.endUserId, isBlocked: input.blocked } };
@@ -608,18 +632,29 @@ export async function createEndUser(
     });
   }
 
-  // 監査ログ
-  await writeAuditLog({
-    action: "USER_CREATE",
-    targetType: "end_users",
-    targetId: newUser.id,
-    success: true,
-    metadata: {
-      line_user_id: lineUserId,
-      nickname,
-      plan_code: planCode,
-      assigned_cast_id: assignedCastId ?? null,
-    },
+  // ユーザー作成と担当履歴は確定済み。監査ログは応答をブロックせず after() で記録する。
+  const createdUserId = newUser.id;
+
+  after(async () => {
+    try {
+      await writeAuditLog({
+        action: "USER_CREATE",
+        targetType: "end_users",
+        targetId: createdUserId,
+        success: true,
+        metadata: {
+          line_user_id: lineUserId,
+          nickname,
+          plan_code: planCode,
+          assigned_cast_id: assignedCastId ?? null,
+        },
+      });
+    } catch (err) {
+      logger.error("createEndUser: 監査ログの記録に失敗", {
+        endUserId: createdUserId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   });
 
   return { ok: true, data: { id: newUser.id } };
@@ -682,17 +717,31 @@ export async function bulkAddTag(input: {
     updated += results.filter((r) => !r.error && (r.data?.length ?? 0) > 0).length;
   }
 
-  await writeAuditLog({
-    action: "USER_PROFILE_UPDATE",
-    targetType: "end_users",
-    targetId: ids[0],
-    success: true,
-    metadata: {
-      kind: "bulk_add_tag",
-      tag,
-      requested: ids.length,
-      updated,
-    },
+  // 一括付与は確定済み。監査ログは応答をブロックせず after() で記録する。
+  const updatedCount = updated;
+  const requestedCount = ids.length;
+  const auditTargetId = ids[0];
+
+  after(async () => {
+    try {
+      await writeAuditLog({
+        action: "USER_PROFILE_UPDATE",
+        targetType: "end_users",
+        targetId: auditTargetId,
+        success: true,
+        metadata: {
+          kind: "bulk_add_tag",
+          tag,
+          requested: requestedCount,
+          updated: updatedCount,
+        },
+      });
+    } catch (err) {
+      logger.error("bulkAddTag: 監査ログの記録に失敗", {
+        tag,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   });
 
   return { ok: true, data: { updated } };

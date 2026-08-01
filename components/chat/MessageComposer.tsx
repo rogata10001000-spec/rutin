@@ -12,6 +12,8 @@ type MessageComposerProps = {
   proxyMode: boolean;
   endUserId: string;
   showBirthdayWidget?: boolean;
+  /** サーバーから受け取り済みの誕生日（yyyy-mm-dd）。当日でなければ問い合わせ自体を行わない。 */
+  birthday?: string | null;
 };
 
 // localStorage key for draft
@@ -25,6 +27,7 @@ export function MessageComposer({
   proxyMode,
   endUserId,
   showBirthdayWidget = true,
+  birthday = null,
 }: MessageComposerProps) {
   const [body, setBody] = useState("");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -135,6 +138,7 @@ export function MessageComposer({
       {showBirthdayWidget && (
         <BirthdayWidget
           endUserId={endUserId}
+          birthday={birthday}
           onInsertTemplate={(text) => setBody(text)}
         />
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type {
   LineAccountListItem,
@@ -49,7 +49,15 @@ export function LineAccountsTable({
   const { showToast, ToastContainer } = useToast();
   const [editItem, setEditItem] = useState<LineAccountListItem | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
+  // 有効／無効の切替は即座に見た目を反映する（サーバー応答を待たない）
+  const [optimisticItems, setOptimisticItems] = useOptimistic(
+    items,
+    (state, id: string) =>
+      state.map((i) => (i.id === id ? { ...i, active: !i.active } : i))
+  );
+  // 行ごとの送信中フラグ（全体を止めず、連打だけを防ぐ）
+  const [togglingIds, setTogglingIds] = useState<ReadonlySet<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const openNew = () => {
@@ -63,13 +71,37 @@ export function LineAccountsTable({
   };
 
   const handleToggle = (id: string) => {
+    if (togglingIds.has(id)) return;
+    setTogglingIds((prev) => new Set(prev).add(id));
+
     startTransition(async () => {
-      const result = await toggleLineAccountActive(id);
-      if (result.ok) {
-        showToast("状態を切り替えました", "success");
-        router.refresh();
-      } else {
-        showToast(result.error.message, "error");
+      setOptimisticItems(id);
+      try {
+        const result = await toggleLineAccountActive(id);
+        if (result.ok) {
+          showToast("状態を切り替えました", "success");
+          // 楽観表示はこのトランジションが終わると破棄されるため、
+          // 同じトランジション内で最新のサーバー props を取り込んでから終える
+          router.refresh();
+        } else {
+          showToast(
+            result.error.code === "FORBIDDEN" || result.error.code === "UNAUTHORIZED"
+              ? `${result.error.message}。権限のある管理者に操作を依頼してください`
+              : `${result.error.message}。表示は元に戻しました。時間をおいてもう一度お試しください`,
+            "error"
+          );
+        }
+      } catch {
+        showToast(
+          "通信に失敗し、アカウントの状態を切り替えられませんでした。通信状況を確認してもう一度お試しください",
+          "error"
+        );
+      } finally {
+        setTogglingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       }
     });
   };
@@ -122,7 +154,7 @@ export function LineAccountsTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-200 bg-white">
-              {items.map((item) => (
+              {optimisticItems.map((item) => (
                 <tr
                   key={item.id}
                   className={`transition-colors hover:bg-stone-50/50 ${!item.active ? "bg-stone-50/30" : ""}`}
@@ -204,7 +236,8 @@ export function LineAccountsTable({
                       <button
                         type="button"
                         onClick={() => handleToggle(item.id)}
-                        disabled={isPending}
+                        disabled={togglingIds.has(item.id)}
+                        aria-busy={togglingIds.has(item.id)}
                         className="inline-flex items-center whitespace-nowrap rounded-full border border-stone-200 px-3 py-1.5 text-sm font-semibold text-stone-500 hover:bg-stone-50 disabled:opacity-50"
                       >
                         {item.active ? "無効化" : "有効化"}

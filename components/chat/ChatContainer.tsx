@@ -256,6 +256,7 @@ export function ChatContainer({
           sending={sending}
           proxyMode={proxyMode}
           endUserId={endUserId}
+          birthday={sideInfo.birthday}
         />
       </div>
 
