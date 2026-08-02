@@ -12,6 +12,7 @@ import { BulkTagModal } from "./BulkTagModal";
 import { BulkAssignModal } from "./BulkAssignModal";
 import { ScheduledListModal } from "./ScheduledListModal";
 import { BulkReviewPanel, type BulkTargetUser } from "./BulkReviewPanel";
+import { InboxLoadMore } from "./InboxLoadMore";
 import { EmptyState } from "@/components/common/EmptyState";
 
 type ReviewState =
@@ -25,6 +26,9 @@ type BulkSendControllerProps = {
   availableTags?: string[];
   /** ?bulkSelect=1 で開かれたとき、選択モード＋表示中全選択で開始する（ダッシュボード等からの直行導線） */
   initialSelectAll?: boolean;
+  /** 絞り込み後の総件数（items は先頭ぶんのみ） */
+  totalCount?: number;
+  hasMore?: boolean;
 };
 
 /**
@@ -38,6 +42,8 @@ export function BulkSendController({
   role,
   availableTags = [],
   initialSelectAll = false,
+  totalCount,
+  hasMore = false,
 }: BulkSendControllerProps) {
   const router = useRouter();
   const [selectionMode, setSelectionMode] = useState(false);
@@ -205,14 +211,21 @@ export function BulkSendController({
       {/* 一覧（スクロール領域） */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {items.length > 0 ? (
-          <InboxList
-            items={items}
-            selectedUserId={selectedUserId}
-            role={role}
-            selectionMode={selectionMode}
-            checkedIds={checked}
-            onToggleCheck={toggleCheck}
-          />
+          <>
+            <InboxList
+              items={items}
+              selectedUserId={selectedUserId}
+              role={role}
+              selectionMode={selectionMode}
+              checkedIds={checked}
+              onToggleCheck={toggleCheck}
+            />
+            <InboxLoadMore
+              shownCount={items.length}
+              totalCount={totalCount ?? items.length}
+              hasMore={hasMore}
+            />
+          </>
         ) : (
           <div className="p-6">
             <EmptyState

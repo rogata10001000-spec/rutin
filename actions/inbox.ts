@@ -10,6 +10,7 @@ import {
   calculateInboxPriority,
   hasSentMessageToday,
 } from "@/lib/calculations";
+import { INBOX_PAGE_SIZE, MAX_INBOX_PAGE_SIZE } from "@/lib/inbox-paging";
 
 export type InboxItem = {
   id: string;
@@ -65,6 +66,10 @@ export type InboxFilters = {
 
 export type GetInboxItemsInput = {
   filters?: InboxFilters;
+  /** 返す件数（既定 INBOX_PAGE_SIZE）。絞り込み・並び替えは常に全件に対して行う。 */
+  limit?: number;
+  /** 選択中の会話。ページ外でも必ず items に含める。 */
+  ensureUserId?: string;
 };
 
 export type InboxSummary = {
@@ -78,7 +83,12 @@ export type GetInboxItemsResult = Result<{
   items: InboxItem[];
   summary: InboxSummary;
   availableTags: string[];
+  /** 絞り込み後の総件数（items は先頭 limit 件のみ） */
+  totalCount: number;
+  hasMore: boolean;
 }>;
+
+// 件数の定義は lib/inbox-paging.ts（クライアントの「もっと見る」と共有）。
 
 // プラン別SLA設定
 const planSlaConfig = {
@@ -162,6 +172,11 @@ export async function getInboxItems(
   if (filters?.hasUnassigned) {
     query = query.is("assigned_cast_id", null);
   }
+  // 休止ユーザー除外は status 列だけで判定できるため、集計RPCに渡す前にDB側で落とす
+  // （後段のJSフィルタと結果は同じで、集計対象と転送量が減る）。
+  if (filters?.excludePaused) {
+    query = query.neq("status", "paused");
+  }
   if (filters?.query?.trim()) {
     // ニックネーム部分一致検索（%・_ をエスケープ）
     const escaped = filters.query.trim().replace(/[%_]/g, (m) => `\\${m}`);
@@ -186,6 +201,8 @@ export async function getInboxItems(
         items: [],
         summary: { total: 0, unreplied: 0, notSentToday: 0, replied: 0 },
         availableTags: [],
+        totalCount: 0,
+        hasMore: false,
       },
     };
   }
@@ -410,7 +427,7 @@ export async function getInboxItems(
     }
   }
 
-  // 休止ユーザー除外
+  // 休止ユーザー除外（DB側でも落としているが、取得条件が変わっても崩れないよう二重に適用）
   if (filters?.excludePaused) {
     filteredItems = filteredItems.filter((item) => item.status !== "paused");
   }
@@ -452,5 +469,31 @@ export async function getInboxItems(
     });
   }
 
-  return { ok: true, data: { items: filteredItems, summary, availableTags } };
+  // ===== ページング =====
+  // ここまでの絞り込み・並び替えは全件に対して済んでいるので、
+  // 返すのは先頭ぶんだけにしても「優先度の高いものが落ちる」ことはない。
+  const totalCount = filteredItems.length;
+  const limit = Math.min(
+    Math.max(input.limit ?? INBOX_PAGE_SIZE, 1),
+    MAX_INBOX_PAGE_SIZE
+  );
+  const pageItems = filteredItems.slice(0, limit);
+
+  // 開いている会話がページ外にあると、一覧から消えるだけでなく
+  // 既読処理（ThreadReadMarker が渡す未読数）まで失われるため、必ず含める。
+  if (input.ensureUserId && !pageItems.some((item) => item.id === input.ensureUserId)) {
+    const selected = filteredItems.find((item) => item.id === input.ensureUserId);
+    if (selected) pageItems.push(selected);
+  }
+
+  return {
+    ok: true,
+    data: {
+      items: pageItems,
+      summary,
+      availableTags,
+      totalCount,
+      hasMore: totalCount > limit,
+    },
+  };
 }

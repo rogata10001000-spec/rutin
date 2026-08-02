@@ -29,19 +29,6 @@ export type GetAuditLogsResult = Result<{
 }>;
 
 /**
- * 絞り込みドロップダウンの候補を導出するときにスキャンする行数の上限。
- *
- * audit_logs は運用に比例して無限に増えるテーブルで、DISTINCT を取るためだけの
- * 全件 SELECT は行数の増加とともに監査画面の表示を確実に遅くしていく。
- * 実際に使われている種別は直近のログにほぼ出揃うため、
- * 「新しい順に一定件数だけ」を見て JS 側で重複排除する（走査量を一定に保つ）。
- *
- * ※ AuditAction は lib/audit.ts に型として定義されているが実行時の値を持たないため、
- *   ここから列挙することはできない（型の二重定義を避けるためハードコードもしない）。
- */
-const FILTER_OPTION_SCAN_LIMIT = 1000;
-
-/**
  * 監査ログ一覧取得
  */
 export async function getAuditLogs(
@@ -129,14 +116,17 @@ export async function getAuditActions(): Promise<Result<{ actions: string[] }>> 
 
   const supabase = await createServerSupabaseClient();
 
-  // 直近ぶんだけを走査して重複排除（並び順は従来どおり名前の昇順）
-  const { data } = await supabase
-    .from("audit_logs")
-    .select("action")
-    .order("created_at", { ascending: false })
-    .limit(FILTER_OPTION_SCAN_LIMIT);
+  // DISTINCT はDB側でインデックスを飛び石に辿って取得する（走査量が行数に比例しない）。
+  const { data, error } = await supabase.rpc("audit_log_distinct_actions");
 
-  const actions = [...new Set((data ?? []).map((r) => r.action))].sort();
+  if (error) {
+    return {
+      ok: false,
+      error: { code: "UNKNOWN", message: "アクション種別を取得できませんでした" },
+    };
+  }
+
+  const actions = (data ?? []).map((r) => r.value);
 
   return { ok: true, data: { actions } };
 }
@@ -155,14 +145,17 @@ export async function getAuditTargetTypes(): Promise<Result<{ targetTypes: strin
 
   const supabase = await createServerSupabaseClient();
 
-  // 直近ぶんだけを走査して重複排除（並び順は従来どおり名前の昇順）
-  const { data } = await supabase
-    .from("audit_logs")
-    .select("target_type")
-    .order("created_at", { ascending: false })
-    .limit(FILTER_OPTION_SCAN_LIMIT);
+  // DISTINCT はDB側でインデックスを飛び石に辿って取得する（走査量が行数に比例しない）。
+  const { data, error } = await supabase.rpc("audit_log_distinct_target_types");
 
-  const targetTypes = [...new Set((data ?? []).map((r) => r.target_type))].sort();
+  if (error) {
+    return {
+      ok: false,
+      error: { code: "UNKNOWN", message: "対象種別を取得できませんでした" },
+    };
+  }
+
+  const targetTypes = (data ?? []).map((r) => r.value);
 
   return { ok: true, data: { targetTypes } };
 }

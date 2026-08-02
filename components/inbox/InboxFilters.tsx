@@ -65,6 +65,9 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
           params.delete(key);
         }
       }
+      // 絞り込みを変えたら表示件数は先頭ページに戻す
+      // （前の条件で読み込んだ件数を引き継ぐと、条件変更のたびに重いクエリになる）。
+      params.delete("limit");
       const qs = params.toString();
       return qs ? `/inbox?${qs}` : "/inbox";
     },

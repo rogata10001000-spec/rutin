@@ -9,6 +9,7 @@ import { ThreadReadMarker } from "@/components/inbox/ThreadReadMarker";
 import { ChatContainer } from "@/components/chat/ChatContainer";
 import { ChatSidePanel } from "@/components/chat/ChatSidePanel";
 import { EmptyState } from "@/components/common/EmptyState";
+import { normalizeInboxLimit } from "@/lib/inbox-paging";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,7 @@ type SearchParams = {
   tags?: string;
   user?: string;
   bulkSelect?: string;
+  limit?: string;
 };
 
 export default async function InboxPage({
@@ -55,6 +57,7 @@ export default async function InboxPage({
   };
 
   const selectedUserId = params.user;
+  const limit = normalizeInboxLimit(params.limit);
 
   // 認証はReact cacheでリクエスト内デデュープされるため先に解決し、
   // メイトには不要な担当フィルタ候補（getCastOptions）の取得をスキップする。
@@ -62,7 +65,7 @@ export default async function InboxPage({
 
   // データを並列で取得（ユーザー選択時はチャットスレッドも）
   const [result, castsResult, chatResult] = await Promise.all([
-    getInboxItems({ filters }),
+    getInboxItems({ filters, limit, ensureUserId: selectedUserId }),
     staff?.role === "cast" ? Promise.resolve(null) : getCastOptions(),
     selectedUserId
       ? getChatThread({ endUserId: selectedUserId })
@@ -76,6 +79,8 @@ export default async function InboxPage({
   const items = result.ok ? result.data.items : [];
   const summary = result.ok ? result.data.summary : undefined;
   const availableTags = result.ok ? result.data.availableTags : [];
+  const totalCount = result.ok ? result.data.totalCount : 0;
+  const hasMore = result.ok ? result.data.hasMore : false;
   const selectedItem = selectedUserId
     ? items.find((item) => item.id === selectedUserId) ?? null
     : null;
@@ -129,6 +134,8 @@ export default async function InboxPage({
             role={staff?.role}
             availableTags={availableTags}
             initialSelectAll={params.bulkSelect === "1"}
+            totalCount={totalCount}
+            hasMore={hasMore}
           />
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">

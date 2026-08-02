@@ -1019,6 +1019,14 @@ export interface Database {
         Args: { p_cast_id: string };
         Returns: boolean;
       };
+      audit_log_distinct_actions: {
+        Args: Record<string, never>;
+        Returns: { value: string }[];
+      };
+      audit_log_distinct_target_types: {
+        Args: Record<string, never>;
+        Returns: { value: string }[];
+      };
       send_gift_atomic: {
         Args: { p_line_user_id: string; p_gift_id: string };
         Returns: {

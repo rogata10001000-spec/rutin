@@ -89,7 +89,9 @@ function KpiSkeleton() {
  */
 async function DashboardKpis({ isAdmin }: { isAdmin: boolean }) {
   const [inboxResult, cancelResult, webhookResult, revenueResult] = await Promise.all([
-    getInboxItems({ filters: {} }),
+    // ダッシュボードは件数サマリー（全件に対して計算される）しか使わないため、
+    // 明細は最小限だけ受け取る（使わない一覧をペイロードに載せない）。
+    getInboxItems({ filters: {}, limit: 1 }),
     getPendingCancellations({}),
     getWebhookStats(),
     isAdmin ? getRevenueSummary({ preset: "current_month" }) : Promise.resolve(null),
