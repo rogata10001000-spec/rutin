@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerEnv } from "@/lib/env";
+import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { runLineStepDelivery } from "@/lib/line-step-delivery";
 import { logger } from "@/lib/logger";
 
@@ -8,9 +8,7 @@ import { logger } from "@/lib/logger";
  * Vercel Cron / 外部スケジューラから Bearer CRON_SECRET 付き GET で呼び出す。
  */
 export async function GET(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = getServerEnv().CRON_SECRET;
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

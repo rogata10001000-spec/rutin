@@ -207,7 +207,11 @@ export function verifyUserToken(token: string): VerifiedUser | VerifyUserFailure
   }
 
   try {
-    const decoded = jwt.verify(token, USER_TOKEN_SECRET) as UserTokenPayload;
+    // アルゴリズムを固定する。省略すると署名アルゴリズムをトークン側のヘッダに委ねることになり、
+    // 将来ライブラリの既定が変わったときにアルゴリズム混同攻撃の余地を残す。
+    const decoded = jwt.verify(token, USER_TOKEN_SECRET, {
+      algorithms: ["HS256"],
+    }) as UserTokenPayload;
     return {
       ok: true,
       lineUserId: decoded.line_user_id ?? null,

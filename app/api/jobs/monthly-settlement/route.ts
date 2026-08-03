@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
-import { getServerEnv } from "@/lib/env";
+import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { getPreviousJstMonthRange } from "@/lib/date-jst";
 
 /**
@@ -18,9 +18,7 @@ import { getPreviousJstMonthRange } from "@/lib/date-jst";
  * 作成後の「承認 → 支払い完了」は従来どおり管理者が画面から行う。
  */
 export async function GET(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = getServerEnv().CRON_SECRET;
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

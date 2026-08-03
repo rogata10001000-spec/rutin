@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { writeAuditLog } from "@/lib/audit";
 import { pushToOperatorRecipients } from "@/lib/operator-notifications";
+import { buildIlikeOrFilter } from "@/lib/postgrest-filter";
 import { Result } from "../types";
 
 function resolveName(nickname: string | null, lineDisplayName: string | null): string {
@@ -80,10 +81,10 @@ export async function searchNotifyCandidates(
     .order("created_at", { ascending: false })
     .limit(20);
 
-  const term = query.trim();
-  if (term) {
-    const escaped = term.replace(/[%_]/g, (m) => `\\${m}`);
-    q = q.or(`nickname.ilike.%${escaped}%,line_display_name.ilike.%${escaped}%`);
+  // フィルタ構文インジェクションを防ぐため共通ヘルパーで組み立てる。
+  const orFilter = buildIlikeOrFilter(["nickname", "line_display_name"], query);
+  if (orFilter) {
+    q = q.or(orFilter);
   }
 
   const { data, error } = await q;

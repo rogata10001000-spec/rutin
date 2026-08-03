@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { calculateSlaRemaining } from "@/lib/calculations";
 import { logger } from "@/lib/logger";
-import { getServerEnv } from "@/lib/env";
+import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 
 /**
  * SLAアラートジョブ
@@ -13,9 +13,7 @@ import { getServerEnv } from "@/lib/env";
  * - 監査ログに記録（将来的にSlack/LINE通知を追加）
  */
 export async function GET(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = getServerEnv().CRON_SECRET;
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

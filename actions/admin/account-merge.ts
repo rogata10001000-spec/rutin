@@ -4,6 +4,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/audit";
 import { Result } from "../types";
+import { buildIlikeOrFilter } from "@/lib/postgrest-filter";
 import type { SubscriptionStatus } from "@/lib/supabase/types";
 
 export type EndUserSummary = {
@@ -33,17 +34,17 @@ export async function searchEndUsers(query: string): Promise<SearchEndUsersResul
   }
 
   const supabase = createAdminSupabaseClient();
-  // PostgREST の or フィルタ構文を壊す文字（, ( ) 等）を除去し、LIKE のワイルドカードをエスケープ
-  const sanitized = q.replace(/[(),*\\]/g, " ").trim();
-  const escaped = sanitized.replace(/[%_]/g, (m) => `\\${m}`);
-  if (!escaped) {
+  // フィルタ構文インジェクションを防ぐため共通ヘルパーで組み立てる
+  // （従来は記号を除去していたが、除去だと "山田(太郎)" のような正当な検索語も壊れる）。
+  const orFilter = buildIlikeOrFilter(["nickname", "email", "line_user_id"], q);
+  if (!orFilter) {
     return { ok: true, data: { items: [] } };
   }
 
   const { data, error } = await supabase
     .from("end_users")
     .select("id, nickname, line_user_id, email, status, created_at")
-    .or(`nickname.ilike.%${escaped}%,email.ilike.%${escaped}%,line_user_id.ilike.%${escaped}%`)
+    .or(orFilter)
     .order("created_at", { ascending: false })
     .limit(20);
 

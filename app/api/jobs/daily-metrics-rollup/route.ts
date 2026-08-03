@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import { getServerEnv } from "@/lib/env";
+import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { runDailyMetricsRollup } from "@/lib/analytics-rollup";
 import { logger } from "@/lib/logger";
 
 /** 日次メトリクス・ロールアップ（毎日1回・JST深夜想定） */
 export async function GET(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = getServerEnv().CRON_SECRET;
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {

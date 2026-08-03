@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { getSendAccountForEndUser } from "@/lib/line-accounts";
 import { pushTextMessage } from "@/lib/line";
-import { getServerEnv } from "@/lib/env";
+import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -16,9 +16,7 @@ const BATCH_LIMIT = 100;
  * - 送信時点で契約中でない/ブロック済みユーザーはスキップ（failedとして理由を記録）
  */
 export async function GET(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = getServerEnv().CRON_SECRET;
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

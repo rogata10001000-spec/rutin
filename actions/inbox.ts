@@ -11,6 +11,7 @@ import {
   hasSentMessageToday,
 } from "@/lib/calculations";
 import { INBOX_PAGE_SIZE, MAX_INBOX_PAGE_SIZE } from "@/lib/inbox-paging";
+import { buildIlikeOrFilter } from "@/lib/postgrest-filter";
 
 export type InboxItem = {
   id: string;
@@ -178,11 +179,9 @@ export async function getInboxItems(
     query = query.neq("status", "paused");
   }
   if (filters?.query?.trim()) {
-    // ニックネーム部分一致検索（%・_ をエスケープ）
-    const escaped = filters.query.trim().replace(/[%_]/g, (m) => `\\${m}`);
-    query = query.or(
-      `nickname.ilike.%${escaped}%,line_display_name.ilike.%${escaped}%`
-    );
+    // ニックネーム部分一致検索。フィルタ構文インジェクションを防ぐため共通ヘルパーで組み立てる。
+    const orFilter = buildIlikeOrFilter(["nickname", "line_display_name"], filters.query);
+    if (orFilter) query = query.or(orFilter);
   }
 
   const { data: users, error: usersError } = await query;
