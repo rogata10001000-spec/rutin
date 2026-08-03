@@ -9,7 +9,10 @@ import {
 } from "@/schemas/subscriptions";
 import { Result, toZodErrorMessage } from "./types";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
-import { createSubscriptionCheckout as stripeCreateCheckout } from "@/lib/stripe";
+import {
+  createSubscriptionCheckout as stripeCreateCheckout,
+  expireCheckoutSession,
+} from "@/lib/stripe";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { getUserFromServerCookies } from "@/lib/auth";
 import { getServerEnv } from "@/lib/env";
@@ -363,7 +366,7 @@ export async function createSubscriptionCheckoutSession(
   // （従来は同一条件で2回問い合わせていた）。
   const { data: existingUser } = await supabase
     .from("end_users")
-    .select("id, status, trial_started_at")
+    .select("id, status, trial_started_at, stripe_checkout_session_id")
     .eq("line_user_id", parsed.data.lineUserId)
     .maybeSingle();
 
@@ -409,12 +412,30 @@ export async function createSubscriptionCheckoutSession(
     const checkoutPlanCode = parsed.data.planCode;
     const checkoutTrialDays = trialDays;
     const checkoutSessionId = sessionId;
+    const previousSessionId = existingUser?.stripe_checkout_session_id ?? null;
     // 「カートに入れた時刻」は後処理の実行時刻ではなく操作時刻を記録する
     const checkoutStartedAt = new Date().toISOString();
 
     after(async () => {
       try {
-        // カゴ落ちリカバリ配信の起点を記録（未契約=incomplete のみ。決済完了で status が変わり対象外になる）
+        // 前の未決済セッションを失効させる（1ユーザー=1契約の防御・第1層）。
+        // Stripe のチェックアウトは約24時間支払い可能なまま残るため、失効させないと
+        // 「メイトAのページを開いたままメイトBでも申込→両方支払う」二重課金レースができてしまう。
+        // 既に完了/失効済みのセッションへの expire はエラーになるが、それは望ましい状態なので無視する。
+        if (previousSessionId && previousSessionId !== checkoutSessionId) {
+          try {
+            await expireCheckoutSession(previousSessionId);
+          } catch {
+            // completed / already expired → そのまま進める（webhook側のガードが第2層として控える）
+          }
+        }
+
+        // 最新の未決済セッションIDを記録（次回発行時の失効対象）。
+        // カゴ落ちリカバリ配信の起点も記録（未契約=incomplete のみ。決済完了で status が変わり対象外になる）
+        await supabase
+          .from("end_users")
+          .update({ stripe_checkout_session_id: checkoutSessionId })
+          .eq("line_user_id", checkoutLineUserId);
         await supabase
           .from("end_users")
           .update({ checkout_started_at: checkoutStartedAt })

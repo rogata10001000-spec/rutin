@@ -105,6 +105,29 @@ export async function createSubscriptionCheckout(params: {
   return { url: session.url, sessionId: session.id };
 }
 
+/**
+ * 未決済のチェックアウトセッションを失効させる（支払い不能にする）。
+ * 完了済み・失効済みのセッションに対して呼ぶと Stripe がエラーを返す（呼び出し側で無視してよい）。
+ * 用途: 1ユーザー=1契約の防御。新しいセッションを発行する前に前のセッションを無効化し、
+ * 複数の決済ページから二重契約されるレースを塞ぐ。
+ */
+export async function expireCheckoutSession(sessionId: string): Promise<void> {
+  await stripe.checkout.sessions.expire(sessionId);
+}
+
+/**
+ * サブスクリプションを即時キャンセルする。既にキャンセル済みなら何もしない（false を返す）。
+ * 用途: 二重契約の自動解消（webhook側ガード）。トライアル中なら請求は発生していない。
+ * checkout.session.completed と customer.subscription.created の両方が同じ重複を検知するため、
+ * 2回目の呼び出しが正常系になるようキャンセル済みを冪等に扱う。
+ */
+export async function cancelStripeSubscription(subscriptionId: string): Promise<boolean> {
+  const sub = await stripe.subscriptions.retrieve(subscriptionId);
+  if (sub.status === "canceled") return false;
+  await stripe.subscriptions.cancel(subscriptionId);
+  return true;
+}
+
 export async function retrieveCheckoutSession(sessionId: string) {
   return stripe.checkout.sessions.retrieve(sessionId, {
     expand: ["subscription"],

@@ -7,6 +7,15 @@ vi.mock("@/lib/audit", () => ({
   buildAuditMetadata: (a: unknown) => a,
 }));
 
+// 二重契約ガードの検証用に Stripe API 呼び出しだけ差し替える（他は実装のまま）
+vi.mock("@/lib/stripe", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/stripe")>();
+  return {
+    ...actual,
+    cancelStripeSubscription: vi.fn().mockResolvedValue(true),
+  };
+});
+
 type Mod = typeof import("@/app/api/webhooks/stripe/route");
 let mod: Mod;
 
@@ -100,5 +109,60 @@ describe("handleSubscriptionUpsert", () => {
       "evt_1"
     );
     expect(res).toMatchObject({ skipped: true, reason: "missing subscription metadata" });
+  });
+
+  it("既存ユーザーに別のライブ契約があれば、新しい契約を自動キャンセルして割当を上書きしない", async () => {
+    const { cancelStripeSubscription } = await import("@/lib/stripe");
+    vi.mocked(cancelStripeSubscription).mockClear();
+
+    const calls: Array<{ table: string; op: string }> = [];
+    let subscriptionsSelectCount = 0;
+
+    const supabase = createMockSupabase(({ table, op }) => {
+      calls.push({ table, op });
+
+      if (table === "subscriptions" && op === "select") {
+        subscriptionsSelectCount += 1;
+        // 1回目: stripe_subscription_id での既存行検索 → 未登録（createdフォールバックへ）
+        if (subscriptionsSelectCount === 1) return { data: null };
+        // 2回目: 二重契約ガードのライブ契約検索 → 別のライブ契約が存在
+        return {
+          data: {
+            id: "row_existing",
+            stripe_subscription_id: "sub_existing",
+            plan_code: "standard",
+          },
+        };
+      }
+      if (table === "end_users" && op === "select") {
+        return { data: { id: "user_1" } };
+      }
+      // 運営通知の宛先など、その他の読み取りは空でよい
+      return { data: null };
+    });
+
+    const res = await mod.handleSubscriptionUpsert(
+      supabase,
+      makeSubscription({
+        id: "sub_duplicate",
+        metadata: {
+          line_user_id: "U".padEnd(33, "0"),
+          cast_id: "cast_1",
+          plan_code: "standard",
+        },
+      }),
+      "customer.subscription.created",
+      "evt_dup"
+    );
+
+    expect(res).toMatchObject({
+      skipped: true,
+      reason: "duplicate live subscription auto-canceled",
+    });
+    // 新しい方（重複）がキャンセルされる
+    expect(cancelStripeSubscription).toHaveBeenCalledWith("sub_duplicate");
+    // 既存契約の割当・状態は一切上書きされない／重複の行も挿入されない
+    expect(calls).not.toContainEqual({ table: "end_users", op: "update" });
+    expect(calls).not.toContainEqual({ table: "subscriptions", op: "insert" });
   });
 });

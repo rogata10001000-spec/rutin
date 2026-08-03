@@ -58,8 +58,8 @@ export default function HelpPage() {
           <div>
             <h3 className="font-medium text-stone-900 text-sm">Q. 複数のメイトと話せますか？</h3>
             <p className="mt-1 text-sm text-stone-600">
-              A. 基本的にはお一人の担当メイトがサポートしますが、
-              プランによっては複数のメイトとお話しいただける場合もあります。
+              A. 担当メイトはお一人です。別のメイトへの変更をご希望の場合は、
+              LINEメッセージでお気軽にご相談ください。
             </p>
           </div>
         </div>

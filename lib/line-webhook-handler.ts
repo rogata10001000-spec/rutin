@@ -4,13 +4,18 @@ import {
   pushTextMessage,
   sendSubscribeGuideFlexMessage,
   replySubscribeGuideFlexMessage,
+  replyMessages,
   switchRichMenu,
   verifyLineSignature,
   parsePostbackData,
   toCheckinStatus,
   getLineMessageContent,
 } from "@/lib/line";
-import type { ResolvedLineAccount } from "@/lib/line-accounts";
+import {
+  getDefaultLineAccount,
+  getLineAccountForCast,
+  type ResolvedLineAccount,
+} from "@/lib/line-accounts";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { withWebhookIdempotency } from "@/lib/webhook";
 import { writeAuditLog } from "@/lib/audit";
@@ -132,6 +137,60 @@ async function replyUncontractedGuide(
     logger.warn("LINE uncontracted guide reply failed", {
       lineUserId,
       endUserId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+  }
+}
+
+/**
+ * 契約者が担当外メイトのアカウントへ送ってきたときの案内。
+ * 担当スレッドへ黙って混ぜると「Bのアカウントに書いた内容が担当メイトAに見える／
+ * Aの返信がB名義で届く」事故になるため（1ユーザー=1メイト仕様）、
+ * 保存・通知はせず、担当メイトとのトークへ誘導する（reply API=無料枠を消費しない）。
+ * 案内は last_guide_sent_at で GUIDE_THROTTLE_MS の連投防止をかける。
+ */
+async function replyWrongMateGuide(
+  supabase: SupabaseAdmin,
+  account: ResolvedLineAccount,
+  params: {
+    endUserId: string;
+    lineUserId: string;
+    replyToken: string;
+    assignedCastId: string;
+    lastGuideSentAt: string | null;
+  }
+): Promise<void> {
+  if (
+    params.lastGuideSentAt &&
+    Date.now() - new Date(params.lastGuideSentAt).getTime() < GUIDE_THROTTLE_MS
+  ) {
+    return;
+  }
+
+  try {
+    // 誘導先: 担当メイトの個別アカウント。無ければ共通Rutin公式LINE。
+    const mateAccount = await getLineAccountForCast(params.assignedCastId, supabase);
+    const target = mateAccount ?? (await getDefaultLineAccount(supabase));
+
+    const lines = [
+      "メッセージありがとうございます。こちらのアカウントではお返事ができません。",
+      `いつもの「${target.name}」とのトークからメッセージをお送りください。`,
+    ];
+    if (target.friendAddUrl) {
+      lines.push(`友だち追加がまだの場合はこちらから:\n${target.friendAddUrl}`);
+    }
+
+    await replyMessages(account.credentials, params.replyToken, [
+      { type: "text", text: lines.join("\n") },
+    ]);
+    await supabase
+      .from("end_users")
+      .update({ last_guide_sent_at: new Date().toISOString() })
+      .eq("id", params.endUserId);
+  } catch (err) {
+    logger.warn("LINE wrong-mate guide reply failed", {
+      lineUserId: params.lineUserId,
+      endUserId: params.endUserId,
       error: err instanceof Error ? err.message : "unknown",
     });
   }
@@ -346,6 +405,12 @@ async function saveInboundMessage(
  * メイト個別アカウント上でユーザーが反応したとき、会話アカウントを更新する。
  * デフォルト(共通)アカウントでは何もしない。
  * 会話アカウントが実際に変わった場合のみ true を返す（リッチメニュー切替の判定に使う）。
+ *
+ * 契約者（担当メイトが決まっているユーザー）は、**担当メイトのアカウントに触れたときだけ**
+ * 張り替える。担当外メイトのアカウントを友だち追加/送信しただけで張り替えると、
+ * 以後の担当メイトの返信・通知がすべて担当外メイトのアカウント名義で届く誤配信になる
+ * （1ユーザー=1メイト仕様の防御）。未契約者は従来どおり最後に触れたメイトアカウントに乗せる
+ * （そのメイト経由の集客・案内を成立させるため）。
  */
 async function markPrimaryAccountIfMate(
   supabase: SupabaseAdmin,
@@ -358,11 +423,16 @@ async function markPrimaryAccountIfMate(
   // .neq だけでは NULL 行が SQL 上 NULL<>x=false となり更新されないため明示比較する）
   const { data: current } = await supabase
     .from("end_users")
-    .select("primary_line_account_id")
+    .select("primary_line_account_id, assigned_cast_id, status")
     .eq("id", endUserId)
     .maybeSingle();
 
   if (current?.primary_line_account_id === account.id) {
+    return false;
+  }
+
+  const isContracted = current && !isUncontractedStatus(current.status);
+  if (isContracted && current.assigned_cast_id !== account.castId) {
     return false;
   }
 
@@ -608,7 +678,9 @@ export async function handleLineWebhook(
       const result = await withWebhookIdempotency("line", eventId, "message", async () => {
         const { data: existing } = await supabase
           .from("end_users")
-          .select("id, status, nickname, line_profile_synced_at, last_guide_sent_at")
+          .select(
+            "id, status, nickname, line_profile_synced_at, last_guide_sent_at, assigned_cast_id"
+          )
           .eq("line_user_id", lineUserId)
           .maybeSingle();
 
@@ -617,12 +689,14 @@ export async function handleLineWebhook(
         let userId: string;
         let status: string;
         let lastGuideSentAt: string | null;
+        let assignedCastId: string | null = null;
         let isNew = false;
 
         if (existing) {
           userId = existing.id;
           status = existing.status;
           lastGuideSentAt = existing.last_guide_sent_at;
+          assignedCastId = existing.assigned_cast_id;
 
           await syncLineProfileToEndUser(supabase, account, {
             endUserId: existing.id,
@@ -699,6 +773,26 @@ export async function handleLineWebhook(
           }
 
           return { uncontracted: true, userId };
+        }
+
+        // 契約者が担当外メイトのアカウントへ送った場合は担当スレッドへ混ぜない
+        // （1ユーザー=1メイト仕様。Bのアカウントに書いた内容が担当メイトAにだけ見え、
+        //  Bには一切見えない「静かな混線」になるため）。保存・画像取得・通知を行わず、
+        //  担当メイトとのトークへ案内する。共通Rutin公式LINEは全員の窓口なので対象外。
+        if (
+          !account.isDefault &&
+          account.castId &&
+          assignedCastId &&
+          account.castId !== assignedCastId
+        ) {
+          await replyWrongMateGuide(supabase, account, {
+            endUserId: userId,
+            lineUserId,
+            replyToken: event.replyToken,
+            assignedCastId,
+            lastGuideSentAt,
+          });
+          return { uncontracted: false, wrongMate: true, userId };
         }
 
         // 契約者（trial / active / past_due / paused）は従来どおり受信・保存する。

@@ -1,7 +1,15 @@
 import Stripe from "stripe";
 import { after } from "next/server";
-import { verifyStripeSignature, toSubscriptionStatus, createBillingPortalSession } from "@/lib/stripe";
-import { notifyOperatorsOfNewMember } from "@/lib/operator-notifications";
+import {
+  verifyStripeSignature,
+  toSubscriptionStatus,
+  createBillingPortalSession,
+  cancelStripeSubscription,
+} from "@/lib/stripe";
+import {
+  notifyOperatorsOfNewMember,
+  pushToOperatorRecipients,
+} from "@/lib/operator-notifications";
 import { getServerEnv } from "@/lib/env";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { withWebhookIdempotency } from "@/lib/webhook";
@@ -115,6 +123,98 @@ async function resolveSubscriptionPayoutRule(
  * 同時申込レースで稀に定員を超えるケースがあるが、決済済みのため割当は honored とし、
  * ここでは「検知して通知する」ことで運用側が再配置できるようにする。失敗しても本処理は止めない。
  */
+/**
+ * 1ユーザー=1契約（=1メイト）の防御・第2層。
+ * 既に別のライブ契約を持つユーザーに対して新しいStripeサブスクリプションが完了した場合
+ * （複数チェックアウトの同時進行＝二重課金レース）、既存契約を正として、
+ * 新しい方を即時キャンセルし、割当・状態は一切上書きしない。
+ *
+ * 第1層（新規発行時の前セッション失効）をすり抜けた場合にだけ発火する。
+ * 戻り値 true = 重複だった（呼び出し元は end_users 更新・subscriptions 挿入・
+ * 副作用の同期をすべてスキップする）。行を挿入しないため、キャンセルに伴う
+ * customer.subscription.updated / deleted webhook は「行が見つからない」経路で
+ * 安全にスキップされ、生きている契約の状態を汚さない。
+ */
+async function cancelIfDuplicateLiveSubscription(
+  supabase: SupabaseAdmin,
+  params: {
+    endUserId: string;
+    incomingSubscriptionId: string;
+    castId: string;
+    planCode: string;
+    eventType: string;
+  }
+): Promise<boolean> {
+  const { data: existingLive } = await supabase
+    .from("subscriptions")
+    .select("id, stripe_subscription_id, plan_code")
+    .eq("end_user_id", params.endUserId)
+    .in("status", ["trial", "active", "past_due", "paused"])
+    .neq("stripe_subscription_id", params.incomingSubscriptionId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!existingLive) return false;
+
+  logger.error("stripe webhook: duplicate live subscription detected", {
+    endUserId: params.endUserId,
+    existingSubscriptionId: existingLive.stripe_subscription_id,
+    incomingSubscriptionId: params.incomingSubscriptionId,
+    eventType: params.eventType,
+  });
+
+  // 新しい方を即時キャンセル。checkout.session.completed と customer.subscription.created の
+  // 両イベントが同じ重複を検知するため、キャンセル済みなら false（=通知・記録は初回のみ）。
+  let canceledNow = false;
+  let cancelFailed = false;
+  try {
+    canceledNow = await cancelStripeSubscription(params.incomingSubscriptionId);
+  } catch (err) {
+    cancelFailed = true;
+    logger.error("stripe webhook: duplicate subscription auto-cancel failed", {
+      incomingSubscriptionId: params.incomingSubscriptionId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+  }
+
+  if (canceledNow || cancelFailed) {
+    await writeAuditLog({
+      action: "SUBSCRIPTION_DUPLICATE_CANCELED",
+      targetType: "subscriptions",
+      targetId: params.incomingSubscriptionId,
+      success: !cancelFailed,
+      metadata: {
+        end_user_id: params.endUserId,
+        existing_subscription_id: existingLive.stripe_subscription_id,
+        existing_plan_code: existingLive.plan_code,
+        incoming_plan_code: params.planCode,
+        incoming_cast_id: params.castId,
+        event: params.eventType,
+      },
+      actorStaffId: null,
+    });
+
+    // 運営へLINE通知（返金の要否は人が判断する）。宛先は新規会員通知と同じ通知先を使う。
+    try {
+      const message =
+        `⚠️ 二重契約を検知しました\n\n` +
+        `同じ会員が2つ目のサブスクリプションを完了したため、` +
+        (cancelFailed
+          ? `自動キャンセルを試みましたが失敗しました。Stripeダッシュボードで手動対応してください。\n`
+          : `新しい方を自動キャンセルしました。請求が発生していれば返金をご検討ください。\n`) +
+        `\n既存: ${existingLive.stripe_subscription_id}\n` +
+        `重複: ${params.incomingSubscriptionId}`;
+      await pushToOperatorRecipients(supabase, "new_member", message);
+    } catch (err) {
+      logger.error("stripe webhook: duplicate subscription operator notify failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+  }
+
+  return true;
+}
+
 async function warnIfCastOverCapacity(supabase: SupabaseAdmin, castId: string): Promise<void> {
   try {
     const { data: cast } = await supabase
@@ -515,6 +615,19 @@ export async function handleCheckoutSessionCompleted(
       }
       user = { id: newUser.id, status: subscriptionStatus, email: null };
     } else {
+      // 既に別のライブ契約があるなら、この完了は二重契約（レース）。
+      // 割当・状態を上書きせず、新しい方を自動キャンセルして終了する。
+      const duplicate = await cancelIfDuplicateLiveSubscription(supabase, {
+        endUserId: user.id,
+        incomingSubscriptionId: subscriptionId,
+        castId,
+        planCode,
+        eventType: "checkout.session.completed",
+      });
+      if (duplicate) {
+        return { skipped: true, reason: "duplicate live subscription auto-canceled" };
+      }
+
       await supabase
         .from("end_users")
         .update({
@@ -725,6 +838,19 @@ export async function handleSubscriptionUpsert(
       }
       user = { id: newUser.id };
     } else {
+      // 既に別のライブ契約があるなら、この作成は二重契約（レース）。
+      // checkout.session.completed 側と同じガード（どちらのイベントが先に届いても防ぐ）。
+      const duplicate = await cancelIfDuplicateLiveSubscription(supabase, {
+        endUserId: user.id,
+        incomingSubscriptionId: subscriptionId,
+        castId,
+        planCode,
+        eventType: "customer.subscription.created",
+      });
+      if (duplicate) {
+        return { skipped: true, reason: "duplicate live subscription auto-canceled" };
+      }
+
       await supabase
         .from("end_users")
         .update({
