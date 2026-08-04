@@ -522,6 +522,25 @@ type OperatorNotificationRecipientsRow = {
   created_at: string;
 };
 
+type FunnelCopyRow = {
+  key: string;
+  draft_value: string | null;
+  published_value: string | null;
+  updated_by: string | null;
+  updated_at: string;
+};
+
+type FaqItemsRow = {
+  id: string;
+  question: string;
+  answer: string;
+  sort_order: number;
+  active: boolean;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type ScheduledMessagesRow = {
   id: string;
   end_user_id: string;
@@ -952,6 +971,28 @@ export interface Database {
           created_by?: string | null;
         };
         Update: Partial<Omit<OperatorNotificationRecipientsRow, "id" | "created_at">>;
+        Relationships: [];
+      };
+      funnel_copy: {
+        Row: FunnelCopyRow;
+        Insert: Omit<FunnelCopyRow, "updated_at" | "updated_by" | "draft_value" | "published_value"> & {
+          draft_value?: string | null;
+          published_value?: string | null;
+          updated_by?: string | null;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<FunnelCopyRow, "key">>;
+        Relationships: [];
+      };
+      faq_items: {
+        Row: FaqItemsRow;
+        Insert: Omit<FaqItemsRow, "id" | "created_at" | "updated_at" | "updated_by" | "active" | "sort_order"> & {
+          id?: string;
+          sort_order?: number;
+          active?: boolean;
+          updated_by?: string | null;
+        };
+        Update: Partial<Omit<FaqItemsRow, "id" | "created_at">>;
         Relationships: [];
       };
       scheduled_messages: {

@@ -10,7 +10,10 @@ import {
   parsePostbackData,
   toCheckinStatus,
   getLineMessageContent,
+  type SubscribeGuideFlexCopy,
 } from "@/lib/line";
+import { getFunnelCopyValues, getPublishedFunnelCopy } from "@/lib/funnel-copy";
+import { renderFunnelCopy } from "@/lib/funnel-copy-defs";
 import {
   getDefaultLineAccount,
   getLineAccountForCast,
@@ -24,7 +27,7 @@ import { checkRateLimit, requestKey } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { generateUserToken } from "@/lib/auth";
 import { getServerEnv } from "@/lib/env";
-import { getLineWelcomeTrialMessage, getTrialPeriodDays } from "@/lib/trial";
+import { getTrialPeriodDays } from "@/lib/trial";
 import {
   notifyStaffOfInboundMessage,
   notifyManagersOfFollowSurge,
@@ -128,7 +131,7 @@ async function replyUncontractedGuide(
       account.credentials,
       replyToken,
       buildSubscribeUrl(lineUserId),
-      getTrialPeriodDays()
+      await buildSubscribeGuideCopy()
     );
     await supabase
       .from("end_users")
@@ -287,8 +290,37 @@ function buildSubscribeUrl(lineUserId: string) {
   return `${getServerEnv().APP_BASE_URL}/subscribe/cast?token=${encodeURIComponent(token)}`;
 }
 
-function buildWelcomeMessage(lineUserId: string) {
-  return getLineWelcomeTrialMessage(getTrialPeriodDays(), buildSubscribeUrl(lineUserId));
+/**
+ * 友だち追加時の挨拶メッセージ（funnel_copy: line.welcome.body）。
+ * 取得失敗時は funnel-copy 側がデフォルト文言へフォールバックするため送信は止まらない。
+ */
+async function buildWelcomeMessage(lineUserId: string): Promise<string> {
+  const copy = await getFunnelCopyValues(["line.welcome.body"]);
+  return renderFunnelCopy(copy["line.welcome.body"], {
+    days: getTrialPeriodDays(),
+    subscribeUrl: buildSubscribeUrl(lineUserId),
+  });
+}
+
+/**
+ * メイト選択案内 Flex の文言一式（funnel_copy: line.flex.*）を解決して {days} を展開する。
+ */
+async function buildSubscribeGuideCopy(): Promise<SubscribeGuideFlexCopy> {
+  const days = getTrialPeriodDays();
+  const copy = await getFunnelCopyValues([
+    "line.flex.alttext",
+    "line.flex.title",
+    "line.flex.body",
+    "line.flex.expiry",
+    "line.flex.button",
+  ]);
+  return {
+    altText: renderFunnelCopy(copy["line.flex.alttext"], { days }),
+    title: renderFunnelCopy(copy["line.flex.title"], { days }),
+    body: renderFunnelCopy(copy["line.flex.body"], { days }),
+    expiry: renderFunnelCopy(copy["line.flex.expiry"], { days }),
+    button: renderFunnelCopy(copy["line.flex.button"], { days }),
+  };
 }
 
 type InboundContent = {
@@ -602,7 +634,7 @@ export async function handleLineWebhook(
             await sendLineUncontractedOnboarding(
               account,
               lineUserId,
-              buildWelcomeMessage(lineUserId)
+              await buildWelcomeMessage(lineUserId)
             );
             await supabase
               .from("end_users")
@@ -637,10 +669,16 @@ export async function handleLineWebhook(
 
       // リッチメニュー「メイトを選ぶ」等のテキスト送信ボタンはコマンドとして処理する。
       // 会話としては保存・スタッフ通知せず、契約状態に応じた案内を返す（未契約はFlexカードでURLを隠す）。
-      if (
-        inboundMessage.type === "text" &&
-        MENU_SELECT_MATE_TEXTS.has(inboundMessage.text.trim())
-      ) {
+      // 固定セットに加え、funnel_copy で編集された現在のボタン文言（line.flex.button）とも照合する
+      // （管理画面でラベルを変えてもボタンがコマンドとして動き続けることを保証する。60秒キャッシュ）。
+      let isMenuSelectMateCommand = false;
+      if (inboundMessage.type === "text") {
+        const trimmedText = inboundMessage.text.trim();
+        isMenuSelectMateCommand =
+          MENU_SELECT_MATE_TEXTS.has(trimmedText) ||
+          trimmedText === (await getPublishedFunnelCopy("line.flex.button")).trim();
+      }
+      if (isMenuSelectMateCommand) {
         const cmd = await withWebhookIdempotency("line", eventId, "menu_select_mate", async () => {
           const { data: menuUser } = await supabase
             .from("end_users")
@@ -666,7 +704,7 @@ export async function handleLineWebhook(
             account.credentials,
             lineUserId,
             buildSubscribeUrl(lineUserId),
-            getTrialPeriodDays()
+            await buildSubscribeGuideCopy()
           );
           return { contracted: false };
         });
@@ -762,7 +800,7 @@ export async function handleLineWebhook(
             await sendLineUncontractedOnboarding(
               account,
               lineUserId,
-              buildWelcomeMessage(lineUserId)
+              await buildWelcomeMessage(lineUserId)
             );
             await supabase
               .from("end_users")
@@ -928,7 +966,7 @@ export async function handleLineWebhook(
               account.credentials,
               lineUserId,
               buildSubscribeUrl(lineUserId),
-              getTrialPeriodDays()
+              await buildSubscribeGuideCopy()
             );
             return { sent: true };
           }
@@ -963,7 +1001,7 @@ export async function handleLineWebhook(
                 account.credentials,
                 lineUserId,
                 buildSubscribeUrl(lineUserId),
-                getTrialPeriodDays()
+                await buildSubscribeGuideCopy()
               );
               return { contracted: false };
             }

@@ -1,4 +1,8 @@
 import { getServerEnv } from "@/lib/env";
+import { formatYen } from "@/lib/cast-display";
+
+// 円表示は lib/cast-display.ts に集約（クライアント側と共有）。後方互換で再エクスポート。
+export { formatYen };
 
 export function getTrialPeriodDays(): number {
   return getServerEnv().TRIAL_PERIOD_DAYS;
@@ -29,11 +33,10 @@ export function formatTrialDaysLabel(days: number): string {
   return `${days}日間`;
 }
 
-export function formatYen(amount: number): string {
-  return `¥${amount.toLocaleString("ja-JP")}`;
-}
-
-/** キャスト選択画面のトライアル案内（短文） */
+/**
+ * @deprecated 文言は funnel_copy（lib/funnel-copy-defs.ts の cast.hero.*）から解決するようになった。
+ * 画面はこの関数を使っていない。既存ユニットテストの互換のためだけに残している。
+ */
 export function getCastPageTrialIntro(days: number): {
   title: string;
   body: string;
@@ -44,7 +47,9 @@ export function getCastPageTrialIntro(days: number): {
   };
 }
 
-/** プラン選択画面のトライアル + 自動課金明示 */
+/**
+ * @deprecated 文言は funnel_copy（plan.notice.trial）から解決するようになった。テスト互換のため残置。
+ */
 export function getPlanPageTrialNotice(
   days: number,
   monthlyPriceYen: number
@@ -53,11 +58,17 @@ export function getPlanPageTrialNotice(
   return `選んだプランで${formatTrialDaysLabel(days)}の無料トライアルを開始します。トライアル期間中はいつでも解約でき、料金は発生しません。トライアル終了後は月額${price}が自動請求されます（解約しない限り毎月更新）。`;
 }
 
+/**
+ * @deprecated 文言は funnel_copy（plan.cta.trial）から解決するようになった。テスト互換のため残置。
+ */
 export function getPlanCheckoutButtonLabel(days: number): string {
   return `このプランで${formatTrialDaysLabel(days)}無料トライアル`;
 }
 
-/** プランごとの料金案内（ライトは即時課金、スタンダード/プレミアムは無料トライアル） */
+/**
+ * @deprecated 文言は funnel_copy（plan.notice.trial / plan.notice.notrial）から解決するようになった。
+ * テスト互換のため残置。
+ */
 export function getPlanPageNotice(
   planCode: string,
   days: number,
@@ -70,14 +81,20 @@ export function getPlanPageNotice(
   return `このプランはお申し込み後すぐにご利用を開始し、月額${price}が請求されます（解約しない限り毎月更新）。いつでも解約できます。`;
 }
 
-/** プランごとの申込ボタン文言 */
+/**
+ * @deprecated 文言は funnel_copy（plan.cta.trial / plan.cta.notrial）から解決するようになった。
+ * テスト互換のため残置。
+ */
 export function getPlanCheckoutButtonLabelForPlan(planCode: string, days: number): string {
   return isTrialEligiblePlan(planCode)
     ? getPlanCheckoutButtonLabel(days)
     : "このプランで申し込む";
 }
 
-/** LINE welcome メッセージ */
+/**
+ * @deprecated 文言は funnel_copy（line.welcome.body）から解決するようになった
+ * （lib/line-webhook-handler.ts の buildWelcomeMessage 参照）。テスト互換のため残置。
+ */
 export function getLineWelcomeTrialMessage(days: number, subscribeUrl: string): string {
   return `Rutinへようこそ！
 
@@ -85,7 +102,9 @@ export function getLineWelcomeTrialMessage(days: number, subscribeUrl: string): 
 ${subscribeUrl}`;
 }
 
-/** 決済完了画面 */
+/**
+ * @deprecated 文言は funnel_copy（complete.trial.*）から解決するようになった。テスト互換のため残置。
+ */
 export function getCompleteTrialMessage(
   days: number,
   monthlyPriceYen: number | null
@@ -100,7 +119,10 @@ export function getCompleteTrialMessage(
   };
 }
 
-/** 決済完了画面（プラン対応・ライトは即時契約、その他はトライアル開始）。年額は全プランにトライアル。 */
+/**
+ * @deprecated 文言は funnel_copy（complete.trial.* / complete.paid.*）から解決するようになった。
+ * テスト互換のため残置。
+ */
 export function getCompleteMessage(
   planCode: string,
   days: number,

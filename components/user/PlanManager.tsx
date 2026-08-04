@@ -206,12 +206,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
         </div>
 
         <div className="mt-3 flex items-end justify-between gap-3">
-          <div>
-            <p className="text-2xl font-bold text-stone-800">{subscription.planLabel}</p>
-            {subscription.castName && (
-              <p className="mt-1 text-sm text-stone-500">担当メイト: {subscription.castName}</p>
-            )}
-          </div>
+          <p className="text-2xl font-bold text-stone-800">{subscription.planLabel}</p>
           {subscription.monthlyPrice != null && (
             <p className="whitespace-nowrap text-right text-lg font-bold text-primary">
               {formatYen(subscription.monthlyPrice)}
@@ -219,6 +214,33 @@ export function PlanManager({ subscription }: PlanManagerProps) {
             </p>
           )}
         </div>
+
+        {/* 担当メイト（写真つきで「誰と一緒か」を見せる） */}
+        {subscription.castName && (
+          <div className="mt-4 flex items-center gap-3 rounded-xl bg-stone-50 p-3">
+            {subscription.castPhotoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- Supabase Storage の外部URL（最適化対象外）
+              <img
+                src={subscription.castPhotoUrl}
+                alt=""
+                className="size-11 shrink-0 rounded-full border border-stone-200 object-cover"
+              />
+            ) : (
+              <div
+                aria-hidden
+                className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-base font-bold text-primary"
+              >
+                {subscription.castName.charAt(0)}
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="text-xs text-stone-500">担当メイト</p>
+              <p className="truncate text-sm font-bold text-stone-800">
+                {subscription.castName}さん
+              </p>
+            </div>
+          </div>
+        )}
 
         <dl className="mt-4 space-y-1.5 border-t border-stone-100 pt-4 text-sm">
           {isTrial && trialEndDate && (
@@ -375,6 +397,47 @@ export function PlanManager({ subscription }: PlanManagerProps) {
         <p className="px-1 text-[11px] leading-relaxed text-stone-400">
           プラン変更後の新しい料金は、次回の更新日から適用されます。
         </p>
+      </section>
+
+      {/* お支払い方法（従来は支払い遅延時のみ表示だったが、カード変更・請求履歴の確認は
+          いつでも必要になるため常設にする） */}
+      {canManage && (
+        <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+          <h2 className="text-sm font-bold text-stone-700">お支払い方法</h2>
+          <p className="mt-2 text-xs leading-relaxed text-stone-500">
+            カードの変更・請求履歴の確認は、Stripeの安全なお支払い管理ページで行えます。
+          </p>
+          <button
+            type="button"
+            onClick={handleUpdatePayment}
+            disabled={busy || isPending}
+            className="mt-3 inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-200 bg-white px-5 py-2.5 text-sm font-bold text-stone-700 transition-colors hover:bg-stone-50 disabled:opacity-50"
+          >
+            お支払い管理ページを開く
+          </button>
+        </section>
+      )}
+
+      {/* サポート導線 */}
+      <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-bold text-stone-700">お困りのときは</h2>
+        <p className="mt-2 text-xs leading-relaxed text-stone-500">
+          使い方やご契約についての疑問は、よくある質問をご覧いただくか、LINEでお気軽にご相談ください。
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <a
+            href="/help"
+            className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-stone-200 bg-white px-5 py-2.5 text-sm font-bold text-stone-700 transition-colors hover:bg-stone-50"
+          >
+            よくある質問を見る
+          </a>
+          <a
+            href="https://line.me/R/"
+            className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-green-600 bg-green-50 px-5 py-2.5 text-sm font-bold text-green-700 transition-colors hover:bg-green-100"
+          >
+            LINEで相談する
+          </a>
+        </div>
       </section>
 
       {/* 解約 */}

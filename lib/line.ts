@@ -141,13 +141,32 @@ export const pushImageMessage = async (
 };
 
 /**
- * メイト選択への案内 Flex メッセージ本体を組み立てる（push/reply 共用）。
+ * メイト選択案内 Flex の文言（{days} 等は呼び出し側で展開済みの完成形を渡す）。
+ * 文言は funnel_copy（line.flex.*）から解決される。lib/funnel-copy-defs.ts 参照。
  */
-const buildSubscribeGuideFlex = (subscribeUrl: string, trialDays: number) => {
-  const trialLabel = `${trialDays}日間`;
+export type SubscribeGuideFlexCopy = {
+  altText: string;
+  title: string;
+  body: string;
+  expiry: string;
+  button: string;
+};
+
+// LINE API の上限（超過するとメッセージ全体が 400 で落ちるため送信シンクで最終クランプする）
+const LINE_ALT_TEXT_MAX = 400;
+const LINE_ACTION_LABEL_MAX = 40;
+
+/**
+ * メイト選択への案内 Flex メッセージ本体を組み立てる（push/reply 共用・純関数）。
+ * 色・レイアウトは固定。文言のみ差し替え可能。
+ */
+export const buildSubscribeGuideFlex = (
+  subscribeUrl: string,
+  copy: SubscribeGuideFlexCopy
+) => {
   return {
     type: "flex",
-    altText: `メイトを選んで${trialLabel}無料トライアルを始められます`,
+    altText: copy.altText.slice(0, LINE_ALT_TEXT_MAX),
     contents: {
       type: "bubble",
       body: {
@@ -157,7 +176,7 @@ const buildSubscribeGuideFlex = (subscribeUrl: string, trialDays: number) => {
         contents: [
           {
             type: "text",
-            text: "メイトを選んで始めましょう",
+            text: copy.title,
             weight: "bold",
             size: "lg",
             color: "#2D241E",
@@ -165,14 +184,14 @@ const buildSubscribeGuideFlex = (subscribeUrl: string, trialDays: number) => {
           },
           {
             type: "text",
-            text: `気になる伴走メイトを選んで、まずは${trialLabel}無料でRutinをお試しいただけます。`,
+            text: copy.body,
             size: "sm",
             color: "#6B5A51",
             wrap: true,
           },
           {
             type: "text",
-            text: "ボタンの有効期限は30分です。",
+            text: copy.expiry,
             size: "xs",
             color: "#8A786D",
             wrap: true,
@@ -190,7 +209,7 @@ const buildSubscribeGuideFlex = (subscribeUrl: string, trialDays: number) => {
             color: "#D97757",
             action: {
               type: "uri",
-              label: "メイトを見る",
+              label: copy.button.slice(0, LINE_ACTION_LABEL_MAX),
               uri: subscribeUrl,
             },
           },
@@ -232,9 +251,9 @@ export const sendSubscribeGuideFlexMessage = async (
   account: Pick<LineAccountCredentials, "accessToken">,
   lineUserId: string,
   subscribeUrl: string,
-  trialDays: number
+  copy: SubscribeGuideFlexCopy
 ): Promise<void> => {
-  const flexMessage = buildSubscribeGuideFlex(subscribeUrl, trialDays);
+  const flexMessage = buildSubscribeGuideFlex(subscribeUrl, copy);
 
   const res = await fetchWithRetry(`${LINE_API_BASE}/message/push`, {
     method: "POST",
@@ -267,9 +286,9 @@ export const replySubscribeGuideFlexMessage = async (
   account: Pick<LineAccountCredentials, "accessToken">,
   replyToken: string,
   subscribeUrl: string,
-  trialDays: number
+  copy: SubscribeGuideFlexCopy
 ): Promise<void> => {
-  await replyMessages(account, replyToken, [buildSubscribeGuideFlex(subscribeUrl, trialDays)]);
+  await replyMessages(account, replyToken, [buildSubscribeGuideFlex(subscribeUrl, copy)]);
 };
 
 /**

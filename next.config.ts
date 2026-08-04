@@ -13,6 +13,16 @@ const contentSecurityPolicy = [
   "form-action 'self'", // フォームの送信先を自サイトに限定（Server Actions は同一オリジン）
 ].join("; ");
 
+// 申込ファネル(/subscribe/*)は管理画面のプレビュー(iframe)から同一オリジンで埋め込むため、
+// frame-ancestors 'self' に緩和する。第三者サイトからのフレーミングは引き続き不可
+// （'self'=同一オリジン限定）なのでクリックジャッキング耐性は実質変わらない。
+// X-Frame-Options は DENY しか適切な値が無く（DENYは同一オリジンの埋め込みも拒否する）、
+// このパスでは付与しない（CSP frame-ancestors が後継として機能する）。
+const subscribeCsp = contentSecurityPolicy.replace(
+  "frame-ancestors 'none'",
+  "frame-ancestors 'self'"
+);
+
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
@@ -40,10 +50,24 @@ const nextConfig: NextConfig = {
     },
   },
   async headers() {
+    const subscribeHeaders = securityHeaders
+      .filter((h) => h.key !== "X-Frame-Options" && h.key !== "Content-Security-Policy")
+      .concat([{ key: "Content-Security-Policy", value: subscribeCsp }]);
+
     return [
+      // /subscribe 配下以外: 従来どおり全部盛り（DENY + frame-ancestors 'none'）
       {
-        source: "/(.*)",
+        source: "/((?!subscribe).*)",
         headers: securityHeaders,
+      },
+      // /subscribe 配下: 同一オリジンの iframe（管理プレビュー）だけ許可
+      {
+        source: "/subscribe/:path*",
+        headers: subscribeHeaders,
+      },
+      {
+        source: "/subscribe",
+        headers: subscribeHeaders,
       },
     ];
   },

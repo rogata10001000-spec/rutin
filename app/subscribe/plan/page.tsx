@@ -9,35 +9,13 @@ import {
   checkoutErrorCodeFromResult,
   getCheckoutErrorMessage,
 } from "@/lib/subscribe-checkout-errors";
-import {
-  getPlanCheckoutButtonLabel,
-  getPlanCheckoutButtonLabelForPlan,
-  getPlanPageNotice,
-  getTrialPeriodDays,
-  formatTrialDaysLabel,
-} from "@/lib/trial";
+import { getTrialPeriodDays, isTrialEligiblePlan, formatYen } from "@/lib/trial";
+import { getFunnelCopyValues } from "@/lib/funnel-copy";
+import { renderFunnelCopy } from "@/lib/funnel-copy-defs";
 import { buildSubscribeCastUrl } from "@/lib/subscribe-paths";
 import { CheckoutSubmitButton } from "./CheckoutSubmitButton";
 
-const planLabels: Record<PlanCode, string> = {
-  light: "ライト",
-  standard: "スタンダード",
-  premium: "プレミアム",
-};
-
-const planSla: Record<PlanCode, string> = {
-  light: "24時間以内",
-  standard: "12時間以内",
-  premium: "2時間以内",
-};
-
-const planDescription: Record<PlanCode, string> = {
-  light: "気軽にメッセージで相談したい方向け",
-  standard: "毎日のチェックインで継続的にサポート",
-  premium: "優先返信と週次レビューで集中サポート",
-};
-
-const formatYen = (amount: number) => `¥${amount.toLocaleString("ja-JP")}`;
+const PLAN_CODES: readonly PlanCode[] = ["light", "standard", "premium"];
 
 type PageProps = {
   searchParams?: Promise<{
@@ -46,20 +24,22 @@ type PageProps = {
     gender?: string;
     canceled?: string;
     interval?: string;
+    preview?: string;
   }>;
 };
 
 export default async function SubscribePlanPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const castId = params?.castId;
+  // 管理画面プレビュー（下書き文言を優先表示）
+  const isPreview = params?.preview === "1";
   const castBackUrl = buildSubscribeCastUrl({
     gender: params?.gender,
     canceled: params?.canceled,
+    preview: params?.preview,
   });
   const checkoutErrorMessage = getCheckoutErrorMessage(params?.checkoutError);
   const trialDays = getTrialPeriodDays();
-  const userToken = await getUserFromServerCookies();
-  const hasLineSession = userToken.ok;
 
   if (!castId) {
     return (
@@ -78,7 +58,43 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
     );
   }
 
-  const castsResult = await listAvailableCasts({});
+  // 文言取得は既存フェッチと並列にする（ホットパスへ直列 await を足さない）
+  const [userToken, castsResult, copy] = await Promise.all([
+    getUserFromServerCookies(),
+    listAvailableCasts({}),
+    getFunnelCopyValues(
+      [
+        "plan.nav.title",
+        "plan.name.light",
+        "plan.name.standard",
+        "plan.name.premium",
+        "plan.desc.light",
+        "plan.desc.standard",
+        "plan.desc.premium",
+        "plan.sla.light",
+        "plan.sla.standard",
+        "plan.sla.premium",
+        "plan.recommended.plan",
+        "plan.recommended.label",
+        "plan.notice.trial",
+        "plan.notice.notrial",
+        "plan.notice.annualHero",
+        "plan.notice.annualCard",
+        "plan.cta.trial",
+        "plan.cta.notrial",
+      ],
+      { preview: isPreview }
+    ),
+  ]);
+  const hasLineSession = userToken.ok;
+
+  // 「おすすめ」を付けるプラン（値はプランコード。不正値はデフォルトの standard へ）
+  const recommendedPlan: PlanCode = PLAN_CODES.includes(
+    copy["plan.recommended.plan"] as PlanCode
+  )
+    ? (copy["plan.recommended.plan"] as PlanCode)
+    : "standard";
+
   if (!castsResult.ok) {
     return (
       <main className="mx-auto min-h-screen max-w-[480px] bg-background-light px-4 py-8">
@@ -139,6 +155,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
     });
     if (params?.gender) qs.set("gender", params.gender);
     if (params?.canceled) qs.set("canceled", params.canceled);
+    if (params?.preview) qs.set("preview", params.preview);
     redirect(`/subscribe/plan?${qs.toString()}`);
   }
 
@@ -148,6 +165,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
     const qs = new URLSearchParams({ castId });
     if (params?.gender) qs.set("gender", params.gender);
     if (params?.canceled) qs.set("canceled", params.canceled);
+    if (params?.preview) qs.set("preview", params.preview);
     qs.set("interval", iv);
     return `/subscribe/plan?${qs.toString()}`;
   };
@@ -166,7 +184,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
             </span>
           </a>
           <h2 className="flex-1 pr-10 text-center text-lg font-bold leading-tight text-[#2D241E]">
-            プランを選ぶ
+            {copy["plan.nav.title"]}
           </h2>
         </nav>
 
@@ -190,8 +208,11 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
             </div>
             <p className="text-sm leading-relaxed text-[#2D241E]">
               {interval === "year"
-                ? `選んだプランで${formatTrialDaysLabel(trialDays)}の無料トライアルを開始します。トライアル終了後は年額（実質2ヶ月分お得）が自動請求されます。いつでも解約できます。`
-                : getPlanPageNotice("standard", trialDays, cast.prices.standard)}
+                ? renderFunnelCopy(copy["plan.notice.annualHero"], { days: trialDays })
+                : renderFunnelCopy(copy["plan.notice.trial"], {
+                    days: trialDays,
+                    price: `月額${formatYen(cast.prices.standard)}`,
+                  })}
             </p>
           </div>
         </div>
@@ -243,39 +264,51 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
             const canCheckout = hasLineSession && hasPriceId;
             const priceSuffix = isAnnual ? "/年" : "/月";
             const monthlyEquivalent = isAnnual ? Math.round(price / 12) : null;
+            // {price} には 月額/年額 の接頭辞込みの表記を渡す（デフォルト文言の前提）
             const notice = isAnnual
-              ? `${formatTrialDaysLabel(trialDays)}の無料トライアル後、年額${formatYen(
-                  price
-                )}が自動請求されます（実質2ヶ月分お得・いつでも解約可）。`
-              : getPlanPageNotice(planCode, trialDays, price);
-            const buttonLabel = isAnnual
-              ? getPlanCheckoutButtonLabel(trialDays)
-              : getPlanCheckoutButtonLabelForPlan(planCode, trialDays);
+              ? renderFunnelCopy(copy["plan.notice.annualCard"], {
+                  days: trialDays,
+                  price: `年額${formatYen(price)}`,
+                })
+              : isTrialEligiblePlan(planCode)
+                ? renderFunnelCopy(copy["plan.notice.trial"], {
+                    days: trialDays,
+                    price: `月額${formatYen(price)}`,
+                  })
+                : renderFunnelCopy(copy["plan.notice.notrial"], {
+                    price: `月額${formatYen(price)}`,
+                  });
+            // 年額は全プランにトライアルが付くため常にトライアル文言
+            const buttonLabel =
+              isAnnual || isTrialEligiblePlan(planCode)
+                ? renderFunnelCopy(copy["plan.cta.trial"], { days: trialDays })
+                : copy["plan.cta.notrial"];
+            const isRecommended = planCode === recommendedPlan;
 
             return (
               <div
                 key={planCode}
                 className={`ios-shadow flex flex-col gap-4 rounded-2xl border bg-white p-5 transition-all ${
-                  planCode === "standard"
+                  isRecommended
                     ? "border-primary ring-1 ring-primary/20"
                     : "border-warm-border/40"
                 }`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex flex-col">
-                    {planCode === "standard" && (
+                    {isRecommended && (
                       <span className="mb-1 w-fit rounded bg-primary px-2 py-0.5 text-[10px] font-bold text-white">
-                        おすすめ
+                        {copy["plan.recommended.label"]}
                       </span>
                     )}
                     <h3 className="text-lg font-bold text-[#2D241E]">
-                      {planLabels[planCode]}
+                      {copy[`plan.name.${planCode}`]}
                     </h3>
                     <p className="mt-1 text-xs leading-relaxed text-[#6B5A51]">
-                      {planDescription[planCode]}
+                      {copy[`plan.desc.${planCode}`]}
                     </p>
                     <p className="mt-1 text-xs text-[#6B5A51]">
-                      返信目安: {planSla[planCode]}
+                      返信目安: {copy[`plan.sla.${planCode}`]}
                     </p>
                   </div>
                   <div className="text-right">

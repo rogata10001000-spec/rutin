@@ -24,6 +24,7 @@ import {
   toSubscriptionStatus,
 } from "@/lib/stripe";
 import { getServerEnv } from "@/lib/env";
+import { getFunnelCopyValues } from "@/lib/funnel-copy";
 import { currentPeriodEndFromStripeSubscription } from "@/lib/stripe-subscription-sync";
 import { recordSubscriptionLifecycleEvent } from "@/lib/subscription-lifecycle";
 import {
@@ -53,6 +54,8 @@ export type MySubscriptionView = {
   monthlyPrice: number | null;
   interval: BillingInterval;
   castName: string | null;
+  /** 担当メイトの1枚目の写真（未設定なら null）。マイページの安心感のための表示用。 */
+  castPhotoUrl: string | null;
   currentPeriodEnd: string | null;
   trialEndAt: string | null;
   cancelAtPeriodEnd: boolean;
@@ -194,15 +197,45 @@ export async function getMySubscription(): Promise<GetMySubscriptionResult> {
     ? subscription.plan_code
     : "standard") as PlanCode;
 
-  let castName: string | null = null;
-  if (assignedCastId) {
-    const { data: cast } = await supabase
-      .from("staff_profiles")
-      .select("display_name")
-      .eq("id", assignedCastId)
-      .maybeSingle();
-    castName = cast?.display_name ?? null;
-  }
+  // 担当メイト情報・写真・プラン表示文言は互いに独立 → 並列取得。
+  // プラン名・説明・返信目安は申込画面と同じ編集可能文言（funnel_copy）から解決し、
+  // 管理画面で文言を変えたとき申込画面とマイページがズレないようにする（単一の真実のソース）。
+  const [castRow, castPhotoRow, copy] = await Promise.all([
+    assignedCastId
+      ? supabase
+          .from("staff_profiles")
+          .select("display_name")
+          .eq("id", assignedCastId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    assignedCastId
+      ? supabase
+          .from("cast_photos")
+          .select("storage_path")
+          .eq("cast_id", assignedCastId)
+          .eq("active", true)
+          .order("display_order", { ascending: true })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    getFunnelCopyValues([
+      "plan.name.light",
+      "plan.name.standard",
+      "plan.name.premium",
+      "plan.desc.light",
+      "plan.desc.standard",
+      "plan.desc.premium",
+      "plan.sla.light",
+      "plan.sla.standard",
+      "plan.sla.premium",
+    ]),
+  ]);
+
+  const castName = castRow.data?.display_name ?? null;
+  const castPhotoUrl = castPhotoRow.data?.storage_path
+    ? supabase.storage.from("cast-photos").getPublicUrl(castPhotoRow.data.storage_path).data
+        .publicUrl
+    : null;
 
   const canManage = MANAGEABLE_STATUSES.includes(subscription.status);
 
@@ -211,9 +244,9 @@ export async function getMySubscription(): Promise<GetMySubscriptionResult> {
 
   const planOptions: ManagedPlanOption[] = PLAN_CODES.map((code) => ({
     code,
-    label: PLAN_LABELS[code],
-    description: PLAN_DESCRIPTIONS[code],
-    slaLabel: PLAN_SLA_LABELS[code],
+    label: copy[`plan.name.${code}`] ?? PLAN_LABELS[code],
+    description: copy[`plan.desc.${code}`] ?? PLAN_DESCRIPTIONS[code],
+    slaLabel: copy[`plan.sla.${code}`] ?? PLAN_SLA_LABELS[code],
     monthlyPrice: pricing[code].amount,
     available: Boolean(pricing[code].stripePriceId),
     isCurrent: code === currentPlan,
@@ -226,10 +259,11 @@ export async function getMySubscription(): Promise<GetMySubscriptionResult> {
       subscription: {
         status: subscription.status,
         planCode: currentPlan,
-        planLabel: PLAN_LABELS[currentPlan],
+        planLabel: copy[`plan.name.${currentPlan}`] ?? PLAN_LABELS[currentPlan],
         monthlyPrice: pricing[currentPlan].amount,
         interval,
         castName,
+        castPhotoUrl,
         currentPeriodEnd: subscription.current_period_end,
         trialEndAt: ctx.trialEndAt,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,

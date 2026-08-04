@@ -3,7 +3,8 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import type { AvailableCast } from "@/actions/subscriptions";
-import type { StaffGender } from "@/lib/supabase/types";
+import { GENDER_LABEL } from "@/lib/cast-display";
+import type { CastDetailCopy } from "./CastDetailModal";
 
 /**
  * 詳細モーダルは Swiper（JS＋CSS）を抱えているが、開くのはカードをタップした後。
@@ -26,18 +27,25 @@ const CastDetailModal = dynamic(
   }
 );
 
-const GENDER_LABEL: Record<StaffGender, string> = {
-  female: "女性",
-  male: "男性",
-  other: "その他",
-};
-
 type CastListProps = {
   casts: AvailableCast[];
+  /** 「残り◯枠」バッジを出す残数のしきい値（funnel_copy: cast.scarcity.threshold） */
+  scarcityThreshold: number;
+  /** 詳細モーダルの文言（funnel_copy: detail.*） */
+  detailCopy: CastDetailCopy;
+  /** 指定があれば該当メイトの詳細モーダルを最初から開く（管理画面プレビューのディープリンク用） */
+  initialCastId?: string;
 };
 
-export function CastList({ casts }: CastListProps) {
-  const [selectedCast, setSelectedCast] = useState<AvailableCast | null>(null);
+export function CastList({
+  casts,
+  scarcityThreshold,
+  detailCopy,
+  initialCastId,
+}: CastListProps) {
+  const [selectedCast, setSelectedCast] = useState<AvailableCast | null>(
+    () => casts.find((cast) => cast.id === initialCastId) ?? null
+  );
 
   return (
     <>
@@ -48,7 +56,7 @@ export function CastList({ casts }: CastListProps) {
           const genderText = cast.gender ? GENDER_LABEL[cast.gender] : null;
           const remainingSlots =
             cast.capacityLimit !== null ? Math.max(0, cast.capacityLimit - cast.assignedCount) : null;
-          const isScarce = remainingSlots !== null && remainingSlots <= 5;
+          const isScarce = remainingSlots !== null && remainingSlots <= scarcityThreshold;
 
           return (
             <button
@@ -120,6 +128,8 @@ export function CastList({ casts }: CastListProps) {
           cast={selectedCast}
           isOpen
           onClose={() => setSelectedCast(null)}
+          scarcityThreshold={scarcityThreshold}
+          copy={detailCopy}
         />
       )}
     </>

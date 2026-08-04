@@ -2,14 +2,15 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
+import { GENDER_LABEL } from "@/lib/cast-display";
 
 export type CastGenderFilterValue = "all" | "female" | "male" | "other";
 
 const OPTIONS: { value: CastGenderFilterValue; label: string }[] = [
   { value: "all", label: "すべて" },
-  { value: "female", label: "女性" },
-  { value: "male", label: "男性" },
-  { value: "other", label: "その他" },
+  { value: "female", label: GENDER_LABEL.female },
+  { value: "male", label: GENDER_LABEL.male },
+  { value: "other", label: GENDER_LABEL.other },
 ];
 
 type CastGenderFilterProps = {

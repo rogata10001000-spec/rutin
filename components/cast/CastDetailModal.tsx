@@ -13,23 +13,31 @@ import "swiper/css/navigation";
 import "swiper/css/pagination";
 
 import type { AvailableCast } from "@/actions/subscriptions";
-import type { StaffGender } from "@/lib/supabase/types";
+import { formatYen, GENDER_LABEL } from "@/lib/cast-display";
 
-const formatYen = (amount: number) => `¥${amount.toLocaleString("ja-JP")}`;
-
-const GENDER_LABEL: Record<StaffGender, string> = {
-  female: "女性",
-  male: "男性",
-  other: "その他",
+/** 詳細モーダルの編集可能文言（funnel_copy: detail.*） */
+export type CastDetailCopy = {
+  profileHeading: string;
+  profileEmpty: string;
+  cta: string;
 };
 
 type CastDetailModalProps = {
   cast: AvailableCast | null;
   isOpen: boolean;
   onClose: () => void;
+  /** 「残り◯枠」バッジを出す残数のしきい値（funnel_copy: cast.scarcity.threshold） */
+  scarcityThreshold: number;
+  copy: CastDetailCopy;
 };
 
-export function CastDetailModal({ cast, isOpen, onClose }: CastDetailModalProps) {
+export function CastDetailModal({
+  cast,
+  isOpen,
+  onClose,
+  scarcityThreshold,
+  copy,
+}: CastDetailModalProps) {
   const searchParams = useSearchParams();
   const [swiperInstance, setSwiperInstance] = useState<SwiperType | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -72,7 +80,7 @@ export function CastDetailModal({ cast, isOpen, onClose }: CastDetailModalProps)
   const lowestPrice = Math.min(cast.prices.light, cast.prices.standard, cast.prices.premium);
   const remainingSlots =
     cast.capacityLimit !== null ? Math.max(0, cast.capacityLimit - cast.assignedCount) : null;
-  const isScarce = remainingSlots !== null && remainingSlots <= 5;
+  const isScarce = remainingSlots !== null && remainingSlots <= scarcityThreshold;
 
   return (
     <div
@@ -210,25 +218,26 @@ export function CastDetailModal({ cast, isOpen, onClose }: CastDetailModalProps)
 
           {cast.publicProfile?.trim() ? (
             <section className="rounded-2xl bg-white p-4 ring-1 ring-warm-border/40">
-              <h3 className="text-xs font-bold tracking-wide text-[#6B5A51]">プロフィール</h3>
+              <h3 className="text-xs font-bold tracking-wide text-[#6B5A51]">
+                {copy.profileHeading}
+              </h3>
               <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#2D241E]">
                 {cast.publicProfile.trim()}
               </p>
             </section>
           ) : (
-            <p className="text-xs text-[#6B5A51]">
-              プロフィール文は準備中です。
-            </p>
+            <p className="text-xs text-[#6B5A51]">{copy.profileEmpty}</p>
           )}
         </div>
 
         {/* CTA固定フッター */}
         <div className="shrink-0 border-t border-warm-border/50 bg-white px-5 py-4">
+          {/* buildSubscribePlanUrl は現在のクエリ（preview=1 等）をそのまま引き継ぐ */}
           <a
             href={buildSubscribePlanUrl(cast.id, searchParams)}
             className="flex h-12 w-full items-center justify-center rounded-full bg-primary text-base font-bold text-white shadow-lg shadow-primary/30 transition-transform active:scale-95"
           >
-            この伴走メイトでプランを見る
+            {copy.cta}
           </a>
         </div>
       </div>

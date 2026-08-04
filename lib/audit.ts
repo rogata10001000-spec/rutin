@@ -35,6 +35,8 @@ export type AuditAction =
   // ステップ配信
   | "UPSERT_STEP_MESSAGE"
   | "DELETE_STEP_MESSAGE"
+  // 申込ファネル文言
+  | "FUNNEL_COPY_PUBLISH"
   // ポイント/ギフト
   | "POINT_CHECKOUT_CREATE"
   | "POINT_PURCHASE_CONFIRMED"

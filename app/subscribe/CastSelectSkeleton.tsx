@@ -10,6 +10,10 @@ export function CastSelectSkeleton() {
     <div className="min-h-screen bg-background-light">
       <div className="relative mx-auto flex h-auto min-h-screen w-full max-w-[480px] flex-col overflow-x-hidden border-x border-orange-50 bg-background-light antialiased">
         <nav className="sticky top-0 z-50 flex items-center justify-center bg-background-light/90 p-4 pb-2 backdrop-blur-md">
+          {/*
+           * 静的プレースホルダ。本画面のタイトルは funnel_copy（cast.nav.title）で編集可能なため、
+           * タイトルを編集している場合はロード中の一瞬だけ表示が異なることがある（許容）。
+           */}
           <h2 className="whitespace-nowrap text-lg font-bold leading-tight text-[#2D241E]">
             伴走メイトを選ぶ
           </h2>
