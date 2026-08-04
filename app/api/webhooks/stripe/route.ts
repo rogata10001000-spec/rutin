@@ -215,6 +215,49 @@ async function cancelIfDuplicateLiveSubscription(
   return true;
 }
 
+/**
+ * subscriptions への INSERT が 23505 で失敗したとき、どちらの一意制約に当たったのかを判別する。
+ *
+ * - "same_subscription": stripe_subscription_id の重複（＝同じ契約のイベント再送）。従来どおり UPDATE する。
+ * - "duplicate_live":   uq_subscriptions_live_per_user 違反（＝別のライブ契約が既にある）。
+ *                       cancelIfDuplicateLiveSubscription のSELECTとINSERTの隙間に
+ *                       別の契約が入った場合にここへ来る。行は作らず新しい方をキャンセルする。
+ *
+ * 制約名の文字列で判定すると命名変更で静かに壊れるため、
+ * 「同じ subscription_id の行が実在するか」という事実で判別する。
+ *
+ * ここを取り違えると、UPDATE が 0 件ヒットで静かに成功し、
+ * 「Stripe では課金されているのに自DBに契約行が無い（＝ユーザーが解約もできない）」状態になる。
+ */
+async function resolveSubscriptionInsertConflict(
+  supabase: SupabaseAdmin,
+  params: {
+    endUserId: string;
+    subscriptionId: string;
+    castId: string;
+    planCode: string;
+    eventType: string;
+  }
+): Promise<"same_subscription" | "duplicate_live"> {
+  const { data: sameSubscription } = await supabase
+    .from("subscriptions")
+    .select("id")
+    .eq("stripe_subscription_id", params.subscriptionId)
+    .maybeSingle();
+
+  if (sameSubscription) return "same_subscription";
+
+  await cancelIfDuplicateLiveSubscription(supabase, {
+    endUserId: params.endUserId,
+    incomingSubscriptionId: params.subscriptionId,
+    castId: params.castId,
+    planCode: params.planCode,
+    eventType: `${params.eventType} (insert conflict)`,
+  });
+
+  return "duplicate_live";
+}
+
 async function warnIfCastOverCapacity(supabase: SupabaseAdmin, castId: string): Promise<void> {
   try {
     const { data: cast } = await supabase
@@ -430,7 +473,19 @@ export async function handleInvoicePaymentFailed(
   }
 
   // past_dueに更新
-  await supabase.from("subscriptions").update({ status: "past_due" }).eq("id", sub.id);
+  // 1ユーザー1ライブ契約の一意制約(uq_subscriptions_live_per_user)に当たり得るため、
+  // エラーを握りつぶさない（握りつぶすとStripeと自DBの状態が静かに食い違う）。
+  const { error: pastDueError } = await supabase
+    .from("subscriptions")
+    .update({ status: "past_due" })
+    .eq("id", sub.id);
+  if (pastDueError) {
+    logger.error("invoice.payment_failed: subscription past_due 更新に失敗", {
+      subscriptionId: sub.id,
+      code: pastDueError.code,
+      message: pastDueError.message,
+    });
+  }
   await supabase.from("end_users").update({ status: "past_due" }).eq("id", sub.end_user_id);
 
   // 支払い方法を更新できるカスタマーポータルのリンクを用意（best-effort）
@@ -674,6 +729,20 @@ export async function handleCheckoutSessionCompleted(
     if (subError && subError.code !== "23505") {
       throw new Error(`Failed to create subscription: ${subError.message}`);
     } else if (subError?.code === "23505") {
+      // 23505 には2種類ある。制約名の文字列に依存せず、同じ subscription_id の行が
+      // 実在するかで判別する（存在しない＝uq_subscriptions_live_per_user 違反）。
+      const conflict = await resolveSubscriptionInsertConflict(supabase, {
+        endUserId: user.id,
+        subscriptionId,
+        castId,
+        planCode,
+        eventType: "checkout.session.completed",
+      });
+
+      if (conflict === "duplicate_live") {
+        return { skipped: true, reason: "duplicate live subscription auto-canceled" };
+      }
+
       await supabase
         .from("subscriptions")
         .update({
@@ -882,6 +951,18 @@ export async function handleSubscriptionUpsert(
     }
 
     if (insertError?.code === "23505") {
+      const conflict = await resolveSubscriptionInsertConflict(supabase, {
+        endUserId: user.id,
+        subscriptionId,
+        castId,
+        planCode,
+        eventType: "customer.subscription.created",
+      });
+
+      if (conflict === "duplicate_live") {
+        return { skipped: true, reason: "duplicate live subscription auto-canceled" };
+      }
+
       await supabase
         .from("subscriptions")
         .update({
@@ -964,7 +1045,9 @@ export async function handleSubscriptionUpsert(
   const planChanged = Boolean(planCodeToSync && planCodeToSync !== sub.plan_code);
   const trialConverted = previousStatus === "trial" && newStatus === "active";
 
-  await supabase
+  // 解約済み→ライブへの復帰などで一意制約(uq_subscriptions_live_per_user)に当たり得る。
+  // 握りつぶすと「Stripeは課金中なのに自DBは解約済み」のまま静かにズレるため、必ず記録する。
+  const { error: syncError } = await supabase
     .from("subscriptions")
     .update({
       status: newStatus,
@@ -975,6 +1058,31 @@ export async function handleSubscriptionUpsert(
       ...(planCodeToSync ? { plan_code: planCodeToSync } : {}),
     })
     .eq("id", sub.id);
+
+  if (syncError) {
+    logger.error("subscription sync 更新に失敗", {
+      subscriptionId: sub.id,
+      newStatus,
+      code: syncError.code,
+      message: syncError.message,
+    });
+    if (syncError.code === "23505") {
+      // 同一ユーザーに既にライブ契約がある＝二重契約の疑い。運営が気づけるようにする。
+      await writeAuditLog({
+        action: "SUBSCRIPTION_DUPLICATE_CANCELED",
+        targetType: "subscriptions",
+        targetId: sub.id,
+        success: false,
+        metadata: {
+          reason: "live_subscription_conflict_on_status_sync",
+          end_user_id: sub.end_user_id,
+          attempted_status: newStatus,
+          event: eventType,
+        },
+        actorStaffId: null,
+      });
+    }
+  }
 
   const endUser = sub.end_users as unknown as { assigned_cast_id: string | null };
   const castId = endUser.assigned_cast_id;

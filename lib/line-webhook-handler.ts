@@ -16,6 +16,7 @@ import {
   getLineAccountForCast,
   type ResolvedLineAccount,
 } from "@/lib/line-accounts";
+import { shouldRejectAsWrongMate, shouldSwitchPrimaryAccount } from "@/lib/mate-routing";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { withWebhookIdempotency } from "@/lib/webhook";
 import { writeAuditLog } from "@/lib/audit";
@@ -427,12 +428,16 @@ async function markPrimaryAccountIfMate(
     .eq("id", endUserId)
     .maybeSingle();
 
-  if (current?.primary_line_account_id === account.id) {
-    return false;
-  }
-
-  const isContracted = current && !isUncontractedStatus(current.status);
-  if (isContracted && current.assigned_cast_id !== account.castId) {
+  if (
+    !shouldSwitchPrimaryAccount({
+      isDefaultAccount: account.isDefault,
+      accountId: account.id,
+      accountCastId: account.castId,
+      currentPrimaryAccountId: current?.primary_line_account_id ?? null,
+      assignedCastId: current?.assigned_cast_id ?? null,
+      isContracted: Boolean(current) && !isUncontractedStatus(current?.status),
+    })
+  ) {
     return false;
   }
 
@@ -679,7 +684,7 @@ export async function handleLineWebhook(
         const { data: existing } = await supabase
           .from("end_users")
           .select(
-            "id, status, nickname, line_profile_synced_at, last_guide_sent_at, assigned_cast_id"
+            "id, status, nickname, line_profile_synced_at, last_guide_sent_at, assigned_cast_id, primary_line_account_id"
           )
           .eq("line_user_id", lineUserId)
           .maybeSingle();
@@ -690,6 +695,7 @@ export async function handleLineWebhook(
         let status: string;
         let lastGuideSentAt: string | null;
         let assignedCastId: string | null = null;
+        let primaryLineAccountId: string | null = null;
         let isNew = false;
 
         if (existing) {
@@ -697,6 +703,7 @@ export async function handleLineWebhook(
           status = existing.status;
           lastGuideSentAt = existing.last_guide_sent_at;
           assignedCastId = existing.assigned_cast_id;
+          primaryLineAccountId = existing.primary_line_account_id;
 
           await syncLineProfileToEndUser(supabase, account, {
             endUserId: existing.id,
@@ -779,11 +786,16 @@ export async function handleLineWebhook(
         // （1ユーザー=1メイト仕様。Bのアカウントに書いた内容が担当メイトAにだけ見え、
         //  Bには一切見えない「静かな混線」になるため）。保存・画像取得・通知を行わず、
         //  担当メイトとのトークへ案内する。共通Rutin公式LINEは全員の窓口なので対象外。
+        //
+        // 判定ルールは lib/mate-routing.ts に集約している（単体テストで固定）。
         if (
-          !account.isDefault &&
-          account.castId &&
-          assignedCastId &&
-          account.castId !== assignedCastId
+          shouldRejectAsWrongMate({
+            accountId: account.id,
+            accountCastId: account.castId,
+            isDefaultAccount: account.isDefault,
+            assignedCastId,
+            primaryLineAccountId,
+          })
         ) {
           await replyWrongMateGuide(supabase, account, {
             endUserId: userId,
@@ -792,7 +804,7 @@ export async function handleLineWebhook(
             assignedCastId,
             lastGuideSentAt,
           });
-          return { uncontracted: false, wrongMate: true, userId };
+          return { uncontracted: false, wrongMate: true as const, userId };
         }
 
         // 契約者（trial / active / past_due / paused）は従来どおり受信・保存する。
@@ -820,7 +832,12 @@ export async function handleLineWebhook(
       }
 
       // 通知は契約者の保存メッセージに対してのみ送る（未契約者では一切通知しない）。
-      if (result.status === "processed" && !result.data.uncontracted) {
+      // 担当外メイト宛（wrongMate）は保存していないので通知もしない。
+      // messageId が無いため結果的に送られないが、条件として明示しておく。
+      const isWrongMate =
+        result.status === "processed" && "wrongMate" in result.data && result.data.wrongMate;
+
+      if (result.status === "processed" && !result.data.uncontracted && !isWrongMate) {
         const isDuplicate = "duplicate" in result.data && result.data.duplicate;
         const messageIdForPush = "messageId" in result.data ? result.data.messageId : null;
 

@@ -98,6 +98,26 @@ export async function mergeEndUsers(input: {
     return { ok: false, error: { code: "NOT_FOUND", message: "対象のユーザーが見つかりません" } };
   }
 
+  // 両者が契約中だと「1ユーザー1ライブ契約」の一意制約に当たり、統合はロールバックされる。
+  // 先に検知して、生のPostgresエラーではなく次にやることが分かる文言を返す。
+  const { data: liveSubs } = await supabase
+    .from("subscriptions")
+    .select("end_user_id")
+    .in("end_user_id", [sourceId, targetId])
+    .in("status", ["trial", "active", "past_due", "paused"]);
+
+  const liveOwners = new Set((liveSubs ?? []).map((s) => s.end_user_id));
+  if (liveOwners.size >= 2) {
+    return {
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        message:
+          "両方のアカウントに契約中のプランがあるため統合できません。二重請求を防ぐため、先に片方をStripeで解約してから統合してください。",
+      },
+    };
+  }
+
   const { error } = await (supabase as unknown as {
     rpc: (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
   }).rpc("merge_end_users", { p_source: sourceId, p_target: targetId });

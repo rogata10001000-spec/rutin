@@ -364,14 +364,29 @@ export async function createSubscriptionCheckoutSession(
   // end_users.line_user_id は unique なので、同じLINE IDの行は最大1件。
   // 「契約中チェック」と「トライアル利用歴チェック」は同じ1行を見るため、1クエリにまとめる
   // （従来は同一条件で2回問い合わせていた）。
-  const { data: existingUser } = await supabase
-    .from("end_users")
-    .select("id, status, trial_started_at, stripe_checkout_session_id")
-    .eq("line_user_id", parsed.data.lineUserId)
-    .maybeSingle();
+  // あわせて subscriptions 側のライブ契約も確認する（互いに独立なので並列）。
+  // end_users.status だけを見ていると、両テーブルの状態がズレたときに決済まで進んでしまい、
+  // webhook 側のガードで「課金後に自動キャンセル＋返金対応」になる。入口で止める方が損失が小さい。
+  const [{ data: existingUser }, { data: liveSubscriptions }] = await Promise.all([
+    supabase
+      .from("end_users")
+      .select("id, status, trial_started_at, stripe_checkout_session_id")
+      .eq("line_user_id", parsed.data.lineUserId)
+      .maybeSingle(),
+    supabase
+      .from("subscriptions")
+      .select("id, end_users!inner(line_user_id)")
+      .eq("end_users.line_user_id", parsed.data.lineUserId)
+      .in("status", ["trial", "active", "past_due", "paused"])
+      .limit(1),
+  ]);
 
   // 既存ユーザーチェック（同じLINE IDで既にアクティブなサブスクがあるか）
-  if (existingUser && !["incomplete", "canceled"].includes(existingUser.status)) {
+  const hasLiveSubscription = (liveSubscriptions?.length ?? 0) > 0;
+  const isContractedStatus =
+    existingUser && !["incomplete", "canceled"].includes(existingUser.status);
+
+  if (isContractedStatus || hasLiveSubscription) {
     return {
       ok: false,
       error: { code: "CONFLICT", message: "既に契約中のプランがあります" },
