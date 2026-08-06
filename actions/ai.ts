@@ -2,39 +2,82 @@
 
 import { aiDraftRequestSchema } from "@/schemas/ai";
 import { Result, toZodErrorMessage } from "./types";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { canAccessUser, getCurrentStaff } from "@/lib/auth";
+import { createAdminSupabaseClient } from "@/lib/supabase/server";
+import { canAccessUser } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { getServerEnv } from "@/lib/env";
-import { fetchWithRetry } from "@/lib/http-client";
-
-const AI_DAILY_LIMIT = getServerEnv().AI_DRAFT_DAILY_LIMIT;
-const AI_PROVIDER_KEY = getServerEnv().AI_PROVIDER_KEY;
+import { logger } from "@/lib/logger";
+import { after } from "next/server";
+import {
+  generateDraftsCore,
+  getFreshPregeneratedDrafts,
+  type GeneratedDraft,
+} from "@/lib/ai-drafts";
 
 export type GenerateAiDraftsInput = {
   endUserId: string;
-  /** 任意の共通指示（一括生成などで「今回の返信に反映してほしいこと」を渡す） */
+  /** 任意の指示（「今回の返信に反映してほしいこと」）。単発・一括の両方で使える */
   instruction?: string;
+  /** 一括生成からの呼び出しか（記録上の source 区分） */
+  bulk?: boolean;
 };
 
-export type AiDraft = {
-  type: "empathy" | "praise" | "suggest";
-  body: string;
-};
+export type AiDraft = GeneratedDraft;
 
 export type GenerateAiDraftsResult = Result<{
   requestId: string;
   drafts: AiDraft[];
+  /** true = 事前生成済みを即時返却した（新規のAPI呼び出しなし） */
+  fromPregenerated: boolean;
 }>;
 
 /**
- * AI返信案生成（1日3回制限）
+ * 日次上限チェック（ユーザー別 + スタッフ別）。超過していればエラーメッセージを返す。
+ * 事前生成(pregen)はどちらの上限にも数えない。
+ */
+async function checkDailyLimits(
+  supabase: ReturnType<typeof createAdminSupabaseClient>,
+  endUserId: string,
+  staffId: string
+): Promise<string | null> {
+  const env = getServerEnv();
+  const jstDate = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+
+  const [{ count: userCount }, { count: staffCount }] = await Promise.all([
+    supabase
+      .from("ai_draft_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("end_user_id", endUserId)
+      .eq("jst_date", jstDate)
+      .eq("success", true)
+      .neq("source", "pregen"),
+    supabase
+      .from("ai_draft_requests")
+      .select("*", { count: "exact", head: true })
+      .eq("requested_by", staffId)
+      .eq("jst_date", jstDate)
+      .eq("success", true)
+      .neq("source", "pregen"),
+  ]);
+
+  if ((userCount ?? 0) >= env.AI_DRAFT_DAILY_LIMIT) {
+    return `このユーザーへの本日の生成上限（${env.AI_DRAFT_DAILY_LIMIT}回）に達しました`;
+  }
+  if ((staffCount ?? 0) >= env.AI_STAFF_DAILY_LIMIT) {
+    return `本日の生成上限（${env.AI_STAFF_DAILY_LIMIT}回）に達しました。明日また利用できます`;
+  }
+  return null;
+}
+
+/**
+ * AI返信案生成。
+ * - 指示なしで新鮮な事前生成があれば即時返却（待ち時間ゼロ・上限も消費しない）
+ * - それ以外は担当メイトのスタイル・実返信例を使って新規生成
  * 権限: Admin/Supervisor/Cast（担当）
  */
 export async function generateAiDrafts(
   input: GenerateAiDraftsInput
 ): Promise<GenerateAiDraftsResult> {
-  // Zodバリデーション
   const parsed = aiDraftRequestSchema.safeParse(input);
   if (!parsed.success) {
     return {
@@ -43,7 +86,6 @@ export async function generateAiDrafts(
     };
   }
 
-  // 権限チェック
   const access = await canAccessUser(parsed.data.endUserId);
   if (!access) {
     return {
@@ -52,237 +94,223 @@ export async function generateAiDrafts(
     };
   }
 
-  if (!AI_PROVIDER_KEY) {
-    return {
-      ok: false,
-      error: { code: "CONFIG_ERROR", message: "AI下書き機能の設定が未完了です" },
-    };
-  }
+  const supabase = createAdminSupabaseClient();
+  const instruction = parsed.data.instruction?.trim() || null;
 
-  const supabase = await createServerSupabaseClient();
-
-  // JSTで今日の日付
-  const jstDate = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
-
-  // 1日の制限チェック
-  const { count } = await supabase
-    .from("ai_draft_requests")
-    .select("*", { count: "exact", head: true })
-    .eq("end_user_id", parsed.data.endUserId)
-    .eq("jst_date", jstDate)
-    .eq("success", true);
-
-  if ((count ?? 0) >= AI_DAILY_LIMIT) {
-    return {
-      ok: false,
-      error: { code: "CONFLICT", message: `本日の生成上限（${AI_DAILY_LIMIT}回）に達しました` },
-    };
-  }
-
-  // コンテキスト収集
-  // 1. 直近20メッセージ
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const [{ data: messages }, { data: pinnedMemos }, { data: checkins }, { data: castProfile }] =
-    await Promise.all([
-      supabase
-        .from("messages")
-        .select("direction, body, created_at")
-        .eq("end_user_id", parsed.data.endUserId)
-        .order("created_at", { ascending: false })
-        .limit(20),
-      supabase
-        .from("memos")
-        .select("category, latest_body")
-        .eq("end_user_id", parsed.data.endUserId)
-        .eq("pinned", true),
-      supabase
-        .from("checkins")
-        .select("date, status")
-        .eq("end_user_id", parsed.data.endUserId)
-        .gte("date", sevenDaysAgo.toISOString().split("T")[0])
-        .order("date", { ascending: false }),
-      supabase.from("staff_profiles").select("style_summary").eq("id", access.id).single(),
-    ]);
-
-  const contextSnapshot = {
-    messages: messages?.map((m) => ({ direction: m.direction, body: m.body })) ?? [],
-    pinnedMemos: pinnedMemos ?? [],
-    checkins: checkins ?? [],
-    castStyle: castProfile?.style_summary ?? null,
-  };
-
-  // AI API呼び出し（Claude Haiku）
-  let drafts: AiDraft[] = [];
-  let success = true;
-  let errorMessage: string | null = null;
-
-  try {
-    // Anthropic API呼び出し
-    const response = await fetchWithRetry("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": AI_PROVIDER_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-3-5-haiku-20241022",
-        max_tokens: 1024,
-        messages: [
-          {
-            role: "user",
-            content: buildAiPrompt(contextSnapshot, parsed.data.instruction ?? null),
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`AI API error: ${response.status}`);
+  // 指示なしなら、受信時に作っておいた新鮮な下書きを即時返却（体感ゼロ秒）
+  if (!instruction) {
+    const pregenerated = await getFreshPregeneratedDrafts(supabase, parsed.data.endUserId);
+    if (pregenerated) {
+      return {
+        ok: true,
+        data: { ...pregenerated, drafts: pregenerated.drafts, fromPregenerated: true },
+      };
     }
-
-    const result = await response.json();
-    const content = result.content?.[0]?.text ?? "";
-
-    // レスポンスをパース
-    drafts = parseAiResponse(content);
-  } catch (err) {
-    success = false;
-    errorMessage = err instanceof Error ? err.message : "Unknown error";
   }
 
-  // ai_draft_requests insert
-  const { data: request, error: reqError } = await supabase
-    .from("ai_draft_requests")
-    .insert({
-      end_user_id: parsed.data.endUserId,
-      requested_by: access.id,
-      jst_date: jstDate,
-      context_snapshot: contextSnapshot,
-      success,
-      error_message: errorMessage,
-    })
-    .select("id")
-    .single();
-
-  if (reqError) {
-    return {
-      ok: false,
-      error: { code: "UNKNOWN", message: "リクエストの記録に失敗しました" },
-    };
+  const limitError = await checkDailyLimits(supabase, parsed.data.endUserId, access.id);
+  if (limitError) {
+    return { ok: false, error: { code: "CONFLICT", message: limitError } };
   }
 
-  // 成功時はai_drafts insert
-  if (success && drafts.length > 0) {
-    const draftInserts = drafts.map((d) => ({
-      request_id: request.id,
-      type: d.type,
-      body: d.body,
-    }));
+  // スタイル・few-shot は担当メイトのもの（操作者が管理者でもメイトの口調で生成する）
+  const { data: user } = await supabase
+    .from("end_users")
+    .select("assigned_cast_id")
+    .eq("id", parsed.data.endUserId)
+    .maybeSingle();
 
-    await supabase.from("ai_drafts").insert(draftInserts);
-  }
-
-  // 監査ログ
-  await writeAuditLog({
-    action: "AI_DRAFT_REQUEST",
-    targetType: "ai_draft_requests",
-    targetId: request.id,
-    success,
-    metadata: buildAuditMetadata({
-      end_user_id: parsed.data.endUserId,
-      draft_count: drafts.length,
-      error: errorMessage,
-    }),
+  const result = await generateDraftsCore(supabase, {
+    endUserId: parsed.data.endUserId,
+    castId: user?.assigned_cast_id ?? null,
+    requestedBy: access.id,
+    instruction,
+    source: input.bulk ? "bulk" : "manual",
   });
 
-  if (!success) {
+  // 監査ログは応答をブロックしない
+  const endUserId = parsed.data.endUserId;
+  after(async () => {
+    try {
+      await writeAuditLog({
+        action: "AI_DRAFT_REQUEST",
+        targetType: "ai_draft_requests",
+        targetId: result.ok ? result.requestId : "failed",
+        success: result.ok,
+        metadata: buildAuditMetadata({
+          end_user_id: endUserId,
+          draft_count: result.ok ? result.drafts.length : 0,
+          error: result.ok ? null : result.error,
+        }),
+      });
+    } catch (err) {
+      logger.error("ai: audit log failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+  });
+
+  if (!result.ok) {
+    return { ok: false, error: { code: "EXTERNAL_API_ERROR", message: result.error } };
+  }
+
+  return {
+    ok: true,
+    data: { requestId: result.requestId, drafts: result.drafts, fromPregenerated: false },
+  };
+}
+
+export type PregeneratedDraftsResult = Result<{
+  requestId: string;
+  drafts: AiDraft[];
+} | null>;
+
+/**
+ * 新鮮な事前生成済み下書きの有無を確認する（スレッドを開いたときの先読み用）。
+ * あればボタンに「準備済み」を出し、クリック時に即表示できる。
+ */
+export async function getPreGeneratedDrafts(
+  endUserId: string
+): Promise<PregeneratedDraftsResult> {
+  const access = await canAccessUser(endUserId);
+  if (!access) {
     return {
       ok: false,
-      error: { code: "EXTERNAL_API_ERROR", message: "AI生成に失敗しました" },
+      error: { code: "FORBIDDEN", message: "このユーザーへのアクセス権限がありません" },
     };
   }
 
-  return { ok: true, data: { requestId: request.id, drafts } };
+  const supabase = createAdminSupabaseClient();
+  const pregenerated = await getFreshPregeneratedDrafts(supabase, endUserId);
+  return { ok: true, data: pregenerated };
 }
 
-/**
- * AIプロンプト構築
- */
-function buildAiPrompt(
-  context: {
-    messages: { direction: string; body: string }[];
-    pinnedMemos: { category: string; latest_body: string }[];
-    checkins: { date: string; status: string }[];
-    castStyle: string | null;
-  },
-  instruction: string | null
-): string {
-  const messageHistory = context.messages
-    .reverse()
-    .map((m) => `${m.direction === "in" ? "ユーザー" : "メイト"}: ${m.body}`)
-    .join("\n");
+export type BatchDraftItem = {
+  endUserId: string;
+  ok: boolean;
+  requestId?: string;
+  drafts?: AiDraft[];
+  error?: string;
+};
 
-  const memos = context.pinnedMemos
-    .map((m) => `[${m.category}] ${m.latest_body}`)
-    .join("\n");
+export type GenerateAiDraftsBatchResult = Result<{ items: BatchDraftItem[] }>;
 
-  const checkinStatus = context.checkins
-    .map((c) => `${c.date}: ${c.status}`)
-    .join(", ");
-
-  return `あなたは習慣化サポートサービスのメイトとして、ユーザーへの返信案を3つ作成してください。
-
-## メイトのスタイル
-${context.castStyle ?? "特に指定なし（自然で親しみやすい口調で）"}
-
-## 会話履歴（直近）
-${messageHistory || "（履歴なし）"}
-
-## ピン留めメモ（重要情報）
-${memos || "（なし）"}
-
-## 直近7日のチェックイン
-${checkinStatus || "（なし）"}
-${instruction ? `\n## メイトからの指示（今回の返信で必ず反映すること）\n${instruction}\n` : ""}
-## 出力形式
-以下の3パターンで返信案を作成してください。各返信は100文字程度で、Bot感のない人間らしい文章にしてください。
-
-[共感]
-（ユーザーの気持ちに寄り添う返信）
-
-[称賛]
-（ユーザーの行動や努力を褒める返信）
-
-[提案]
-（次のアクションを提案する返信）`;
-}
+const BATCH_MAX_USERS = 10;
+const BATCH_CONCURRENCY = 5;
 
 /**
- * AIレスポンスをパース
+ * 一括生成用のバッチ（最大10人/回・サーバー内で並列5）。
+ * クライアントはこれを10人ずつ順に呼ぶことで、100人でも
+ * 「1人ずつ直列」（Server Actionの直列化制約）を回避して大幅に短縮できる。
+ * 指示なしで新鮮な事前生成があるユーザーは、それを返して上限もAPIコストも消費しない。
  */
-function parseAiResponse(content: string): AiDraft[] {
-  const drafts: AiDraft[] = [];
-
-  const empathyMatch = content.match(/\[共感\]\s*([\s\S]*?)(?=\[称賛\]|\[提案\]|$)/);
-  const praiseMatch = content.match(/\[称賛\]\s*([\s\S]*?)(?=\[共感\]|\[提案\]|$)/);
-  const suggestMatch = content.match(/\[提案\]\s*([\s\S]*?)(?=\[共感\]|\[称賛\]|$)/);
-
-  if (empathyMatch?.[1]?.trim()) {
-    drafts.push({ type: "empathy", body: empathyMatch[1].trim() });
-  }
-  if (praiseMatch?.[1]?.trim()) {
-    drafts.push({ type: "praise", body: praiseMatch[1].trim() });
-  }
-  if (suggestMatch?.[1]?.trim()) {
-    drafts.push({ type: "suggest", body: suggestMatch[1].trim() });
+export async function generateAiDraftsBatch(input: {
+  endUserIds: string[];
+  instruction?: string;
+}): Promise<GenerateAiDraftsBatchResult> {
+  const endUserIds = [...new Set(input.endUserIds)].slice(0, BATCH_MAX_USERS);
+  if (endUserIds.length === 0) {
+    return { ok: true, data: { items: [] } };
   }
 
-  // パースできなかった場合は全体を共感として使用
-  if (drafts.length === 0 && content.trim()) {
-    drafts.push({ type: "empathy", body: content.trim().slice(0, 300) });
+  const instruction = input.instruction?.trim() || null;
+  if (instruction && instruction.length > 200) {
+    return {
+      ok: false,
+      error: { code: "ZOD_ERROR", message: "指示は200文字以内で入力してください" },
+    };
   }
 
-  return drafts;
+  // 権限は各ユーザーごとに確認（castは担当のみ）。1件目で全体の認証状態も確定する
+  const accessResults = await Promise.all(endUserIds.map((id) => canAccessUser(id)));
+  const staffId = accessResults.find((a) => a !== null)?.id;
+  if (!staffId) {
+    return {
+      ok: false,
+      error: { code: "FORBIDDEN", message: "対象ユーザーへのアクセス権限がありません" },
+    };
+  }
+
+  const supabase = createAdminSupabaseClient();
+
+  // 対象の担当メイトをまとめて取得
+  const { data: users } = await supabase
+    .from("end_users")
+    .select("id, assigned_cast_id")
+    .in("id", endUserIds);
+  const castMap = new Map((users ?? []).map((u) => [u.id, u.assigned_cast_id]));
+
+  const items: BatchDraftItem[] = [];
+  const queue = endUserIds.map((endUserId, index) => ({ endUserId, index }));
+  const results: BatchDraftItem[] = new Array(endUserIds.length);
+
+  const worker = async () => {
+    for (;;) {
+      const next = queue.shift();
+      if (!next) return;
+      const { endUserId, index } = next;
+
+      const access = accessResults[index];
+      if (!access) {
+        results[index] = { endUserId, ok: false, error: "アクセス権限がありません" };
+        continue;
+      }
+
+      // 指示なしなら事前生成を優先（無料・即時）
+      if (!instruction) {
+        const pregenerated = await getFreshPregeneratedDrafts(supabase, endUserId);
+        if (pregenerated) {
+          results[index] = { endUserId, ok: true, ...pregenerated };
+          continue;
+        }
+      }
+
+      const limitError = await checkDailyLimits(supabase, endUserId, access.id);
+      if (limitError) {
+        results[index] = { endUserId, ok: false, error: limitError };
+        continue;
+      }
+
+      const result = await generateDraftsCore(supabase, {
+        endUserId,
+        castId: castMap.get(endUserId) ?? null,
+        requestedBy: access.id,
+        instruction,
+        source: "bulk",
+      });
+
+      results[index] = result.ok
+        ? { endUserId, ok: true, requestId: result.requestId, drafts: result.drafts }
+        : { endUserId, ok: false, error: result.error };
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(BATCH_CONCURRENCY, endUserIds.length) }, () => worker())
+  );
+
+  items.push(...results);
+
+  // 監査ログ（1バッチ1件）
+  after(async () => {
+    try {
+      await writeAuditLog({
+        action: "AI_DRAFT_REQUEST",
+        targetType: "ai_draft_requests",
+        targetId: "batch",
+        success: items.some((i) => i.ok),
+        metadata: buildAuditMetadata({
+          batch_size: items.length,
+          succeeded: items.filter((i) => i.ok).length,
+          has_instruction: Boolean(instruction),
+        }),
+      });
+    } catch (err) {
+      logger.error("ai: batch audit log failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+  });
+
+  return { ok: true, data: { items } };
 }

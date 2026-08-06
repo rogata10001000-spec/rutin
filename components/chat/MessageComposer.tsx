@@ -1,13 +1,18 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { AiDraftButton } from "./AiDraftButton";
+import { AiDraftButton, type AppliedDraft } from "./AiDraftButton";
 import { BirthdayWidget } from "./BirthdayWidget";
 import { TemplateSelector } from "./TemplateSelector";
 import { SaveStatus } from "@/components/common/SaveStatus";
+import { shouldKeepDraftId } from "./aiDraftHelpers";
 
 type MessageComposerProps = {
-  onSend: (body: string) => Promise<void>;
+  /**
+   * aiDraftId はAI下書きを採用した送信のみ渡る（採用率・編集率の計測用）。
+   * 戻り値 true = 送信成功。false のときは入力欄を保持する（失敗時に書き直させない）。
+   */
+  onSend: (body: string, aiDraftId?: string) => Promise<boolean>;
   sending: boolean;
   proxyMode: boolean;
   endUserId: string;
@@ -30,6 +35,10 @@ export function MessageComposer({
   birthday = null,
 }: MessageComposerProps) {
   const [body, setBody] = useState("");
+  // 本文に反映したAI下書き。送信時に「採用」として記録するために保持する
+  const [appliedDraft, setAppliedDraft] = useState<AppliedDraft | null>(null);
+  // 送信回数。AI下書きボタンに「候補は古くなった」と伝えるためのシグナル
+  const [sendCount, setSendCount] = useState(0);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -51,6 +60,8 @@ export function MessageComposer({
   useEffect(() => {
     const savedDraft = localStorage.getItem(getDraftKey(endUserId));
     setBody(savedDraft ?? "");
+    // 別ユーザーの下書きIDを持ち越さない
+    setAppliedDraft(null);
   }, [endUserId]);
 
   // チャットを開いたら即タイプできるようフォーカスする。
@@ -107,14 +118,42 @@ export function MessageComposer({
   }, [body]);
 
   const handleSubmit = useCallback(async () => {
-    if (!body.trim() || sending) return;
+    const trimmed = body.trim();
+    if (!trimmed || sending) return;
 
-    await onSend(body.trim());
+    // 手直しして送った場合も「採用」として記録する。
+    // 全消しして一から書き直した文だけ採用から外す（shouldKeepDraftId 参照）。
+    const aiDraftId =
+      appliedDraft && shouldKeepDraftId(appliedDraft.body, trimmed)
+        ? appliedDraft.id
+        : undefined;
+
+    // 送信に失敗したら入力は消さない（書き直しをさせない）。
+    // onSend は成功時のみ true を返す。
+    const sent = await onSend(trimmed, aiDraftId);
+    if (!sent) return;
+
     setBody("");
+    setAppliedDraft(null);
+    setSendCount((c) => c + 1);
     // 送信後は下書きをクリア
     localStorage.removeItem(getDraftKey(endUserId));
     setSaveStatus("idle");
-  }, [body, sending, onSend, endUserId]);
+  }, [body, sending, onSend, endUserId, appliedDraft]);
+
+  /** AI下書きの反映・取り消し。draft=null は「元に戻す」 */
+  const handleApplyDraft = useCallback((nextBody: string, draft: AppliedDraft | null) => {
+    setBody(nextBody);
+    setAppliedDraft(draft);
+    // 反映直後にそのまま手直しできるよう入力欄へ戻す
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
+  /** テンプレ・誕生日文面など、AI以外の差し込み（採用トラッキングは外す） */
+  const handleInsertText = useCallback((text: string) => {
+    setBody(text);
+    setAppliedDraft(null);
+  }, []);
 
   // ⌘/Ctrl + Enter で送信
   const handleKeyDown = useCallback(
@@ -139,7 +178,7 @@ export function MessageComposer({
         <BirthdayWidget
           endUserId={endUserId}
           birthday={birthday}
-          onInsertTemplate={(text) => setBody(text)}
+          onInsertTemplate={handleInsertText}
         />
       )}
 
@@ -155,9 +194,11 @@ export function MessageComposer({
         <div className="flex flex-wrap items-center gap-2">
           <AiDraftButton
             endUserId={endUserId}
-            onSelectDraft={(draft) => setBody(draft)}
+            composerBody={body}
+            onApplyDraft={handleApplyDraft}
+            resetKey={sendCount}
           />
-          <TemplateSelector onSelect={(text) => setBody(text)} />
+          <TemplateSelector onSelect={handleInsertText} />
         </div>
         <div className="flex items-center gap-2">
           <span className="hidden whitespace-nowrap text-[11px] text-stone-400 sm:inline">

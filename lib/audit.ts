@@ -24,6 +24,8 @@ export type AuditAction =
   | "BIRTHDAY_SENT"
   // AI
   | "AI_DRAFT_REQUEST"
+  | "UPDATE_CAST_STYLE"
+  | "AI_STYLE_REFRESH_JOB"
   // サブスク
   | "SUBSCRIPTION_SYNC"
   | "SUBSCRIPTION_CHECKOUT_CREATE"

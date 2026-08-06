@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { getStaffDetail } from "@/actions/admin/staff";
 import { getCastPhotos } from "@/actions/cast-photos";
+import { getCastStyle } from "@/actions/cast-style";
 import { PhotoEditor } from "@/components/cast/PhotoEditor";
+import { StyleEditor } from "@/components/cast/StyleEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +42,10 @@ export default async function StaffPhotosPage({ params }: PageProps) {
     );
   }
 
-  const photosResult = await getCastPhotos(id);
+  const [photosResult, styleResult] = await Promise.all([
+    getCastPhotos(id),
+    getCastStyle(id),
+  ]);
   const photos = photosResult.ok ? photosResult.data.photos : [];
 
   return (
@@ -78,6 +83,13 @@ export default async function StaffPhotosPage({ params }: PageProps) {
           initialPhotos={photos}
         />
       </div>
+
+      {/* AI下書きの口調設定（管理者も代理で編集・自動生成できる） */}
+      {styleResult.ok && (
+        <div className="mt-6">
+          <StyleEditor initial={styleResult.data} />
+        </div>
+      )}
     </div>
   );
 }

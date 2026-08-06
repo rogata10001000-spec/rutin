@@ -139,6 +139,13 @@ const EyeIcon = () => (
   </svg>
 );
 
+// AI利用状況 — きらめき（AI）
+const SparkleIcon = () => (
+  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L20 12l-4.714 2.143L13 21l-2.286-6.857L6 12l4.714-2.143L13 3z" />
+  </svg>
+);
+
 // よくある質問の編集 — クエスチョン
 const FaqIcon = () => (
   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -201,6 +208,7 @@ const navGroups: NavGroup[] = [
     label: "システム",
     items: [
       { name: "申込画面の編集", href: "/admin/preview", icon: <EyeIcon />, roles: ["admin"] },
+      { name: "AI利用状況", href: "/admin/ai-stats", icon: <SparkleIcon />, roles: ["admin"] },
       { name: "よくある質問の編集", href: "/admin/faq", icon: <FaqIcon />, roles: ["admin"] },
       { name: "通知設定", href: "/admin/notifications", icon: <BellIcon />, roles: ["admin"] },
       { name: "Webhook監視", href: "/admin/webhooks", icon: <WebhookIcon />, roles: ["admin", "supervisor"] },

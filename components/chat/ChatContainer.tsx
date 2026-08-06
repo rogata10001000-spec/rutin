@@ -124,18 +124,28 @@ export function ChatContainer({
     (message) => message.end_user_id === endUserId
   );
 
-  const handleSend = async (body: string) => {
+  // 戻り値の true = 送信成功。入力欄のクリアは成功時のみ行う
+  // （失敗しても入力を保持する。書き直しをさせない）。
+  const handleSend = async (body: string, aiDraftId?: string): Promise<boolean> => {
     if (proxyMode && canProxy) {
       setPendingMessage(body);
       setProxyConfirmOpen(true);
-      return;
+      // 確認ダイアログへ渡した時点では未送信。入力は残したままにする
+      return false;
     }
 
-    await doSend(body, false);
+    return doSend(body, false, aiDraftId);
   };
 
-  const doSend = async (body: string, isProxy: boolean) => {
+  // aiDraftId は通常送信のみ。代理返信(sendProxyMessage)は採用トラッキングの
+  // 引数を持たないため、代理では下書きIDを渡さない。
+  const doSend = async (
+    body: string,
+    isProxy: boolean,
+    aiDraftId?: string
+  ): Promise<boolean> => {
     setSending(true);
+    let succeeded = false;
 
     // 楽観的更新: 送信前にUIに表示
     const optimisticId = `temp-${Date.now()}`;
@@ -154,7 +164,7 @@ export function ChatContainer({
     try {
       const result = isProxy
         ? await sendProxyMessage({ endUserId, body, reason: "代理返信" })
-        : await sendMessage({ endUserId, body });
+        : await sendMessage({ endUserId, body, aiDraftId });
 
       if (result.ok) {
         // 成功: 楽観的メッセージを実際のIDで置き換え（Realtime分と重複しないようdedupe）
@@ -169,24 +179,27 @@ export function ChatContainer({
           );
         });
         showToast("メッセージを送信しました", "success");
+        succeeded = true;
       } else {
-        // 失敗: 楽観的メッセージを削除（ロールバック）
+        // 失敗: 楽観的メッセージを削除（ロールバック）。入力欄は呼び出し側で保持される
         setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
         showToast(result.error.message, "error");
       }
     } catch {
       // エラー: 楽観的メッセージを削除（ロールバック）
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
-      showToast("送信に失敗しました", "error");
+      showToast("送信に失敗しました。入力内容はそのまま残しています", "error");
     } finally {
       setSending(false);
       setPendingMessage("");
     }
+
+    return succeeded;
   };
 
   const handleProxyConfirm = () => {
     setProxyConfirmOpen(false);
-    doSend(pendingMessage, true);
+    void doSend(pendingMessage, true);
   };
 
   return (

@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { sendMessage } from "@/actions/messages";
-import { generateAiDrafts, type AiDraft } from "@/actions/ai";
+import { generateAiDrafts, generateAiDraftsBatch, type AiDraft } from "@/actions/ai";
 import { scheduleBulkMessages } from "@/actions/scheduled-messages";
+import { shouldKeepDraftId } from "@/components/chat/aiDraftHelpers";
 import { BadgePlan } from "@/components/common/Badge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useToast } from "@/components/common/Toast";
@@ -32,6 +33,8 @@ type QueueItem = {
   user: BulkTargetUser;
   text: string;
   variants: AiDraft[] | null;
+  /** いま本文の元になっているAI下書き（送信時の採用トラッキング用） */
+  selectedDraft: AiDraft | null;
   status: ItemStatus;
   error: string | null;
 };
@@ -103,6 +106,13 @@ async function runPool(
 
 const PENDING_STATUSES: ItemStatus[] = ["generating", "genError", "ready", "sending", "failed"];
 
+// 一括生成は「10人ずつのバッチを順番に」呼ぶ。
+// Server Action はクライアントから同時に投げても直列化されるため、
+// 1人ずつ generateAiDrafts を呼ぶと実質1件ずつの往復になり、人数ぶん待たされる。
+// generateAiDraftsBatch は1往復で最大10人ぶんを受け取り、サーバー内で5並列に処理するので、
+// 往復回数が 1/10・実処理も5並列になり、100人でも現実的な待ち時間に収まる。
+const GENERATION_CHUNK_SIZE = 10;
+
 export function BulkReviewPanel({
   mode,
   users,
@@ -117,9 +127,14 @@ export function BulkReviewPanel({
       user,
       text: mode === "same" ? applyPlaceholders(initialText, user) : "",
       variants: null,
+      selectedDraft: null,
       status: mode === "same" ? "ready" : "generating",
       error: null,
     }))
+  );
+  /** AI一括生成の進捗（チャンクが返るたびに更新） */
+  const [genProgress, setGenProgress] = useState<{ done: number; total: number } | null>(
+    mode === "ai" ? { done: 0, total: users.length } : null
   );
   const [current, setCurrent] = useState(0);
   const [doneView, setDoneView] = useState(false);
@@ -159,7 +174,19 @@ export function BulkReviewPanel({
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
   }, []);
 
-  // ===== AI生成（1人ずつ・並列2・終わった人からレビュー可能） =====
+  // ===== AI生成 =====
+  /** 生成結果を1人ぶんの更新パッチに変換する（3候補のうち共感を既定にする） */
+  const draftsToPatch = useCallback((drafts: AiDraft[]): Partial<QueueItem> => {
+    const preferred = drafts.find((d) => d.type === "empathy") ?? drafts[0];
+    return {
+      status: "ready",
+      variants: drafts,
+      selectedDraft: preferred,
+      text: preferred.body,
+    };
+  }, []);
+
+  /** 個別の再試行（1人だけなのでバッチではなく単発アクションを使う） */
   const generateFor = useCallback(
     async (index: number) => {
       const user = itemsRef.current[index]?.user;
@@ -168,13 +195,7 @@ export function BulkReviewPanel({
       const result = await generateAiDrafts({ endUserId: user.id, instruction });
       if (cancelledRef.current) return;
       if (result.ok && result.data.drafts.length > 0) {
-        const drafts = result.data.drafts;
-        const preferred = drafts.find((d) => d.type === "empathy") ?? drafts[0];
-        updateItem(index, {
-          status: "ready",
-          variants: drafts,
-          text: preferred.body,
-        });
+        updateItem(index, draftsToPatch(result.data.drafts));
       } else {
         updateItem(index, {
           status: "genError",
@@ -182,12 +203,61 @@ export function BulkReviewPanel({
         });
       }
     },
-    [instruction, updateItem]
+    [instruction, updateItem, draftsToPatch]
   );
+
+  /** 全員ぶんの生成（10人ずつのバッチを順番に。終わったチャンクから確認できる） */
+  const runBatchGeneration = useCallback(async () => {
+    const total = itemsRef.current.length;
+    setGenProgress({ done: 0, total });
+
+    for (let start = 0; start < total; start += GENERATION_CHUNK_SIZE) {
+      if (cancelledRef.current) return;
+
+      const chunk = itemsRef.current.slice(start, start + GENERATION_CHUNK_SIZE);
+      const chunkIds = new Set(chunk.map((it) => it.user.id));
+      const result = await generateAiDraftsBatch({
+        endUserIds: chunk.map((it) => it.user.id),
+        instruction,
+      });
+      if (cancelledRef.current) return;
+
+      if (!result.ok) {
+        // バッチ全体が失敗（権限・入力エラー等）。該当ぶんを再試行可能な状態にする
+        setItems((prev) =>
+          prev.map((it) =>
+            chunkIds.has(it.user.id)
+              ? { ...it, status: "genError", error: result.error.message }
+              : it
+          )
+        );
+      } else {
+        const byUser = new Map(result.data.items.map((r) => [r.endUserId, r]));
+        setItems((prev) =>
+          prev.map((it) => {
+            if (!chunkIds.has(it.user.id)) return it;
+            const r = byUser.get(it.user.id);
+            if (r?.ok && r.drafts && r.drafts.length > 0) {
+              return { ...it, ...draftsToPatch(r.drafts), error: null };
+            }
+            return {
+              ...it,
+              status: "genError" as const,
+              error: r?.error ?? "下書きを生成できませんでした",
+            };
+          })
+        );
+      }
+
+      setGenProgress({ done: Math.min(start + GENERATION_CHUNK_SIZE, total), total });
+    }
+
+    setGenProgress(null);
+  }, [instruction, draftsToPatch]);
 
   useEffect(() => {
     if (mode !== "ai") return;
-    void runPool(users.length, 2, generateFor, () => cancelledRef.current);
+    void runBatchGeneration();
     // 初回マウント時のみ実行（users/modeはパネルの寿命中不変）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -209,7 +279,10 @@ export function BulkReviewPanel({
       const body = item.text.trim();
       if (!body) return false;
       updateItem(index, { status: "sending", error: null });
-      const result = await sendMessage({ endUserId: item.user.id, body });
+      // 手直しして送った場合も採用として記録する（別物に書き直した場合だけ外す）
+      const draft = item.selectedDraft;
+      const aiDraftId = draft && shouldKeepDraftId(draft.body, body) ? draft.id : undefined;
+      const result = await sendMessage({ endUserId: item.user.id, body, aiDraftId });
       if (result.ok) {
         didSendRef.current = true;
         updateItem(index, { status: "sent" });
@@ -387,7 +460,9 @@ export function BulkReviewPanel({
               <p className="mt-0.5 text-xs text-stone-500">
                 送信済み {sentCount} / {items.length} 人
                 {scheduledCount > 0 && ` ・予約 ${scheduledCount}`}
-                {generatingCount > 0 && `（AI生成中 ${generatingCount}人）`}
+                {genProgress
+                  ? `（AI下書き ${genProgress.done}/${genProgress.total}件 生成中…）`
+                  : generatingCount > 0 && `（AI生成中 ${generatingCount}人）`}
                 {skippedCount > 0 && ` ・スキップ ${skippedCount}`}
                 {failedCount > 0 && ` ・失敗 ${failedCount}`}
               </p>
@@ -557,11 +632,11 @@ export function BulkReviewPanel({
                   <span className="text-xs font-medium text-stone-400">候補:</span>
                   {item.variants.map((v) => (
                     <button
-                      key={v.type}
+                      key={v.id}
                       type="button"
-                      onClick={() => updateItem(current, { text: v.body })}
+                      onClick={() => updateItem(current, { text: v.body, selectedDraft: v })}
                       className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-bold transition-colors ${
-                        item.text === v.body
+                        item.selectedDraft?.id === v.id && item.text === v.body
                           ? "border-terracotta bg-terracotta/10 text-terracotta"
                           : "border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
                       }`}
@@ -586,7 +661,14 @@ export function BulkReviewPanel({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  この人の会話履歴・メモをもとにAIが下書きを作成しています…
+                  <span>
+                    この人の会話履歴・メモをもとにAIが下書きを作成しています…
+                    {genProgress && (
+                      <span className="ml-1 whitespace-nowrap tabular-nums text-stone-400">
+                        （{genProgress.done}/{genProgress.total}件）
+                      </span>
+                    )}
+                  </span>
                 </div>
               )}
               {item.status === "genError" && (

@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { sendMessageSchema, sendProxyMessageSchema } from "@/schemas/messages";
 import { Result, toZodErrorMessage } from "./types";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase/server";
 import { canSendMessage, requireAdminOrSupervisor } from "@/lib/auth";
+import { logger } from "@/lib/logger";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { pushTextMessage } from "@/lib/line";
 import { getSendAccountForEndUser } from "@/lib/line-accounts";
@@ -81,6 +82,8 @@ async function recordResponseMetric(
 export type SendMessageInput = {
   endUserId: string;
   body: string;
+  /** この送信の元になったAI下書きのID（採用トラッキング用・任意） */
+  aiDraftId?: string;
 };
 
 export type SendMessageResult = Result<{ messageId: string }>;
@@ -178,6 +181,8 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
   // after() は promise を返すコールバックの完了を待つため、
   // 旧来の「awaitなし呼びっぱなし」（サーバーレスでは実行途中で凍結され記録が欠落しうる）
   // と違い完了が保証される。
+  const aiDraftId = input.aiDraftId ?? null;
+  const sentBody = parsed.data.body;
   after(async () => {
     await writeAuditLog({
       action: "SEND_MESSAGE",
@@ -186,10 +191,39 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
       success: true,
       metadata: buildAuditMetadata({
         end_user_id: user.id,
-        body_length: parsed.data.body.length,
+        body_length: sentBody.length,
       }),
     });
     await recordResponseMetric(user.id, auth.id, message.id);
+    // AI下書きの採用記録（採用率・編集率の計測用）。
+    // 対象ユーザーのリクエスト配下の下書きであることを確認して他ユーザーの下書きIDを弾く。
+    if (aiDraftId) {
+      try {
+        const admin = createAdminSupabaseClient();
+        const { data: draft } = await admin
+          .from("ai_drafts")
+          .select("id, ai_draft_requests!inner(end_user_id)")
+          .eq("id", aiDraftId)
+          .maybeSingle();
+        const draftOwner = (
+          draft?.ai_draft_requests as unknown as { end_user_id: string } | null
+        )?.end_user_id;
+        if (draftOwner === user.id) {
+          await admin
+            .from("ai_drafts")
+            .update({
+              selected_at: new Date().toISOString(),
+              sent_message_id: message.id,
+              sent_body: sentBody,
+            })
+            .eq("id", aiDraftId);
+        }
+      } catch (err) {
+        logger.warn("sendMessage: ai draft tracking failed", {
+          error: err instanceof Error ? err.message : "unknown",
+        });
+      }
+    }
   });
 
   // /inbox は revalidate しない。Server Action で revalidatePath すると

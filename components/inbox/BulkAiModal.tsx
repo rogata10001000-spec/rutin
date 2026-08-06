@@ -10,9 +10,17 @@ type BulkAiModalProps = {
   onStart: (instruction: string | undefined) => void;
 };
 
+/** よく使う指示（タップで入力欄を置き換える。追記ではない） */
+const INSTRUCTION_PRESETS = [
+  "今日の調子をひとこと聞いてみて",
+  "今週の振り返りを促して",
+  "久しぶりの相手にやさしく声をかけて",
+  "チェックインのお礼を伝えて",
+];
+
 /**
  * AI一括下書きの開始モーダル。共通の指示（任意）を添えて生成をはじめる。
- * 生成そのものはレビューキュー側で1人ずつ進み、終わった人から確認できる。
+ * 生成そのものはレビューキュー側で10人ずつ進み、終わった人から確認できる。
  */
 export function BulkAiModal({ count, onCancel, onStart }: BulkAiModalProps) {
   const [instruction, setInstruction] = useState("");
@@ -39,6 +47,26 @@ export function BulkAiModal({ count, onCancel, onStart }: BulkAiModalProps) {
           <label htmlFor="bulk-ai-instruction" className="text-sm font-bold text-stone-700">
             全員に共通の指示 <span className="font-normal text-stone-400">（任意）</span>
           </label>
+
+          {/* よく使う指示（タップで入力欄に入る。そのまま書き換えてもOK） */}
+          <div className="flex flex-wrap gap-2">
+            {INSTRUCTION_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setInstruction(preset)}
+                aria-pressed={instruction === preset}
+                className={`inline-flex min-h-[2.75rem] items-center whitespace-nowrap rounded-full border px-3.5 text-xs font-bold transition-colors ${
+                  instruction === preset
+                    ? "border-terracotta bg-terracotta/10 text-terracotta"
+                    : "border-stone-200 bg-white text-stone-600 hover:bg-stone-50"
+                }`}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+
           <textarea
             id="bulk-ai-instruction"
             value={instruction}
@@ -50,7 +78,7 @@ export function BulkAiModal({ count, onCancel, onStart }: BulkAiModalProps) {
             className="block w-full resize-none rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-relaxed text-stone-900 shadow-sm transition-all focus:border-terracotta focus:bg-white focus:outline-none focus:ring-1 focus:ring-terracotta"
           />
           <p className="text-[11px] text-stone-400">
-            生成は1人ずつ順番に進みます（完了した人から先に確認できます）。人数が多いと数十秒〜数分かかります。
+            生成は10人ずつまとめて進みます（できた人から先に確認できます）。人数が多いと数十秒かかります。
           </p>
         </div>
 

@@ -1,8 +1,10 @@
 import { getCurrentStaff } from "@/lib/auth";
 import { getCastPhotos } from "@/actions/cast-photos";
 import { getMyCastProfile } from "@/actions/cast-profile";
+import { getCastStyle } from "@/actions/cast-style";
 import { CastProfileEditor } from "@/components/cast/CastProfileEditor";
 import { PhotoEditor } from "@/components/cast/PhotoEditor";
+import { StyleEditor } from "@/components/cast/StyleEditor";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -18,9 +20,10 @@ export default async function MyPhotosPage() {
     redirect("/");
   }
 
-  const [photosResult, profileResult] = await Promise.all([
+  const [photosResult, profileResult, styleResult] = await Promise.all([
     getCastPhotos(staff.id),
     getMyCastProfile(),
+    getCastStyle(staff.id),
   ]);
   const photos = photosResult.ok ? photosResult.data.photos : [];
   const publicProfile = profileResult.ok ? profileResult.data.publicProfile : null;
@@ -48,6 +51,13 @@ export default async function MyPhotosPage() {
           initialPhotos={photos}
         />
       </div>
+
+      {/* AI下書きの口調設定（ユーザーには公開されない・返信作成の補助にのみ使う） */}
+      {styleResult.ok && (
+        <div className="mt-6">
+          <StyleEditor initial={styleResult.data} />
+        </div>
+      )}
     </div>
   );
 }

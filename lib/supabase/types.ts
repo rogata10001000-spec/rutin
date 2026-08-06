@@ -411,6 +411,12 @@ type AiDraftRequestsRow = {
   context_snapshot: Record<string, unknown>;
   success: boolean;
   error_message: string | null;
+  source: "manual" | "bulk" | "pregen";
+  instruction: string | null;
+  latest_message_id: string | null;
+  model: string | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
   created_at: string;
 };
 
@@ -419,6 +425,9 @@ type AiDraftsRow = {
   request_id: string;
   type: AiDraftType;
   body: string;
+  selected_at: string | null;
+  sent_message_id: string | null;
+  sent_body: string | null;
   created_at: string;
 };
 
@@ -858,14 +867,41 @@ export interface Database {
       };
       ai_draft_requests: {
         Row: AiDraftRequestsRow;
-        Insert: Omit<AiDraftRequestsRow, "id" | "created_at"> & { id?: string };
+        Insert: Omit<
+          AiDraftRequestsRow,
+          | "id"
+          | "created_at"
+          | "source"
+          | "instruction"
+          | "latest_message_id"
+          | "model"
+          | "input_tokens"
+          | "output_tokens"
+        > & {
+          id?: string;
+          source?: AiDraftRequestsRow["source"];
+          instruction?: string | null;
+          latest_message_id?: string | null;
+          model?: string | null;
+          input_tokens?: number | null;
+          output_tokens?: number | null;
+        };
         Update: Record<string, never>;
         Relationships: [];
       };
       ai_drafts: {
         Row: AiDraftsRow;
-        Insert: Omit<AiDraftsRow, "id" | "created_at"> & { id?: string };
-        Update: Record<string, never>;
+        Insert: Omit<
+          AiDraftsRow,
+          "id" | "created_at" | "selected_at" | "sent_message_id" | "sent_body"
+        > & {
+          id?: string;
+          selected_at?: string | null;
+          sent_message_id?: string | null;
+          sent_body?: string | null;
+        };
+        // 採用トラッキング（service_role からのみ更新。authenticated には UPDATE ポリシーなし）
+        Update: Partial<Pick<AiDraftsRow, "selected_at" | "sent_message_id" | "sent_body">>;
         Relationships: [];
       };
       shadow_drafts: {

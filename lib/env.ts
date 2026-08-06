@@ -23,7 +23,18 @@ const serverEnvSchema = z.object({
   STRIPE_PRICE_STANDARD_ANNUAL: z.string().optional(),
   STRIPE_PRICE_PREMIUM_ANNUAL: z.string().optional(),
   AI_PROVIDER_KEY: z.string().min(1).optional(),
-  AI_DRAFT_DAILY_LIMIT: z.coerce.number().int().positive().default(3),
+  /** AI下書きに使うモデル。既定は最新のHaiku（速度・コスト優先） */
+  AI_MODEL: z.string().min(1).default("claude-haiku-4-5-20251001"),
+  /** スタッフ1人あたりの1日の生成上限（manual+bulk。事前生成は対象外） */
+  AI_STAFF_DAILY_LIMIT: z.coerce.number().int().positive().default(300),
+  /** 1ユーザーあたりの事前生成の1日上限（受信のたびの生成が暴走しないための天井） */
+  AI_PREGEN_DAILY_LIMIT: z.coerce.number().int().positive().default(20),
+  // 1ユーザーあたりの1日の生成上限（manual+bulk。事前生成は対象外）。
+  // 3だと再生成ボタン3回で枯渇して体験が悪いため既定を10へ引き上げ
+  // （本番のVercel envで3が明示設定されている場合はそちらが優先される点に注意）。
+  AI_DRAFT_DAILY_LIMIT: z.coerce.number().int().positive().default(10),
+  /** スタイル要約など、精度が要る非対話処理のモデル（未設定なら AI_MODEL と同じ） */
+  AI_MODEL_ANALYSIS: z.string().optional(),
   CRON_SECRET: z.string().min(16).optional(),
   // 分散レート制限（Upstash Redis REST）。未設定ならインスタンス内メモリにフォールバック。
   UPSTASH_REDIS_REST_URL: z.string().url().optional(),

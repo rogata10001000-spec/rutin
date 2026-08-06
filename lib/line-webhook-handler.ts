@@ -12,7 +12,9 @@ import {
   getLineMessageContent,
   type SubscribeGuideFlexCopy,
 } from "@/lib/line";
+import { after } from "next/server";
 import { getFunnelCopyValues, getPublishedFunnelCopy } from "@/lib/funnel-copy";
+import { pregenerateDraftsForInbound } from "@/lib/ai-drafts";
 import { renderFunnelCopy } from "@/lib/funnel-copy-defs";
 import {
   getDefaultLineAccount,
@@ -885,6 +887,13 @@ export async function handleLineWebhook(
             messageId: messageIdForPush,
             body: "body" in result.data ? result.data.body : "",
           });
+
+          // AI下書きの事前生成: メイトがスレッドを開いた瞬間に待ち時間ゼロで
+          // 3案を出せるよう、受信の裏で先に生成しておく。
+          // webhook応答はブロックしない（after は完了まで保証される）。
+          // バースト抑制・日次上限・失敗の握りつぶしは関数内で行う。
+          const pregenUserId = result.data.userId;
+          after(() => pregenerateDraftsForInbound(supabase, pregenUserId));
         }
       }
     }
