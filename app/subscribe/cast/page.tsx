@@ -3,6 +3,7 @@ import { CastList } from "../../../components/cast/CastList";
 import { CastGenderFilter, type CastGenderFilterValue } from "../../../components/cast/CastGenderFilter";
 import { getUserFromServerCookies } from "@/lib/auth";
 import { getTrialPeriodDays } from "@/lib/trial";
+import { LegalFooter } from "@/components/subscribe/LegalFooter";
 import { getFunnelCopyValues } from "@/lib/funnel-copy";
 import {
   getFunnelCopyDef,
@@ -151,6 +152,9 @@ export default async function SubscribeCastPage({ searchParams }: PageProps) {
               initialCastId={initialCastId}
             />
           )}
+
+          {/* 申込ファネルの入口にも法的リンクを常設する */}
+          <LegalFooter />
         </main>
       </div>
     </div>

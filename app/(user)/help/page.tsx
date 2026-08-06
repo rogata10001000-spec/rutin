@@ -105,6 +105,42 @@ export default async function HelpPage() {
           LINEアプリを開く
         </a>
       </section>
+
+      {/* 法的情報（公式サイト側でホスト） */}
+      <nav aria-label="法的情報" className="pb-4">
+        <ul className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-stone-400">
+          <li>
+            <a
+              href="https://rutin.site/legal/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline-offset-2 hover:underline"
+            >
+              利用規約
+            </a>
+          </li>
+          <li>
+            <a
+              href="https://rutin.site/legal/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline-offset-2 hover:underline"
+            >
+              プライバシーポリシー
+            </a>
+          </li>
+          <li>
+            <a
+              href="https://rutin.site/legal/tokushoho"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline-offset-2 hover:underline"
+            >
+              特定商取引法に基づく表記
+            </a>
+          </li>
+        </ul>
+      </nav>
     </div>
   );
 }

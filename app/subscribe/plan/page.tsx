@@ -14,6 +14,7 @@ import { getFunnelCopyValues } from "@/lib/funnel-copy";
 import { renderFunnelCopy } from "@/lib/funnel-copy-defs";
 import { buildSubscribeCastUrl } from "@/lib/subscribe-paths";
 import { CheckoutSubmitButton } from "./CheckoutSubmitButton";
+import { LegalFooter } from "@/components/subscribe/LegalFooter";
 
 const PLAN_CODES: readonly PlanCode[] = ["light", "standard", "premium"];
 
@@ -345,6 +346,9 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
             );
           })}
         </div>
+
+        {/* 決済に至る画面のため、同意文言つきで法的リンクを常設する（特商法・定期購入表示対応） */}
+        <LegalFooter withConsentNote />
       </main>
     </div>
   );
