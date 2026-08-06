@@ -29,6 +29,13 @@ const serverEnvSchema = z.object({
   AI_STAFF_DAILY_LIMIT: z.coerce.number().int().positive().default(300),
   /** 1ユーザーあたりの事前生成の1日上限（受信のたびの生成が暴走しないための天井） */
   AI_PREGEN_DAILY_LIMIT: z.coerce.number().int().positive().default(20),
+  /**
+   * 事前生成の1日あたり総件数の上限（全ユーザー合計）。
+   * ユーザー別上限だけでは「利用者が増えた分だけ青天井」になるため、
+   * 事業全体のコスト天井をここで持つ。超過後は事前生成を止めるだけで、
+   * メイトが手動で押せば通常どおり生成される（機能は壊れない）。
+   */
+  AI_PREGEN_GLOBAL_DAILY_LIMIT: z.coerce.number().int().positive().default(600),
   // 1ユーザーあたりの1日の生成上限（manual+bulk。事前生成は対象外）。
   // 3だと再生成ボタン3回で枯渇して体験が悪いため既定を10へ引き上げ
   // （本番のVercel envで3が明示設定されている場合はそちらが優先される点に注意）。

@@ -467,7 +467,7 @@ export async function pregenerateDraftsForInbound(
     const jstDate = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
     const burstWindowStart = new Date(Date.now() - 60_000).toISOString();
 
-    const [{ count: todayCount }, { data: recent }] = await Promise.all([
+    const [{ count: todayCount }, { data: recent }, { count: globalCount }] = await Promise.all([
       supabase
         .from("ai_draft_requests")
         .select("*", { count: "exact", head: true })
@@ -482,10 +482,23 @@ export async function pregenerateDraftsForInbound(
         .gte("created_at", burstWindowStart)
         .limit(1)
         .maybeSingle(),
+      // 全体の日次上限（事業としてのコスト天井）
+      supabase
+        .from("ai_draft_requests")
+        .select("*", { count: "exact", head: true })
+        .eq("source", "pregen")
+        .eq("jst_date", jstDate),
     ]);
 
     if ((todayCount ?? 0) >= env.AI_PREGEN_DAILY_LIMIT) return;
     if (recent) return;
+    if ((globalCount ?? 0) >= env.AI_PREGEN_GLOBAL_DAILY_LIMIT) {
+      // 上限到達は運用が気づけるようログに残す（手動生成は引き続き可能）
+      logger.warn("aiDrafts: global pregeneration daily limit reached", {
+        limit: env.AI_PREGEN_GLOBAL_DAILY_LIMIT,
+      });
+      return;
+    }
 
     const result = await generateDraftsCore(supabase, {
       endUserId,

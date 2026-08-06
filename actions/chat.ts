@@ -1,7 +1,8 @@
 "use server";
 
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase/server";
 import { canAccessUser } from "@/lib/auth";
+import { getFreshPregeneratedDrafts } from "@/lib/ai-drafts";
 import { resolveChatMediaUrl } from "@/lib/chat-media";
 import { Result } from "./types";
 
@@ -30,6 +31,12 @@ export type ChatSideInfo = {
   cancelAtPeriodEnd: boolean;
   pinnedMemos: { id: string; category: string; body: string }[];
   recentCheckins: { date: string; status: string }[];
+  /**
+   * 受信時に用意済みのAI下書き（無ければ null）。
+   * スレッド取得のペイロードに相乗りさせることで、スレッドを開くたびの
+   * 追加往復をゼロにしたまま「クリックで即表示」を成立させる。
+   */
+  pregeneratedDrafts: { id: string; type: "empathy" | "praise" | "suggest"; body: string }[] | null;
 };
 
 export type GetChatThreadInput = {
@@ -96,6 +103,7 @@ export async function getChatThread(
     { data: ledger },
     { data: pinnedMemos },
     { data: checkins },
+    pregenerated,
   ] = await Promise.all([
     query,
     supabase
@@ -140,6 +148,8 @@ export async function getChatThread(
       .eq("end_user_id", input.endUserId)
       .gte("date", sevenDaysAgo.toISOString().split("T")[0])
       .order("date", { ascending: false }),
+    // 事前生成済みのAI下書き（鮮度判定込み）。失敗しても null になるだけで会話表示は壊れない
+    getFreshPregeneratedDrafts(createAdminSupabaseClient(), input.endUserId).catch(() => null),
   ]);
 
   if (msgError) {
@@ -214,6 +224,7 @@ export async function getChatThread(
           date: c.date,
           status: c.status,
         })),
+        pregeneratedDrafts: pregenerated?.drafts ?? null,
       },
     },
   };

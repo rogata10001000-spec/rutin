@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { AiDraftButton, type AppliedDraft } from "./AiDraftButton";
+import type { AiDraft } from "@/actions/ai";
 import { BirthdayWidget } from "./BirthdayWidget";
 import { TemplateSelector } from "./TemplateSelector";
 import { SaveStatus } from "@/components/common/SaveStatus";
@@ -19,6 +20,8 @@ type MessageComposerProps = {
   showBirthdayWidget?: boolean;
   /** サーバーから受け取り済みの誕生日（yyyy-mm-dd）。当日でなければ問い合わせ自体を行わない。 */
   birthday?: string | null;
+  /** 受信時に用意済みのAI下書き（スレッド取得のペイロードに同梱済み） */
+  pregeneratedDrafts?: AiDraft[] | null;
 };
 
 // localStorage key for draft
@@ -33,6 +36,7 @@ export function MessageComposer({
   endUserId,
   showBirthdayWidget = true,
   birthday = null,
+  pregeneratedDrafts = null,
 }: MessageComposerProps) {
   const [body, setBody] = useState("");
   // 本文に反映したAI下書き。送信時に「採用」として記録するために保持する
@@ -196,6 +200,7 @@ export function MessageComposer({
             endUserId={endUserId}
             composerBody={body}
             onApplyDraft={handleApplyDraft}
+            initialPregenerated={pregeneratedDrafts}
             resetKey={sendCount}
           />
           <TemplateSelector onSelect={handleInsertText} />

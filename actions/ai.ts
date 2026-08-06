@@ -160,30 +160,9 @@ export async function generateAiDrafts(
   };
 }
 
-export type PregeneratedDraftsResult = Result<{
-  requestId: string;
-  drafts: AiDraft[];
-} | null>;
-
-/**
- * 新鮮な事前生成済み下書きの有無を確認する（スレッドを開いたときの先読み用）。
- * あればボタンに「準備済み」を出し、クリック時に即表示できる。
- */
-export async function getPreGeneratedDrafts(
-  endUserId: string
-): Promise<PregeneratedDraftsResult> {
-  const access = await canAccessUser(endUserId);
-  if (!access) {
-    return {
-      ok: false,
-      error: { code: "FORBIDDEN", message: "このユーザーへのアクセス権限がありません" },
-    };
-  }
-
-  const supabase = createAdminSupabaseClient();
-  const pregenerated = await getFreshPregeneratedDrafts(supabase, endUserId);
-  return { ok: true, data: pregenerated };
-}
+// 事前生成済み下書きの取得は getChatThread のペイロードに同梱している
+// （lib/ai-drafts.ts の getFreshPregeneratedDrafts を actions/chat.ts が呼ぶ）。
+// スレッドを開くたびの往復を増やさないための設計で、専用アクションは持たない。
 
 export type BatchDraftItem = {
   endUserId: string;

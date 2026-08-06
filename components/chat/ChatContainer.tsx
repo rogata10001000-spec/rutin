@@ -270,6 +270,7 @@ export function ChatContainer({
           proxyMode={proxyMode}
           endUserId={endUserId}
           birthday={sideInfo.birthday}
+          pregeneratedDrafts={sideInfo.pregeneratedDrafts}
         />
       </div>
 

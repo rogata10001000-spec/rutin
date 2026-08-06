@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { generateAiDrafts, getPreGeneratedDrafts, type AiDraft } from "@/actions/ai";
+import { generateAiDrafts, type AiDraft } from "@/actions/ai";
 import { useToast } from "@/components/common/Toast";
 import { applyDraftToBody, draftIndexFromKey, type DraftApplyMode } from "./aiDraftHelpers";
 
@@ -23,6 +23,11 @@ type AiDraftButtonProps = {
    * 返信を送った時点で古くなる。値が変わったら候補を捨てて作り直させる。
    */
   resetKey?: number;
+  /**
+   * 受信時に用意済みの下書き（スレッド取得のペイロードに同梱済み）。
+   * 別途フェッチしないことで、スレッドを開くたびの往復を増やさない。
+   */
+  initialPregenerated?: AiDraft[] | null;
 };
 
 const DRAFT_TYPE_LABELS: Record<AiDraft["type"], string> = {
@@ -74,6 +79,7 @@ export function AiDraftButton({
   composerBody,
   onApplyDraft,
   resetKey = 0,
+  initialPregenerated = null,
 }: AiDraftButtonProps) {
   const { showToast, ToastContainer } = useToast();
 
@@ -82,8 +88,10 @@ export function AiDraftButton({
   const [drafts, setDrafts] = useState<AiDraft[] | null>(null);
   const [fromPregenerated, setFromPregenerated] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** 受信時に準備済みの下書き（先読み結果）。あればクリックで即表示できる */
-  const [pregenerated, setPregenerated] = useState<AiDraft[] | null>(null);
+  /** 受信時に準備済みの下書き（サーバーから同梱済み）。あればクリックで即表示できる */
+  const [pregenerated, setPregenerated] = useState<AiDraft[] | null>(
+    initialPregenerated && initialPregenerated.length > 0 ? initialPregenerated : null
+  );
   const [instruction, setInstruction] = useState("");
   /** 反映前の本文。反映直後だけ「元に戻す」を出すために保持する */
   const [undoState, setUndoState] = useState<{ previous: string; applied: string } | null>(null);
@@ -102,29 +110,21 @@ export function AiDraftButton({
 
   const composerIsEmpty = composerBody.trim() === "";
 
-  // ===== 事前生成の先読み（スレッドを開いた時点でバックグラウンド実行） =====
+  // ===== ユーザー切り替え時の状態リセット =====
+  // 事前生成はスレッド取得のペイロードに同梱されているため、ここでは取りに行かない
+  // （スレッドを開くたびの往復を増やさないための設計）。
   useEffect(() => {
-    let cancelled = false;
-    // 別ユーザーへ切り替わったら状態を持ち越さない
     setOpen(false);
     setDrafts(null);
-    setPregenerated(null);
+    setPregenerated(
+      initialPregenerated && initialPregenerated.length > 0 ? initialPregenerated : null
+    );
     setError(null);
     setInstruction("");
     setUndoState(null);
-
-    void (async () => {
-      const result = await getPreGeneratedDrafts(endUserId);
-      if (cancelled) return;
-      // 先読みは補助機能。失敗してもトーストは出さない（クリック時に通常生成へ倒れる）
-      if (result.ok && result.data && result.data.drafts.length > 0) {
-        setPregenerated(result.data.drafts);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    // initialPregenerated はスレッド取得ごとに新しい配列になるため依存に入れない
+    // （入れると同じ内容で再セットされ続ける）。ユーザー切り替えを唯一のトリガーにする。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [endUserId]);
 
   // 返信を送ったら候補を捨てる（次の受信までは「準備できています」も出さない）。
