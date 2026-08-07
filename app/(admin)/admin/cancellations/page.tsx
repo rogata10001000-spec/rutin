@@ -4,17 +4,12 @@ import { CancellationTable } from "@/components/admin/cancellations/Cancellation
 import { CancellationFilters } from "@/components/admin/cancellations/CancellationFilters";
 import { TableSkeleton } from "@/components/common/LoadingSkeleton";
 import type { PlanCode } from "@/lib/supabase/types";
+import { resolvePlanLabels } from "@/lib/funnel-copy";
 
 export const dynamic = "force-dynamic";
 
 type SearchParams = {
   plan?: string;
-};
-
-const planLabel: Record<string, string> = {
-  light: "Light",
-  standard: "Standard",
-  premium: "Premium",
 };
 
 export default async function CancellationsPage({
@@ -24,9 +19,10 @@ export default async function CancellationsPage({
 }) {
   const params = await searchParams;
 
-  const result = await getPendingCancellations({
-    planCode: params.plan as PlanCode | undefined,
-  });
+  const [result, planLabels] = await Promise.all([
+    getPendingCancellations({ planCode: params.plan as PlanCode | undefined }),
+    resolvePlanLabels(),
+  ]);
 
   return (
     <div>
@@ -60,7 +56,7 @@ export default async function CancellationsPage({
                     key={p.plan}
                     className="inline-flex items-center whitespace-nowrap rounded-full bg-stone-100 px-2.5 py-0.5 font-medium text-stone-700"
                   >
-                    {planLabel[p.plan] ?? p.plan}: {p.count}件
+                    {planLabels[p.plan] ?? p.plan}: {p.count}件
                   </span>
                 ))
               ) : (

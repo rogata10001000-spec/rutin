@@ -4,6 +4,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import type { InboxSummary } from "@/actions/inbox";
 import { Select } from "@/components/common/Select";
+import { usePlanLabels } from "@/components/common/PlanLabelsProvider";
+import { PLAN_CODE_LIST, planLabel } from "@/lib/plan-labels";
 
 type Cast = {
   id: string;
@@ -32,6 +34,7 @@ type InboxFiltersProps = {
 };
 
 export function InboxFilters({ currentFilters, casts = [], summary, availableTags = [] }: InboxFiltersProps) {
+  const planLabels = usePlanLabels();
   const router = useRouter();
   const searchParams = useSearchParams();
   // 絞り込みは重い一覧クエリを再実行する。押した直後に反応が無いとチップが死んで見えるため、
@@ -348,9 +351,11 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
               onChange={(value) => updateFilter("plan", value || null)}
               options={[
                 { value: "", label: "全プラン" },
-                { value: "premium", label: "Premium" },
-                { value: "standard", label: "Standard" },
-                { value: "light", label: "Light" },
+                // 表示順は premium → light（上位プランを先頭に）
+                ...[...PLAN_CODE_LIST].reverse().map((code) => ({
+                  value: code,
+                  label: planLabel(code, planLabels),
+                })),
               ]}
             />
             <Select

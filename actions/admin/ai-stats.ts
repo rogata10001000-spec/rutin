@@ -3,6 +3,7 @@
 import { requireAdmin } from "@/lib/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { Result } from "../types";
+import { sumAiCostUsd, USD_JPY, type TokenUsage } from "@/lib/ai-pricing";
 
 /**
  * AI下書き機能の利用状況（Admin専用）。
@@ -31,18 +32,6 @@ const WINDOW_LIMIT = 5000;
 /** 失敗リクエストの表示件数。 */
 const FAILURE_LIMIT = 10;
 
-/**
- * Claude Haiku 4.5 の単価（USD / 100万トークン）。
- * モデルを変更したらここも更新すること（ai_draft_requests.model に実際のモデル名が入る）。
- */
-const USD_PER_MTOK_INPUT = 1;
-const USD_PER_MTOK_OUTPUT = 5;
-
-/**
- * 円換算レート。社内で予算感を掴むための概算値で、実際の請求額（為替・課金タイミング）とは一致しない。
- * 画面上も必ず「概算」と明記する。
- */
-const USD_JPY = 155;
 
 export type AiDraftSource = "manual" | "bulk" | "pregen";
 
@@ -104,6 +93,12 @@ export type AiStats = {
     /** 事前生成ぶんの概算コスト（円） */
     pregenJpy: number;
     usdJpy: number;
+    /** 期間内に実際に使われたモデル名（単価がこれに追従しているかを画面で確認できる） */
+    models: string[];
+    /** 単価表に無く金額へ含められなかったモデル */
+    unpricedModels: string[];
+    /** 単価未登録ぶんのトークン数 */
+    unpricedTokens: number;
   };
   pregen: {
     total: number;
@@ -173,7 +168,7 @@ export async function getAiStats(input?: { days?: number }): Promise<Result<AiSt
     // 7) メイト別・トークン量の集計用（期間内の直近 WINDOW_LIMIT 件）
     supabase
       .from("ai_draft_requests")
-      .select("id, requested_by, source, success, input_tokens, output_tokens")
+      .select("id, requested_by, source, success, input_tokens, output_tokens, model")
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(WINDOW_LIMIT),
@@ -238,8 +233,15 @@ export async function getAiStats(input?: { days?: number }): Promise<Result<AiSt
 
   let inputTokens = 0;
   let outputTokens = 0;
-  let pregenInputTokens = 0;
-  let pregenOutputTokens = 0;
+  // コストはモデル別に集計する（期間中にモデルを切り替えても正しい金額になる）
+  const usageByModel = new Map<string, TokenUsage>();
+  const pregenUsageByModel = new Map<string, TokenUsage>();
+  const addUsage = (map: Map<string, TokenUsage>, model: string, inTok: number, outTok: number) => {
+    const cur = map.get(model) ?? { inputTokens: 0, outputTokens: 0 };
+    cur.inputTokens += inTok;
+    cur.outputTokens += outTok;
+    map.set(model, cur);
+  };
 
   type MateAccumulator = { generated: number; succeeded: number; adopted: number; adoptedDrafts: number; editedDrafts: number };
   const mateAcc = new Map<string, MateAccumulator>();
@@ -261,9 +263,11 @@ export async function getAiStats(input?: { days?: number }): Promise<Result<AiSt
     const outTok = row.output_tokens ?? 0;
     inputTokens += inTok;
     outputTokens += outTok;
-    if (row.source === "pregen") {
-      pregenInputTokens += inTok;
-      pregenOutputTokens += outTok;
+    if (inTok > 0 || outTok > 0) {
+      // model が未記録の古い行は "(不明)" として単価未登録に倒す（0円で紛れ込ませない）
+      const model = row.model ?? "(不明)";
+      addUsage(usageByModel, model, inTok, outTok);
+      if (row.source === "pregen") addUsage(pregenUsageByModel, model, inTok, outTok);
     }
   }
 
@@ -336,12 +340,11 @@ export async function getAiStats(input?: { days?: number }): Promise<Result<AiSt
     .sort((a, b) => b.generated - a.generated || a.displayName.localeCompare(b.displayName, "ja"));
 
   // --- コスト（概算） ---
-  const usd =
-    (inputTokens / 1_000_000) * USD_PER_MTOK_INPUT +
-    (outputTokens / 1_000_000) * USD_PER_MTOK_OUTPUT;
-  const pregenUsd =
-    (pregenInputTokens / 1_000_000) * USD_PER_MTOK_INPUT +
-    (pregenOutputTokens / 1_000_000) * USD_PER_MTOK_OUTPUT;
+  // 単価はモデル名（ai_draft_requests.model）から引く。
+  // AI_MODEL を上位モデルへ変えても金額表示が旧単価のまま残らない。
+  const costAll = sumAiCostUsd(usageByModel);
+  const usd = costAll.usd;
+  const pregenUsd = sumAiCostUsd(pregenUsageByModel).usd;
 
   const pregenTotal = pregenRes.count ?? 0;
   const pregenSuccess = pregenSuccessRes.count ?? 0;
@@ -385,6 +388,9 @@ export async function getAiStats(input?: { days?: number }): Promise<Result<AiSt
         jpy: usd * USD_JPY,
         pregenJpy: pregenUsd * USD_JPY,
         usdJpy: USD_JPY,
+        models: [...usageByModel.keys()].sort(),
+        unpricedModels: costAll.unpricedModels,
+        unpricedTokens: costAll.unpricedTokens,
       },
       pregen: {
         total: pregenTotal,

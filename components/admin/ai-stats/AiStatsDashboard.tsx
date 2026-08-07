@@ -101,9 +101,16 @@ export function AiStatsDashboard({ data }: Props) {
         <KpiCard
           label="推定コスト（概算）"
           value={`約 ${formatJpy(cost.jpy)}`}
+          tone={cost.unpricedModels.length > 0 ? "warn" : "default"}
           meaning={`入力 ${formatCount(cost.inputTokens)}／出力 ${formatCount(
             cost.outputTokens
-          )} トークン。Claude Haiku 4.5の単価（入力 $1・出力 $5 / 100万トークン）を 1ドル=${cost.usdJpy}円 で換算した概算で、実際の請求額とは一致しません`}
+          )} トークン。使用モデル ${
+            cost.models.length > 0 ? cost.models.join("・") : "なし"
+          } の単価を 1ドル=${cost.usdJpy}円 で換算した概算で、実際の請求額とは一致しません${
+            cost.unpricedModels.length > 0
+              ? `。${cost.unpricedModels.join("・")} は単価が未登録のため金額に含まれていません（実際はこの表示より高くなります）。lib/ai-pricing.ts に単価を追加してください`
+              : ""
+          }`}
         />
       </div>
 

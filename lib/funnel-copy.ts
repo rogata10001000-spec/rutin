@@ -2,6 +2,8 @@ import "server-only";
 
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { logger } from "@/lib/logger";
+import { PLAN_LABELS, PLAN_NAME_COPY_KEYS } from "@/lib/plan-labels";
+import type { PlanCode } from "@/lib/supabase/types";
 import {
   FUNNEL_COPY_DEFS,
   getFunnelCopyDef,
@@ -115,6 +117,42 @@ export async function getPublishedFunnelCopy(key: FunnelCopyKey): Promise<string
 /** 公開処理の直後に呼び、キャッシュの古い値が最大60秒残るのを防ぐ。 */
 export function invalidateFunnelCopyCache(): void {
   singleKeyCache.clear();
+  planLabelsCache = null;
+}
+
+// =====================================================
+// プラン表示名の解決（サーバー）
+// =====================================================
+
+let planLabelsCache: { value: Record<PlanCode, string>; expiresAt: number } | null = null;
+const PLAN_LABELS_CACHE_TTL_MS = 60_000;
+
+/**
+ * プラン表示名を funnel_copy から解決する（未設定・DB障害時はコード内デフォルト）。
+ *
+ * LINE通知・一括送信の {プラン} 差し込み・管理画面のバッジがすべてこれを通ることで、
+ * /admin/preview でプラン名を改名したときに旧名が残らない。
+ * 管理画面レイアウトなど毎リクエスト走る箇所から呼ぶため60秒キャッシュする
+ * （公開時は invalidateFunnelCopyCache() で即時破棄される）。
+ */
+export async function resolvePlanLabels(
+  options: { preview?: boolean } = {}
+): Promise<Record<PlanCode, string>> {
+  if (!options.preview && planLabelsCache && Date.now() < planLabelsCache.expiresAt) {
+    return planLabelsCache.value;
+  }
+
+  const copy = await getFunnelCopyValues(PLAN_NAME_COPY_KEYS, options);
+  const labels: Record<PlanCode, string> = {
+    light: copy["plan.name.light"] || PLAN_LABELS.light,
+    standard: copy["plan.name.standard"] || PLAN_LABELS.standard,
+    premium: copy["plan.name.premium"] || PLAN_LABELS.premium,
+  };
+
+  if (!options.preview) {
+    planLabelsCache = { value: labels, expiresAt: Date.now() + PLAN_LABELS_CACHE_TTL_MS };
+  }
+  return labels;
 }
 
 export { renderFunnelCopy };

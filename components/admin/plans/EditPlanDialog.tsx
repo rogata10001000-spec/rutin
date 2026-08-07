@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { updatePlanSettings, type PlanAdmin } from "@/actions/admin/plans";
 import { useToast } from "@/components/common/Toast";
+import { usePlanLabels } from "@/components/common/PlanLabelsProvider";
 
 const formSchema = z.object({
   replySlaMinutes: z.string().min(1, "SLA時間を入力してください"),
@@ -21,13 +22,8 @@ type EditPlanDialogProps = {
   onClose: () => void;
 };
 
-const planNameConfig: Record<string, string> = {
-  light: "Light",
-  standard: "Standard",
-  premium: "Premium",
-};
-
 export function EditPlanDialog({ open, plan, onClose }: EditPlanDialogProps) {
+  const planLabels = usePlanLabels();
   const router = useRouter();
   const { showToast, ToastContainer } = useToast();
   const [submitting, setSubmitting] = useState(false);
@@ -110,7 +106,7 @@ export function EditPlanDialog({ open, plan, onClose }: EditPlanDialogProps) {
               プラン設定を編集
             </h3>
             <p className="mt-1 text-sm text-stone-500">
-              {planNameConfig[plan.planCode] ?? plan.name}プランのSLA設定
+              {planLabels[plan.planCode] ?? plan.name}プランのSLA設定
             </p>
           </div>
 

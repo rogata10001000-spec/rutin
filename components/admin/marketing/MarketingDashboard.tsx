@@ -1,4 +1,5 @@
 import type { MarketingSummary } from "@/actions/admin/marketing";
+import { resolvePlanLabels } from "@/lib/funnel-copy";
 
 type MarketingDashboardProps = {
   summary: MarketingSummary;
@@ -8,12 +9,6 @@ const formatYen = (amount: number | null) =>
   amount === null ? "-" : `¥${amount.toLocaleString("ja-JP")}`;
 const formatRate = (rate: number | null) => (rate === null ? "-" : `${Math.round(rate * 100)}%`);
 const formatDays = (days: number | null) => (days === null ? "-" : `${days.toFixed(1)}日`);
-
-const planLabel: Record<string, string> = {
-  light: "Light",
-  standard: "Standard",
-  premium: "Premium",
-};
 
 function KpiCard({
   label,
@@ -33,7 +28,8 @@ function KpiCard({
   );
 }
 
-export function MarketingDashboard({ summary }: MarketingDashboardProps) {
+export async function MarketingDashboard({ summary }: MarketingDashboardProps) {
+  const planLabels = await resolvePlanLabels();
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -41,9 +37,13 @@ export function MarketingDashboard({ summary }: MarketingDashboardProps) {
         <KpiCard label="解約率" value={formatRate(summary.churnRate)} note={`${summary.cancellations}解約`} />
         <KpiCard label="トライアル転換率" value={formatRate(summary.trialConversionRate)} note={`${summary.trialStarts}開始 / ${summary.subscriptions}契約`} />
         <KpiCard label="純増数" value={summary.netAdds} note="新規契約 - 解約" />
-        <KpiCard label="推定MRR" value={formatYen(summary.estimatedMrrJpy)} note={`${summary.activeUsers} active`} />
-        <KpiCard label="ARPU" value={formatYen(summary.arpuJpy)} note="推定MRR / active人数" />
-        <KpiCard label="LTV近似" value={formatYen(summary.ltvApproxJpy)} note="ARPU / 月次解約率" />
+        <KpiCard
+          label="推定MRR（税込）"
+          value={formatYen(summary.estimatedMrrJpy)}
+          note={`${summary.activeUsers} active・ユーザーの支払い額ベース`}
+        />
+        <KpiCard label="ARPU（税込）" value={formatYen(summary.arpuJpy)} note="推定MRR / active人数" />
+        <KpiCard label="LTV近似（税込）" value={formatYen(summary.ltvApproxJpy)} note="ARPU / 月次解約率" />
         <KpiCard label="平均リードタイム" value={formatDays(summary.avgLeadTimeDays)} note="LINE追加 → 契約" />
       </div>
 
@@ -51,13 +51,13 @@ export function MarketingDashboard({ summary }: MarketingDashboardProps) {
         <div>
           <h2 className="text-sm font-bold text-stone-800">プラン構成比</h2>
           <p className="mt-0.5 text-xs text-stone-500">
-            比率・MRR は active / past_due / paused が対象。トライアル中は人数のみ併記しています。
+            比率・MRR は active / past_due / paused が対象。トライアル中は人数のみ併記しています。金額はすべて税込（ユーザーの支払い額）で、売上画面の「売上（税抜）」とは基準が違います。
           </p>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           {summary.planBreakdown.map((plan) => (
             <div key={plan.planCode} className="rounded-md bg-stone-50 p-4">
-              <p className="text-xs font-medium text-stone-500">{planLabel[plan.planCode]}</p>
+              <p className="text-xs font-medium text-stone-500">{planLabels[plan.planCode] ?? plan.planCode}</p>
               <p className="mt-1 text-xl font-bold text-stone-800">
                 {plan.count}人 / {formatRate(plan.ratio)}
               </p>

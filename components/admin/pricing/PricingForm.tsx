@@ -6,6 +6,8 @@ import { upsertCastPlanPriceOverride, type CastListItem } from "@/actions/admin/
 import { pricingOverrideSchema } from "@/schemas/pricing";
 import { useToast } from "@/components/common/Toast";
 import { Select } from "@/components/common/Select";
+import { usePlanLabels } from "@/components/common/PlanLabelsProvider";
+import { PLAN_CODE_LIST, planLabel } from "@/lib/plan-labels";
 
 type PricingFormProps = {
   casts: CastListItem[];
@@ -18,6 +20,7 @@ type FieldErrors = {
 };
 
 export function PricingForm({ casts }: PricingFormProps) {
+  const planLabels = usePlanLabels();
   const router = useRouter();
   const { showToast, ToastContainer } = useToast();
   const [loading, setLoading] = useState(false);
@@ -117,11 +120,10 @@ export function PricingForm({ casts }: PricingFormProps) {
             aria-label="プラン"
             value={planCode}
             onChange={(value) => setPlanCode(value as "light" | "standard" | "premium")}
-            options={[
-              { value: "light", label: "Light" },
-              { value: "standard", label: "Standard" },
-              { value: "premium", label: "Premium" },
-            ]}
+            options={PLAN_CODE_LIST.map((code) => ({
+              value: code,
+              label: planLabel(code, planLabels),
+            }))}
           />
         </div>
       </div>

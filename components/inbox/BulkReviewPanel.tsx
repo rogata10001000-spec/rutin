@@ -9,6 +9,8 @@ import { shouldKeepDraftId } from "@/components/chat/aiDraftHelpers";
 import { BadgePlan } from "@/components/common/Badge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useToast } from "@/components/common/Toast";
+import { usePlanLabels } from "@/components/common/PlanLabelsProvider";
+import { PLAN_LABELS, planLabel, type PlanLabels } from "@/lib/plan-labels";
 
 export type BulkTargetUser = {
   id: string;
@@ -55,14 +57,12 @@ const VARIANT_LABELS: Record<AiDraft["type"], string> = {
   suggest: "提案",
 };
 
-const PLAN_LABELS: Record<BulkTargetUser["planCode"], string> = {
-  light: "Light",
-  standard: "Standard",
-  premium: "Premium",
-};
-
 /** {名前}・{プラン}・{最終チェックイン} を各ユーザーの値に置き換える */
-export function applyPlaceholders(text: string, user: BulkTargetUser): string {
+export function applyPlaceholders(
+  text: string,
+  user: BulkTargetUser,
+  planLabels: PlanLabels = PLAN_LABELS
+): string {
   const checkin = user.lastCheckinDate
     ? new Date(user.lastCheckinDate + "T00:00:00").toLocaleDateString("ja-JP", {
         month: "numeric",
@@ -71,7 +71,7 @@ export function applyPlaceholders(text: string, user: BulkTargetUser): string {
     : "まだ記録なし";
   return text
     .replaceAll("{名前}", user.displayName)
-    .replaceAll("{プラン}", PLAN_LABELS[user.planCode])
+    .replaceAll("{プラン}", planLabel(user.planCode, planLabels))
     .replaceAll("{最終チェックイン}", checkin);
 }
 
@@ -121,11 +121,12 @@ export function BulkReviewPanel({
   onClose,
 }: BulkReviewPanelProps) {
   const { showToast, ToastContainer } = useToast();
+  const planLabels = usePlanLabels();
 
   const [items, setItems] = useState<QueueItem[]>(() =>
     users.map((user) => ({
       user,
-      text: mode === "same" ? applyPlaceholders(initialText, user) : "",
+      text: mode === "same" ? applyPlaceholders(initialText, user, planLabels) : "",
       variants: null,
       selectedDraft: null,
       status: mode === "same" ? "ready" : "generating",

@@ -6,11 +6,9 @@ type SupabaseAdmin = ReturnType<typeof createAdminSupabaseClient>;
 
 export const PLAN_CODES: PlanCode[] = ["light", "standard", "premium"];
 
-export const PLAN_LABELS: Record<PlanCode, string> = {
-  light: "ライト",
-  standard: "スタンダード",
-  premium: "プレミアム",
-};
+// プラン表示名の定義は lib/plan-labels.ts に一本化（ここで再定義しない）。
+// funnel_copy の設定値を反映したい場合は resolvePlanLabels() を使う。
+export { PLAN_LABELS } from "@/lib/plan-labels";
 
 export const PLAN_DESCRIPTIONS: Record<PlanCode, string> = {
   light: "気軽にメッセージで相談したい方向け",

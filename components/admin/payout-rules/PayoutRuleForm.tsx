@@ -7,6 +7,8 @@ import { payoutRuleSchema } from "@/schemas/payout";
 import type { CastListItem } from "@/actions/admin/pricing";
 import { useToast } from "@/components/common/Toast";
 import { Select } from "@/components/common/Select";
+import { usePlanLabels } from "@/components/common/PlanLabelsProvider";
+import { PLAN_CODE_LIST, planLabel } from "@/lib/plan-labels";
 
 type PayoutRuleFormProps = {
   casts: CastListItem[];
@@ -22,6 +24,7 @@ type FieldErrors = {
 
 export function PayoutRuleForm({ casts }: PayoutRuleFormProps) {
   const router = useRouter();
+  const planLabels = usePlanLabels();
   const { showToast, ToastContainer } = useToast();
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -144,11 +147,10 @@ export function PayoutRuleForm({ casts }: PayoutRuleFormProps) {
               value={planCode}
               onChange={(value) => setPlanCode(value as "light" | "standard" | "premium")}
               className={errors.planCode ? "border-red-300 focus:border-red-500 focus:ring-red-500" : ""}
-              options={[
-                { value: "light", label: "Light" },
-                { value: "standard", label: "Standard" },
-                { value: "premium", label: "Premium" },
-              ]}
+              options={PLAN_CODE_LIST.map((code) => ({
+                value: code,
+                label: planLabel(code, planLabels),
+              }))}
             />
           </div>
           {errors.planCode && (

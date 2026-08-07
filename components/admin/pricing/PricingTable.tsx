@@ -2,18 +2,14 @@
 
 import type { PriceOverride } from "@/actions/admin/pricing";
 import { format } from "date-fns";
+import { usePlanLabels } from "@/components/common/PlanLabelsProvider";
 
 type PricingTableProps = {
   items: PriceOverride[];
 };
 
-const planLabels: Record<string, string> = {
-  light: "Light",
-  standard: "Standard",
-  premium: "Premium",
-};
-
 export function PricingTable({ items }: PricingTableProps) {
+  const planLabels = usePlanLabels();
   if (items.length === 0) {
     return (
       <div className="p-12 text-center text-stone-500 bg-white rounded-2xl border border-stone-200">

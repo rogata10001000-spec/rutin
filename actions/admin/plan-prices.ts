@@ -8,6 +8,8 @@ import { upsertPlanPriceSchema, type UpsertPlanPriceInput } from "@/schemas/plan
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { ensureRecurringPrice } from "@/lib/stripe-pricing";
 import type { PlanCode } from "@/lib/supabase/types";
+import { resolvePlanLabels } from "@/lib/funnel-copy";
+import { planLabel } from "@/lib/plan-labels";
 
 export type PlanPrice = {
   id: string;
@@ -25,12 +27,6 @@ export type PlanPrice = {
 
 export type GetPlanPricesResult = Result<{ items: PlanPrice[] }>;
 
-const PLAN_NAMES: Record<string, string> = {
-  light: "ライト",
-  standard: "スタンダード",
-  premium: "プレミアム",
-};
-
 /**
  * デフォルトプラン価格一覧取得
  */
@@ -44,6 +40,9 @@ export async function getPlanPrices(): Promise<GetPlanPricesResult> {
   }
 
   const supabase = await createServerSupabaseClient();
+
+  // プラン名は /admin/preview で改名できるため設定値を正とする（ラベルは60秒キャッシュ済み）
+  const planLabels = await resolvePlanLabels();
 
   const { data: prices, error } = await supabase
     .from("plan_prices")
@@ -63,7 +62,7 @@ export async function getPlanPrices(): Promise<GetPlanPricesResult> {
   const items: PlanPrice[] = (prices ?? []).map((p) => ({
     id: p.id,
     planCode: p.plan_code,
-    planName: PLAN_NAMES[p.plan_code] ?? p.plan_code,
+    planName: planLabel(p.plan_code, planLabels),
     currency: p.currency,
     amountMonthly: p.amount_monthly,
     stripePriceId: p.stripe_price_id,

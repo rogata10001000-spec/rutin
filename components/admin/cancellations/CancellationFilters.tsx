@@ -1,15 +1,15 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-
-const PLAN_OPTIONS = [
-  { value: "", label: "すべて" },
-  { value: "light", label: "Light" },
-  { value: "standard", label: "Standard" },
-  { value: "premium", label: "Premium" },
-] as const;
+import { usePlanLabels } from "@/components/common/PlanLabelsProvider";
+import { PLAN_CODE_LIST, planLabel } from "@/lib/plan-labels";
 
 export function CancellationFilters() {
+  const planLabels = usePlanLabels();
+  const planOptions = [
+    { value: "", label: "すべて" },
+    ...PLAN_CODE_LIST.map((code) => ({ value: code as string, label: planLabel(code, planLabels) })),
+  ];
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -31,7 +31,7 @@ export function CancellationFilters() {
       <div>
         <span className="mb-1 block text-xs font-medium text-stone-500">プラン</span>
         <div className="flex flex-wrap gap-2">
-          {PLAN_OPTIONS.map((opt) => (
+          {planOptions.map((opt) => (
             <button
               key={opt.value || "all"}
               type="button"

@@ -4,14 +4,10 @@ import type { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { getSendAccountForEndUser } from "@/lib/line-accounts";
 import { pushTextMessage } from "@/lib/line";
 import { logger } from "@/lib/logger";
+import { resolvePlanLabels } from "@/lib/funnel-copy";
+import { planLabel } from "@/lib/plan-labels";
 
 type SupabaseAdmin = ReturnType<typeof createAdminSupabaseClient>;
-
-const PLAN_LABELS: Record<string, string> = {
-  light: "Light",
-  standard: "Standard",
-  premium: "Premium",
-};
 
 /** 自動生成ニックネーム(ユーザー_xxx)ならLINE表示名を優先して、自然な名前を返す。 */
 function resolveMemberName(nickname: string | null, lineDisplayName: string | null): string {
@@ -85,7 +81,8 @@ export async function notifyOperatorsOfNewMember(
       .maybeSingle();
 
     const name = resolveMemberName(member?.nickname ?? null, member?.line_display_name ?? null);
-    const plan = PLAN_LABELS[params.planCode] ?? params.planCode;
+    // プラン名は /admin/preview で改名できるため、通知文でも設定値を正とする
+    const plan = planLabel(params.planCode, await resolvePlanLabels());
     const kind = params.status === "trial" ? "無料トライアル開始" : "契約開始";
     const nowJst = new Date().toLocaleString("ja-JP", {
       timeZone: "Asia/Tokyo",

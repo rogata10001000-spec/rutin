@@ -3,15 +3,17 @@
 import { useState } from "react";
 import type { PlanAdmin } from "@/actions/admin/plans";
 import { EditPlanDialog } from "./EditPlanDialog";
+import { usePlanLabels } from "@/components/common/PlanLabelsProvider";
 
 type PlansTableProps = {
   items: PlanAdmin[];
 };
 
-const planNameConfig: Record<string, { label: string; className: string }> = {
-  light: { label: "Light", className: "bg-stone-100 text-stone-600" },
-  standard: { label: "Standard", className: "bg-sage/20 text-sage-800" },
-  premium: { label: "Premium", className: "bg-terracotta/10 text-terracotta" },
+// 表示名は PlanLabelsProvider（funnel_copy の設定値）から取る。ここには色だけ持つ。
+const planClassName: Record<string, string> = {
+  light: "bg-stone-100 text-stone-600",
+  standard: "bg-sage/20 text-sage-800",
+  premium: "bg-terracotta/10 text-terracotta",
 };
 
 function formatMinutesToHours(minutes: number): string {
@@ -24,6 +26,7 @@ function formatMinutesToHours(minutes: number): string {
 }
 
 export function PlansTable({ items }: PlansTableProps) {
+  const planLabels = usePlanLabels();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<PlanAdmin | null>(null);
 
@@ -63,9 +66,9 @@ export function PlansTable({ items }: PlansTableProps) {
             </thead>
             <tbody className="divide-y divide-stone-200 bg-white">
               {items.map((item, index) => {
-                const config = planNameConfig[item.planCode] ?? {
-                  label: item.name,
-                  className: "bg-stone-100 text-stone-600",
+                const config = {
+                  label: planLabels[item.planCode] ?? item.name,
+                  className: planClassName[item.planCode] ?? "bg-stone-100 text-stone-600",
                 };
                 return (
                   <tr

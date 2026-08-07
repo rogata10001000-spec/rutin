@@ -1,22 +1,26 @@
 "use client";
 
+import { usePlanLabel } from "@/components/common/PlanLabelsProvider";
+
 type BadgePlanProps = {
   plan: "light" | "standard" | "premium";
 };
 
 // プランごとに明確に色分け（light=スカイ / standard=インディゴ / premium=ゴールド）。
 // ステータス系（trial=黄, active=緑, リスク=赤）やブランド色(terracotta)と被らない色を選定。
-const planConfig = {
-  light: { label: "Light", className: "bg-sky-100 text-sky-700 ring-1 ring-inset ring-sky-600/20" },
-  standard: { label: "Standard", className: "bg-indigo-100 text-indigo-700 ring-1 ring-inset ring-indigo-600/20" },
-  premium: { label: "Premium", className: "bg-amber-100 text-amber-800 ring-1 ring-inset ring-amber-600/30" },
+// 表示名はここに持たず PlanLabelsProvider（= funnel_copy の設定値）から取る。
+const planClassName: Record<string, string> = {
+  light: "bg-sky-100 text-sky-700 ring-1 ring-inset ring-sky-600/20",
+  standard: "bg-indigo-100 text-indigo-700 ring-1 ring-inset ring-indigo-600/20",
+  premium: "bg-amber-100 text-amber-800 ring-1 ring-inset ring-amber-600/30",
 };
 
 export function BadgePlan({ plan }: BadgePlanProps) {
-  const config = planConfig[plan] ?? planConfig.standard;
+  const label = usePlanLabel(plan);
+  const className = planClassName[plan] ?? planClassName.standard;
   return (
-    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${config.className}`}>
-      {config.label}
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${className}`}>
+      {label}
     </span>
   );
 }

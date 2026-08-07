@@ -133,3 +133,47 @@ describe("P4: 書ける/読めるの非対称がないこと", () => {
     expect(dialog).not.toMatch(/richMenuUncontractedId:\s*data\.isDefault/);
   });
 });
+
+describe("P5: 表示名・単価・単位の定義が分裂していないこと", () => {
+  it("プラン表示名のラベルマップを各ファイルが独自に持たない", () => {
+    // 過去、light/standard/premium のラベルが13箇所に散在し、
+    // /admin/preview で改名してもLINE通知・管理画面が旧名のまま残っていた。
+    const offenders = SOURCE_FILES.filter((f) => {
+      if (f.endsWith("lib/plan-labels.ts")) return false; // 唯一の定義元
+      const src = read(f);
+      return /light:\s*"(Light|ライト)"/.test(src) || /value:\s*"light",\s*label:\s*"Light"/.test(src);
+    }).map((f) => f.replace(ROOT + "/", ""));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("プラン表示名は funnel_copy の設定値から解決できる", async () => {
+    const src = read(join(ROOT, "lib/funnel-copy.ts"));
+    expect(src).toContain("export async function resolvePlanLabels");
+    // 通知文（外部に出る文言）が設定値を見ていること
+    expect(read(join(ROOT, "lib/operator-notifications.ts"))).toContain("resolvePlanLabels");
+  });
+
+  it("AI費用の単価はモデル名から引く（1モデル固定の定数を持たない）", () => {
+    const src = read(join(ROOT, "actions/admin/ai-stats.ts"));
+    // モデルを変えると過少表示になるハードコード単価が復活していないこと
+    expect(src).not.toMatch(/USD_PER_MTOK_(INPUT|OUTPUT)\s*=/);
+    expect(src).toContain("sumAiCostUsd");
+    // 実際に使われたモデル名で単価を引いていること
+    expect(src).toContain("row.model");
+  });
+
+  it("AI費用の画面は単価未登録モデルを黙って0円にしない", () => {
+    const dashboard = read(join(ROOT, "components/admin/ai-stats/AiStatsDashboard.tsx"));
+    expect(dashboard).toContain("unpricedModels");
+    // 特定モデル名を文言に直書きしない（モデル変更で説明文だけ古くなる）
+    expect(dashboard).not.toContain("Claude Haiku 4.5の単価");
+  });
+
+  it("売上・マーケの金額表示は税込/税抜を明記する", () => {
+    const forecast = read(join(ROOT, "components/admin/revenue/RevenueForecastTable.tsx"));
+    expect(forecast).toContain("税込");
+    const marketing = read(join(ROOT, "components/admin/marketing/MarketingDashboard.tsx"));
+    expect(marketing).toContain("税込");
+  });
+});

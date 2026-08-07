@@ -11,8 +11,10 @@ export function RevenueForecastTable({ forecast }: RevenueForecastTableProps) {
   return (
     <div className="rounded-2xl border border-stone-200 bg-white shadow-soft">
       <div className="border-b px-5 py-4">
-        <h2 className="text-sm font-bold text-stone-800">売上予測（試算）</h2>
+        <h2 className="text-sm font-bold text-stone-800">売上予測（試算・税込）</h2>
         <p className="mt-0.5 text-xs text-stone-500">
+          金額はすべて<strong className="font-semibold text-stone-700">税込（ユーザーの支払い額）</strong>です。
+          上の「売上（税抜）」「粗利」とは基準が違うため、そのまま足し引きしないでください。
           予測は `revenue_events` には保存せず、現在の契約・トライアル・解約予定から計算しています。
           トライアル転換率: {formatRate(forecast.trialConversionRate)}
           {forecast.trialConversionRateSource === "default" ? "（初期係数）" : "（直近実績）"}
@@ -20,19 +22,19 @@ export function RevenueForecastTable({ forecast }: RevenueForecastTableProps) {
       </div>
       <div className="grid gap-4 border-b p-5 sm:grid-cols-3">
         <div className="rounded-md bg-stone-50 p-4">
-          <p className="text-xs font-medium text-stone-500">今月の確定見込みMRR</p>
+          <p className="text-xs font-medium text-stone-500">今月の確定見込みMRR（税込）</p>
           <p className="mt-1 text-xl font-bold text-stone-900">
             {formatYen(forecast.totalConfirmedMrrJpy)}
           </p>
         </div>
         <div className="rounded-md bg-amber-50 p-4">
-          <p className="text-xs font-medium text-amber-700">トライアル未確定見込み</p>
+          <p className="text-xs font-medium text-amber-700">トライアル未確定見込み（税込）</p>
           <p className="mt-1 text-xl font-bold text-amber-700">
             {formatYen(forecast.totalTrialProjectedJpy)}
           </p>
         </div>
         <div className="rounded-md bg-terracotta/10 p-4">
-          <p className="text-xs font-medium text-terracotta">表示月合計の予測</p>
+          <p className="text-xs font-medium text-terracotta">表示月合計の予測（税込）</p>
           <p className="mt-1 text-xl font-bold text-terracotta">
             {formatYen(forecast.totalProjectedJpy)}
           </p>
