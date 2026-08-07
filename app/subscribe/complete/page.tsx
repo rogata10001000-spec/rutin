@@ -1,6 +1,8 @@
 import { retrieveCheckoutSession } from "@/lib/stripe";
 import { getTrialPeriodDays, isTrialEligiblePlan, formatYen } from "@/lib/trial";
-import { DEFAULT_PLAN_PRICES, DEFAULT_ANNUAL_PRICES } from "@/lib/plan-pricing";
+import { resolvePlanPricing } from "@/lib/plan-pricing";
+import { createAdminSupabaseClient } from "@/lib/supabase/server";
+import type { PlanCode } from "@/lib/supabase/types";
 import { getFunnelCopyValues } from "@/lib/funnel-copy";
 import { renderFunnelCopy } from "@/lib/funnel-copy-defs";
 
@@ -55,7 +57,7 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
     verified = true;
     planCode = "standard";
     interval = "month";
-    actualAmount = DEFAULT_PLAN_PRICES.standard;
+    // 金額は下の共通解決（現在の設定価格）に任せる
   } else if (sessionId) {
     try {
       const session = await retrieveCheckoutSession(sessionId);
@@ -85,13 +87,23 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
     );
   }
 
-  // 実額（Stripe）を最優先。取得できない場合のみデフォルト表に基づく目安。
-  const priceTable = interval === "year" ? DEFAULT_ANNUAL_PRICES : DEFAULT_PLAN_PRICES;
-  const fallbackPrice =
-    planCode && planCode in priceTable
-      ? priceTable[planCode as keyof typeof priceTable]
-      : null;
-  const price = actualAmount ?? fallbackPrice;
+  // 実額（Stripe）を最優先。取得できない場合は「設定されている現在価格」を使う。
+  // 以前はコード内のハードコード表を見ていたため、価格改定後にStripe取得が失敗すると
+  // 旧価格を「自動請求されます」と表示していた（金額表示は特商法上の説明にあたる）。
+  let price = actualAmount;
+  if (price == null && planCode) {
+    try {
+      const pricing = await resolvePlanPricing(
+        createAdminSupabaseClient(),
+        null,
+        interval
+      );
+      price = pricing[planCode as PlanCode]?.amount ?? null;
+    } catch {
+      // 価格解決も失敗したら金額を出さない（誤った金額を見せるより無表示が安全）
+      price = null;
+    }
+  }
 
   // {price} には 月額/年額 の接頭辞込みの表記を渡す（デフォルト文言の前提）。
   // 金額不明時は「選択プランの◯額料金」という表記でフォールバックする。

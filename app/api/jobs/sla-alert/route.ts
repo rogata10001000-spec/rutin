@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { calculateSlaRemaining } from "@/lib/calculations";
+import { loadPlanSlaMap } from "@/lib/plan-sla";
 import { logger } from "@/lib/logger";
 import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 
@@ -33,18 +34,8 @@ export async function GET(request: Request) {
 
     const userIds = users.map((u) => u.id);
 
-    const { data: plans } = await supabase
-      .from("plans")
-      .select("plan_code, reply_sla_minutes, sla_warning_minutes");
-    const planSlaConfig = new Map(
-      (plans ?? []).map((plan) => [
-        plan.plan_code,
-        {
-          slaMinutes: plan.reply_sla_minutes,
-          warningMinutes: plan.sla_warning_minutes,
-        },
-      ])
-    );
+    // SLA設定の取得口は lib/plan-sla.ts に一本化する（受信トレイと同じ値を使う）
+    const planSlaMap = await loadPlanSlaMap(supabase);
 
     const { data: allMessages } = await supabase
       .from("messages")
@@ -78,8 +69,7 @@ export async function GET(request: Request) {
       if (lastOutTime && lastOutTime > lastInTime) continue;
 
       const planCode = user.plan_code ?? "standard";
-      const config = planSlaConfig.get(planCode) ?? planSlaConfig.get("standard");
-      if (!config) continue;
+      const config = planSlaMap.get(planCode);
       const remaining = calculateSlaRemaining(lastInTime, config.slaMinutes, now);
 
       if (remaining === null) continue;

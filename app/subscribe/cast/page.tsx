@@ -94,7 +94,9 @@ export default async function SubscribeCastPage({ searchParams }: PageProps) {
         </nav>
 
         <main className="flex-1 pb-12">
-          {showCanceledBanner && (
+          {/* 文言を空にしたら枠ごと出さない（管理画面で「このバナーを消す」を成立させる） */}
+          {showCanceledBanner &&
+            (copy["cast.banner.canceled.title"] || copy["cast.banner.canceled.body"]) && (
             <div className="mx-4 mt-4 rounded-2xl border border-terracotta/20 bg-terracotta/5 p-4 text-sm font-medium text-stone-700">
               <div className="mb-1 flex items-center gap-2 font-bold text-terracotta">
                 <span className="material-symbols-outlined text-[20px]">info</span>
@@ -106,7 +108,8 @@ export default async function SubscribeCastPage({ searchParams }: PageProps) {
             </div>
           )}
 
-          {!userToken.ok && (
+          {!userToken.ok &&
+            (copy["cast.banner.noline.title"] || copy["cast.banner.noline.body"]) && (
             <div className="mx-4 mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm font-medium text-amber-800">
               <div className="mb-1 flex items-center gap-2 font-bold">
                 <span className="material-symbols-outlined text-[20px]">

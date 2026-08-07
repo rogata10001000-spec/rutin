@@ -547,47 +547,7 @@ export async function createSubscriptionCheckout(
 // プラン情報取得
 // =====================================
 
-export type PlanInfo = {
-  code: string;
-  name: string;
-  replySlaMinutes: number;
-  dailyCheckinEnabled: boolean;
-  weeklyReviewEnabled: boolean;
-  priorityLevel: number;
-};
-
-export type GetPlansResult = Result<{ plans: PlanInfo[] }>;
-
-/**
- * プラン一覧取得（公開）
- */
-export async function getPlans(): Promise<GetPlansResult> {
-  const supabase = createAdminSupabaseClient();
-
-  const { data, error } = await supabase
-    .from("plans")
-    .select("plan_code, name, reply_sla_minutes, daily_checkin_enabled, weekly_review_enabled, priority_level")
-    .eq("active", true)
-    .order("priority_level");
-
-  if (error) {
-    return {
-      ok: false,
-      error: { code: "UNKNOWN", message: "プラン情報の取得に失敗しました" },
-    };
-  }
-
-  return {
-    ok: true,
-    data: {
-      plans: (data ?? []).map((p) => ({
-        code: p.plan_code,
-        name: p.name,
-        replySlaMinutes: p.reply_sla_minutes,
-        dailyCheckinEnabled: p.daily_checkin_enabled,
-        weeklyReviewEnabled: p.weekly_review_enabled,
-        priorityLevel: p.priority_level,
-      })),
-    },
-  };
-}
+// プラン一覧の公開API(getPlans)は削除した。
+// 呼び出し元がゼロのまま plans.name / priority_level / daily_checkin_enabled を
+// 返しており、「設定できるように見えて誰も読まない」死んだ設定の温床になっていた。
+// プラン表示名は funnel_copy（/admin/preview）、SLAは lib/plan-sla.ts が正。

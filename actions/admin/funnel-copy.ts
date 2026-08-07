@@ -86,6 +86,17 @@ export async function saveFunnelCopyDrafts(
         error: { code: "ZOD_ERROR", message: `「${def.label}」は2000文字以内で入力してください` },
       };
     }
+    // 空欄は「その文言を出さない」意味になる。押せないボタン・読めない見出しを
+    // 作らないよう、消してよいと定義したキー以外は空欄を拒否する。
+    if (value.trim() === "" && !def.emptiable) {
+      return {
+        ok: false,
+        error: {
+          code: "ZOD_ERROR",
+          message: `「${def.label}」は空にできません。元の文言に戻す場合は「初期値に戻す」を使ってください`,
+        },
+      };
+    }
     const missing = missingRequiredVars(def, value);
     if (missing.length > 0) {
       return {

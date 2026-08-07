@@ -58,10 +58,15 @@ export async function getFunnelCopyValues(
     }
 
     for (const row of (data ?? []) as CopyRow[]) {
+      // null = 未設定（コード内デフォルトを使う） / 空文字 = 意図的に空（その文言を出さない）。
+      // 以前は空文字も「未設定」として扱っていたため、
+      // 「このバナーを消したい」と空欄にして公開してもデフォルト文言が復活し、
+      // 保存は成功して見えるのに消せない、という状態だった。
+      // ?? は空文字を残すので、下書きで空にした場合もプレビューに反映される。
       const resolved = options.preview
         ? row.draft_value ?? row.published_value
         : row.published_value;
-      if (resolved != null && resolved !== "" && row.key in values) {
+      if (resolved != null && row.key in values) {
         values[row.key] = resolved;
       }
     }

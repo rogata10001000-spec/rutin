@@ -57,18 +57,6 @@ export function PlansTable({ items }: PlansTableProps) {
                   警告閾値
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
-                  優先度
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
-                  負荷係数
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
-                  チェックイン
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
-                  週次レビュー
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-stone-500">
                   操作
                 </th>
               </tr>
@@ -97,34 +85,6 @@ export function PlansTable({ items }: PlansTableProps) {
                     </td>
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">
                       残り{formatMinutesToHours(item.slaWarningMinutes)}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">
-                      {item.priorityLevel}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-sm text-stone-600">
-                      ×{item.capacityWeight}
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          item.dailyCheckinEnabled
-                            ? "bg-sage/20 text-sage-800"
-                            : "bg-stone-100 text-stone-500"
-                        }`}
-                      >
-                        {item.dailyCheckinEnabled ? "有効" : "無効"}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-6 py-4">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          item.weeklyReviewEnabled
-                            ? "bg-sage/20 text-sage-800"
-                            : "bg-stone-100 text-stone-500"
-                        }`}
-                      >
-                        {item.weeklyReviewEnabled ? "有効" : "無効"}
-                      </span>
                     </td>
                     <td className="whitespace-nowrap px-6 py-4">
                       <button

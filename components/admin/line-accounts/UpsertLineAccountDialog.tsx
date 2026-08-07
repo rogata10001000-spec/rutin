@@ -21,7 +21,6 @@ const formSchema = z.object({
   botUserId: z.string(),
   channelSecret: z.string(),
   channelAccessToken: z.string(),
-  liffId: z.string(),
   richMenuUncontractedId: z.string(),
   richMenuContractedId: z.string(),
   friendAddUrl: z.string(),
@@ -69,7 +68,6 @@ export function UpsertLineAccountDialog({
       botUserId: "",
       channelSecret: "",
       channelAccessToken: "",
-      liffId: "",
       richMenuUncontractedId: "",
       richMenuContractedId: "",
       friendAddUrl: "",
@@ -101,7 +99,6 @@ export function UpsertLineAccountDialog({
         botUserId: editItem.botUserId ?? "",
         channelSecret: "",
         channelAccessToken: "",
-        liffId: editItem.liffId ?? "",
         richMenuUncontractedId: editItem.richMenuUncontractedId ?? "",
         richMenuContractedId: editItem.richMenuContractedId ?? "",
         friendAddUrl: editItem.friendAddUrl ?? "",
@@ -116,7 +113,6 @@ export function UpsertLineAccountDialog({
         botUserId: "",
         channelSecret: "",
         channelAccessToken: "",
-        liffId: "",
         richMenuUncontractedId: "",
         richMenuContractedId: "",
         friendAddUrl: "",
@@ -142,13 +138,8 @@ export function UpsertLineAccountDialog({
         botUserId: data.botUserId || undefined,
         channelSecret: data.channelSecret || undefined,
         channelAccessToken: data.channelAccessToken || undefined,
-        liffId: data.isDefault ? data.liffId || undefined : undefined,
-        richMenuUncontractedId: data.isDefault
-          ? data.richMenuUncontractedId || undefined
-          : undefined,
-        richMenuContractedId: data.isDefault
-          ? data.richMenuContractedId || undefined
-          : undefined,
+        richMenuUncontractedId: data.richMenuUncontractedId || undefined,
+        richMenuContractedId: data.richMenuContractedId || undefined,
         friendAddUrl: data.friendAddUrl || undefined,
         active: data.active,
       });
@@ -299,16 +290,13 @@ export function UpsertLineAccountDialog({
                 </p>
               </div>
 
-              {/* 共通LINE用メニュー */}
-              {isDefault && (
-                <div className="space-y-4 rounded-xl border border-stone-200 p-4">
-                  <p className="text-sm font-bold text-stone-700">
-                    共通Rutin公式LINEのリッチメニュー
+              {/* リッチメニュー（メイト個別アカウントでも設定できる。
+                  設定しておくと、そのアカウントで会話しているユーザーの契約時に切り替わる） */}
+              <div className="space-y-4 rounded-xl border border-stone-200 p-4">
+                  <p className="text-sm font-bold text-stone-700">リッチメニュー</p>
+                  <p className="-mt-2 text-xs text-stone-500">
+                    未設定の場合、このアカウントではメニューを切り替えません。
                   </p>
-                <div>
-                  <label className="block text-sm font-medium text-stone-600">LIFF ID</label>
-                  <input type="text" {...register("liffId")} className={inputClass} placeholder="任意" />
-                </div>
                 <div>
                   <label className="block text-sm font-medium text-stone-600">
                     リッチメニューID（未契約）
@@ -322,7 +310,6 @@ export function UpsertLineAccountDialog({
                   <input type="text" {...register("richMenuContractedId")} className={inputClass} placeholder="任意" />
                 </div>
               </div>
-              )}
 
               {/* 有効 */}
               <div className="flex items-center justify-between rounded-xl border border-stone-200 bg-stone-50/50 p-4">

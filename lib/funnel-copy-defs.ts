@@ -31,6 +31,12 @@ export type FunnelCopyDef = {
   vars?: string[];
   /** 補足説明（編集画面のヒント） */
   hint?: string;
+  /**
+   * 空欄にして「その文言を出さない」ことを許すか。
+   * 案内バナー・補足注記など、消しても操作が成立するものだけ true にする。
+   * ボタン・見出し・プラン名を空にすると押せない/読めないUIになるため既定は false。
+   */
+  emptiable?: boolean;
 };
 
 /** 変数の説明（編集画面のチップ表示に使う） */
@@ -76,6 +82,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     group: "案内バナー",
     defaultValue: "LINEからアクセスしてください",
     fieldType: "text",
+    emptiable: true,
   },
   {
     key: "cast.banner.noline.body",
@@ -85,6 +92,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     defaultValue:
       "ご契約には、LINE公式アカウントから届く案内リンクからのアクセスが必要です。このまま伴走メイトを選ぶことはできますが、契約手続きには進めません。",
     fieldType: "multiline",
+    emptiable: true,
   },
   {
     key: "cast.banner.canceled.title",
@@ -93,6 +101,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     group: "案内バナー",
     defaultValue: "決済がキャンセルされました",
     fieldType: "text",
+    emptiable: true,
   },
   {
     key: "cast.banner.canceled.body",
@@ -101,6 +110,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     group: "案内バナー",
     defaultValue: "伴走メイトとプランを選び直して、再度お手続きください。",
     fieldType: "multiline",
+    emptiable: true,
   },
   {
     key: "cast.empty.filtered",
@@ -375,6 +385,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     group: "次の案内",
     defaultValue: "スマホの方はLINEアプリに戻って、トークの確認をお願いします。",
     fieldType: "text",
+    emptiable: true,
   },
   {
     key: "complete.cta",
@@ -391,6 +402,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     group: "次の案内",
     defaultValue: "※ PCでお手続きされた方は、お使いのスマホでLINEを開いてください。",
     fieldType: "text",
+    emptiable: true,
   },
 
   // ===== LINEメッセージ =====
@@ -439,6 +451,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     group: "申込案内カード",
     defaultValue: "ボタンの有効期限は30分です。",
     fieldType: "text",
+    emptiable: true,
   },
   {
     key: "line.flex.button",

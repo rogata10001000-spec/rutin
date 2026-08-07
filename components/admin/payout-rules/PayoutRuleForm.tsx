@@ -17,6 +17,7 @@ type FieldErrors = {
   planCode?: string;
   percent?: string;
   effectiveFrom?: string;
+  effectiveTo?: string;
 };
 
 export function PayoutRuleForm({ casts }: PayoutRuleFormProps) {
@@ -29,6 +30,7 @@ export function PayoutRuleForm({ casts }: PayoutRuleFormProps) {
   const [castId, setCastId] = useState("");
   const [planCode, setPlanCode] = useState<"light" | "standard" | "premium">("standard");
   const [percent, setPercent] = useState("50");
+  const [effectiveTo, setEffectiveTo] = useState("");
   const [effectiveFrom, setEffectiveFrom] = useState(
     new Date().toISOString().split("T")[0]
   );
@@ -45,6 +47,8 @@ export function PayoutRuleForm({ casts }: PayoutRuleFormProps) {
       planCode: scopeType === "cast_plan" ? planCode : undefined,
       percent: percent ? parseInt(percent, 10) : 0,
       effectiveFrom,
+      // 空欄 = 無期限（終了日なし）。値があるときだけ送る
+      ...(effectiveTo ? { effectiveTo } : {}),
       active: true,
     };
 
@@ -196,6 +200,29 @@ export function PayoutRuleForm({ casts }: PayoutRuleFormProps) {
         />
         {errors.effectiveFrom && (
           <p className="mt-1.5 text-xs text-red-600 font-medium">{errors.effectiveFrom}</p>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-sm font-bold text-stone-700">
+          適用終了日（任意）
+        </label>
+        <input
+          type="date"
+          value={effectiveTo}
+          onChange={(e) => setEffectiveTo(e.target.value)}
+          min={effectiveFrom || undefined}
+          className={`mt-1.5 block w-full rounded-xl border bg-stone-50 px-4 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-1 ${
+            errors.effectiveTo
+              ? "border-red-300 text-red-900 focus:border-red-500 focus:ring-red-500"
+              : "border-stone-200 text-stone-900 focus:border-terracotta focus:bg-white focus:ring-terracotta"
+          }`}
+        />
+        <p className="mt-1.5 text-xs text-stone-500">
+          空欄のままにすると期限なしで適用され続けます。
+        </p>
+        {errors.effectiveTo && (
+          <p className="mt-1.5 text-xs text-red-600 font-medium">{errors.effectiveTo}</p>
         )}
       </div>
 

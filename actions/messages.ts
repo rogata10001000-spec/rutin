@@ -7,6 +7,7 @@ import { Result, toZodErrorMessage } from "./types";
 import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase/server";
 import { canSendMessage, requireAdminOrSupervisor } from "@/lib/auth";
 import { logger } from "@/lib/logger";
+import { loadPlanSlaMap } from "@/lib/plan-sla";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { pushTextMessage } from "@/lib/line";
 import { getSendAccountForEndUser } from "@/lib/line-accounts";
@@ -25,13 +26,11 @@ async function recordResponseMetric(
       .eq("id", endUserId)
       .single();
 
+    // SLAの取得口は lib/plan-sla.ts に一本化する
+    // （受信トレイ・アラートcron・この実績記録がすべて同じ値を使う）
     const planCode = user?.plan_code ?? "standard";
-    const { data: plan } = await supabase
-      .from("plans")
-      .select("reply_sla_minutes")
-      .eq("plan_code", planCode)
-      .single();
-    const slaMinutes = plan?.reply_sla_minutes ?? 720;
+    const planSlaMap = await loadPlanSlaMap(supabase);
+    const slaMinutes = planSlaMap.get(planCode).slaMinutes;
 
     const { data: lastInMsg } = await supabase
       .from("messages")

@@ -11,8 +11,17 @@ export const payoutRuleSchema = z.object({
   planCode: z.enum(["light", "standard", "premium"]).optional(),
   percent: z.number().min(0).max(100),
   effectiveFrom: isoDate,
+  /** 終了日（任意）。未指定なら無期限。読み取り側は以前から対応していたが設定手段が無かった。 */
+  effectiveTo: isoDate.optional(),
   active: z.boolean(),
 }).superRefine((value, ctx) => {
+  if (value.effectiveTo && value.effectiveTo < value.effectiveFrom) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["effectiveTo"],
+      message: "終了日は開始日より後にしてください",
+    });
+  }
   if ((value.scopeType === "cast" || value.scopeType === "cast_plan") && !value.castId) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

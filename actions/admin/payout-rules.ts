@@ -137,6 +137,7 @@ export async function upsertPayoutRule(
       plan_code: planCode,
       percent: parsed.data.percent,
       effective_from: parsed.data.effectiveFrom,
+      effective_to: parsed.data.effectiveTo ?? null,
       active: parsed.data.active,
       created_by: admin.id,
     })

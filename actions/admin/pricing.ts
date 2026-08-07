@@ -8,6 +8,7 @@ import { requireAdmin } from "@/lib/auth";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { stripe } from "@/lib/stripe";
 import { ensureRecurringPrice } from "@/lib/stripe-pricing";
+import { resolvePlanPricing, type BillingInterval } from "@/lib/plan-pricing";
 import type { PlanCode } from "@/lib/supabase/types";
 
 // =====================================
@@ -273,19 +274,14 @@ export async function changeUserSubscriptionPrice(
     };
   }
 
-  // 新しい価格IDを取得（契約中の請求間隔に合わせる。年額契約は年額Priceへ）
-  const { data: priceOverride } = await supabase
-    .from("cast_plan_price_overrides")
-    .select("stripe_price_id, stripe_price_id_annual")
-    .eq("cast_id", user.assigned_cast_id)
-    .eq("plan_code", user.plan_code)
-    .eq("active", true)
-    .single();
-
-  const newPriceId =
-    subscription.billing_interval === "year"
-      ? priceOverride?.stripe_price_id_annual
-      : priceOverride?.stripe_price_id;
+  // 新しい価格IDは Checkout と同じ解決経路（メイト別オーバーライド > 共通価格 > env）を使う。
+  // 以前はオーバーライドしか見ておらず、「/admin/pricing で共通価格を改定したのに、
+  // 同じ画面から既存ユーザーへ適用しようとすると必ず失敗する」状態だった。
+  const interval: BillingInterval =
+    subscription.billing_interval === "year" ? "year" : "month";
+  const pricing = await resolvePlanPricing(supabase, user.assigned_cast_id, interval);
+  const planCode = user.plan_code as PlanCode;
+  const newPriceId = pricing[planCode]?.stripePriceId;
 
   if (!newPriceId) {
     return {
@@ -293,9 +289,9 @@ export async function changeUserSubscriptionPrice(
       error: {
         code: "NOT_FOUND",
         message:
-          subscription.billing_interval === "year"
-            ? "このメイトの年額オーバーライド価格が未設定です"
-            : "適用可能な価格が見つかりません",
+          interval === "year"
+            ? "年額の価格が未設定です。価格設定で年額を登録してください"
+            : "適用できる価格が見つかりません。価格設定でこのプランの金額を登録してください",
       },
     };
   }
