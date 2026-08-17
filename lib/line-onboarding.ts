@@ -36,78 +36,10 @@ export async function sendLineUncontractedOnboarding(
   }
 }
 
-/**
- * incomplete ユーザーを取得または作成（line_user_id ユニーク競合を吸収）
- */
-export async function ensureIncompleteEndUser(
-  supabase: SupabaseAdmin,
-  lineUserId: string,
-  planCode: string
-): Promise<{
-  id: string;
-  isNew: boolean;
-  nickname: string;
-  lineProfileSyncedAt: string | null;
-}> {
-  const { data: existing } = await supabase
-    .from("end_users")
-    .select("id, nickname, line_profile_synced_at")
-    .eq("line_user_id", lineUserId)
-    .maybeSingle();
-
-  if (existing) {
-    return {
-      id: existing.id,
-      isNew: false,
-      nickname: existing.nickname,
-      lineProfileSyncedAt: existing.line_profile_synced_at,
-    };
-  }
-
-  const { data: created, error } = await supabase
-    .from("end_users")
-    .insert({
-      line_user_id: lineUserId,
-      nickname: endUserNicknameFromLineId(lineUserId),
-      status: "incomplete",
-      plan_code: planCode,
-    })
-    .select("id, nickname, line_profile_synced_at")
-    .single();
-
-  if (!error && created) {
-    return {
-      id: created.id,
-      isNew: true,
-      nickname: created.nickname,
-      lineProfileSyncedAt: created.line_profile_synced_at,
-    };
-  }
-
-  if (error?.code === "23505") {
-    const { data: raced } = await supabase
-      .from("end_users")
-      .select("id, nickname, line_profile_synced_at")
-      .eq("line_user_id", lineUserId)
-      .single();
-    if (raced) {
-      return {
-        id: raced.id,
-        isNew: false,
-        nickname: raced.nickname,
-        lineProfileSyncedAt: raced.line_profile_synced_at,
-      };
-    }
-  }
-
-  throw new Error(`Failed to ensure end_user: ${error?.message ?? "unknown"}`);
-}
-
-/**
- * LINEプロフィールを end_users に同期
- * - nicknameが自動生成値のときのみ displayName で置き換える
- * - 既に最近同期している場合はスキップできる
- */
+// ensureIncompleteEndUser は削除した。
+// UID だけで `.maybeSingle()` して1行に決め打ちする実装で、複数メイト契約により
+// 同じUIDに関係行が複数できると「エラーで落ちる」か「別メイトの行を取り違える」。
+// 着地先の解決は lib/person.ts の ensureInboundRelationship（受信アカウントのメイトで解決）に一本化した。
 export async function syncLineProfileToEndUser(
   supabase: SupabaseAdmin,
   account: ResolvedLineAccount,

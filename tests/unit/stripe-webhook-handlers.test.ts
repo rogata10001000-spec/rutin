@@ -135,7 +135,22 @@ describe("handleSubscriptionUpsert", () => {
         };
       }
       if (table === "end_users" && op === "select") {
-        return { data: { id: "user_1" } };
+        // 複数メイト対応で end_users は「人×メイト」の関係行になった。
+        // UIDからの取得は配列を返す（実PostgRESTのキー形に追随させる）。
+        return {
+          data: [
+            {
+              id: "user_1",
+              person_id: "person_1",
+              line_user_id: "U".padEnd(33, "0"),
+              assigned_cast_id: "cast_1",
+              status: "active",
+              plan_code: "standard",
+              nickname: "テスト",
+              line_profile_synced_at: null,
+            },
+          ],
+        };
       }
       // 運営通知の宛先など、その他の読み取りは空でよい
       return { data: null };
@@ -164,5 +179,67 @@ describe("handleSubscriptionUpsert", () => {
     // 既存契約の割当・状態は一切上書きされない／重複の行も挿入されない
     expect(calls).not.toContainEqual({ table: "end_users", op: "update" });
     expect(calls).not.toContainEqual({ table: "subscriptions", op: "insert" });
+  });
+
+  it("別メイトの追加契約は二重契約として扱わずキャンセルしない", async () => {
+    // 複数メイト契約の中核。ここが壊れると「追加契約したのに即キャンセル＋返金対応」になる。
+    const { cancelStripeSubscription } = await import("@/lib/stripe");
+    vi.mocked(cancelStripeSubscription).mockClear();
+
+    let subscriptionsSelectCount = 0;
+    const calls: Array<{ table: string; op: string }> = [];
+
+    const supabase = createMockSupabase(({ table, op }) => {
+      calls.push({ table, op });
+
+      if (table === "subscriptions" && op === "select") {
+        subscriptionsSelectCount += 1;
+        // 1回目: stripe_subscription_id での既存行検索 → 未登録
+        // 2回目: 二重契約ガード → このメイト(cast_2)の関係行にはライブ契約なし
+        return { data: null };
+      }
+      if (table === "end_users" && op === "select") {
+        // 既存はメイト1との関係行のみ。メイト2の行は無い（＝これから作られる）
+        return {
+          data: [
+            {
+              id: "user_1",
+              person_id: "person_1",
+              line_user_id: "U".padEnd(33, "0"),
+              assigned_cast_id: "cast_1",
+              status: "active",
+              plan_code: "standard",
+              nickname: "テスト",
+              line_profile_synced_at: null,
+            },
+          ],
+        };
+      }
+      if (table === "end_users" && op === "insert") {
+        return { data: { id: "user_2", person_id: "person_1" } };
+      }
+      return { data: null };
+    });
+
+    await mod.handleSubscriptionUpsert(
+      supabase,
+      makeSubscription({
+        id: "sub_second_mate",
+        metadata: {
+          line_user_id: "U".padEnd(33, "0"),
+          cast_id: "cast_2",
+          plan_code: "standard",
+          person_id: "person_1",
+        },
+      }),
+      "customer.subscription.created",
+      "evt_add_mate"
+    );
+
+    // 追加契約はキャンセルしない
+    expect(cancelStripeSubscription).not.toHaveBeenCalled();
+    // メイト2用の関係行が作られ、契約行が入る
+    expect(calls).toContainEqual({ table: "end_users", op: "insert" });
+    expect(calls).toContainEqual({ table: "subscriptions", op: "insert" });
   });
 });

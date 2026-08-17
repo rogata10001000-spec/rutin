@@ -20,6 +20,8 @@ export const CANCEL_REASON_CODES = [
 export const cancelSubscriptionSchema = z.object({
   reasonCode: z.enum(CANCEL_REASON_CODES).optional(),
   reasonDetail: z.string().max(500, "500文字以内で入力してください").optional(),
+  /** 解約する契約（複数メイト契約時にどのメイトとの契約かを指定する） */
+  endUserId: z.string().uuid().optional(),
 });
 
 export type CancelSubscriptionInput = z.infer<typeof cancelSubscriptionSchema>;

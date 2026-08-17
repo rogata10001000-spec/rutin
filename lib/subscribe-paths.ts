@@ -7,7 +7,19 @@ export const SUBSCRIBE_PATHS = {
   plan: "/subscribe/plan",
   complete: "/subscribe/complete",
   root: "/subscribe",
+  /**
+   * 追加契約（既に別メイトと契約中の人が、もう1人メイトを増やす）の入口。
+   * 画面は新規と同じものを mode で切り替えて使う（画面を作り分けると文言・除外条件がズレる）。
+   */
+  addMate: "/subscribe/cast?mode=add",
 } as const;
+
+/** 申込フローのモード。add = 追加契約 */
+export type SubscribeMode = "new" | "add";
+
+export function parseSubscribeMode(value: string | string[] | undefined): SubscribeMode {
+  return value === "add" ? "add" : "new";
+}
 
 export const ACCOUNT_PLAN_PATH = "/account/plan";
 

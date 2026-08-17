@@ -11,6 +11,7 @@ import {
   renderFunnelCopy,
 } from "@/lib/funnel-copy-defs";
 import type { StaffGender } from "@/lib/supabase/types";
+import { parseSubscribeMode } from "@/lib/subscribe-paths";
 
 /** メイト一覧・公開プロフィールは常に最新を読む（保存直後の反映と整合） */
 export const dynamic = "force-dynamic";
@@ -28,6 +29,8 @@ type PageProps = {
     canceled?: string;
     preview?: string;
     cast?: string;
+    /** add = 追加契約（既に別メイトと契約中の人がもう1人増やす） */
+    mode?: string;
   }>;
 };
 
@@ -39,11 +42,18 @@ export default async function SubscribeCastPage({ searchParams }: PageProps) {
   // 管理画面プレビュー（下書き文言を優先表示）
   const isPreview = params.preview === "1";
   const trialDays = getTrialPeriodDays();
+  // 追加契約モード。画面は新規と共通で、候補の除外と文言だけ切り替える
+  // （画面を作り分けると除外条件・法的表記がどちらかに片寄って必ずズレる）。
+  const mode = parseSubscribeMode(params.mode);
+  const isAddMate = mode === "add";
 
   // 文言取得は既存フェッチと並列にする（ホットパスへ直列 await を足さない）
   const [userToken, result, copy] = await Promise.all([
     getUserFromServerCookies(),
-    listAvailableCasts({ gender: genderFilter }),
+    listAvailableCasts({
+      gender: genderFilter,
+      excludeContractedForCurrentUser: isAddMate,
+    }),
     getFunnelCopyValues(
       [
         "cast.nav.title",
@@ -94,6 +104,15 @@ export default async function SubscribeCastPage({ searchParams }: PageProps) {
         </nav>
 
         <main className="flex-1 pb-12">
+          {isAddMate && (
+            <div className="mx-4 mt-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+              <p className="text-sm font-bold text-primary">メイトを追加する</p>
+              <p className="mt-1 text-xs leading-relaxed text-stone-600">
+                いまのご契約はそのまま続きます。ご契約中のメイトは一覧に表示されません。
+              </p>
+            </div>
+          )}
+
           {/* 文言を空にしたら枠ごと出さない（管理画面で「このバナーを消す」を成立させる） */}
           {showCanceledBanner &&
             (copy["cast.banner.canceled.title"] || copy["cast.banner.canceled.body"]) && (
@@ -123,6 +142,7 @@ export default async function SubscribeCastPage({ searchParams }: PageProps) {
             </div>
           )}
 
+          {!isAddMate && (
           <div className="px-4 py-4">
             <div className="flex flex-col gap-2 rounded-2xl border border-primary/20 bg-primary/10 p-5">
               <div className="flex items-center gap-2 text-sm font-bold tracking-wide text-primary">
@@ -136,12 +156,17 @@ export default async function SubscribeCastPage({ searchParams }: PageProps) {
               </p>
             </div>
           </div>
+          )}
 
           <CastGenderFilter current={filterValue} />
 
           {casts.length === 0 ? (
             <div className="mx-4 mt-2 rounded-2xl border border-warm-border/50 bg-white p-6 text-center text-sm text-[#6B5A51]">
-              {genderFilter ? copy["cast.empty.filtered"] : copy["cast.empty.none"]}
+              {isAddMate && !genderFilter
+                ? "いま追加でご契約いただけるメイトがいません。またご案内します。"
+                : genderFilter
+                  ? copy["cast.empty.filtered"]
+                  : copy["cast.empty.none"]}
             </div>
           ) : (
             <CastList

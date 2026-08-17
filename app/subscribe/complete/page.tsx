@@ -5,6 +5,8 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import type { PlanCode } from "@/lib/supabase/types";
 import { getFunnelCopyValues } from "@/lib/funnel-copy";
 import { renderFunnelCopy } from "@/lib/funnel-copy-defs";
+import { getLineAccountForCast } from "@/lib/line-accounts";
+import { getLiveContractedCastIds, getRelationshipsByLineUserId } from "@/lib/person";
 
 type PageProps = {
   searchParams?: Promise<{ session_id?: string; preview?: string }>;
@@ -46,6 +48,8 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
   let verified = false;
   let planCode: string | null = null;
   let interval: "month" | "year" = "month";
+  let castId: string | null = null;
+  let lineUserId: string | null = null;
   // 実際に契約された金額（Stripe Price の unit_amount）。表示と請求を一致させる。
   let actualAmount: number | null = null;
 
@@ -64,6 +68,8 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
       verified = session.mode === "subscription" && session.payment_status !== "unpaid";
       planCode = session.metadata?.plan_code ?? null;
       interval = session.metadata?.billing_interval === "year" ? "year" : "month";
+      castId = session.metadata?.cast_id ?? null;
+      lineUserId = session.metadata?.line_user_id ?? null;
       const sub = session.subscription;
       if (sub && typeof sub !== "string") {
         const unitAmount = sub.items?.data?.[0]?.price?.unit_amount;
@@ -105,6 +111,30 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
     }
   }
 
+  // 追加契約（2人目以降）は、そのメイトのLINEを友だち追加しないと会話が始まらない。
+  // 新規契約はそのメイトのLINEから入ってきているので不要（＝出さない）。
+  // ここを出し忘れると「契約したのに何も起きない」で終わる。
+  let addMateFriendUrl: string | null = null;
+  let addMateName: string | null = null;
+  if (castId && lineUserId) {
+    try {
+      const admin = createAdminSupabaseClient();
+      const rows = await getRelationshipsByLineUserId(admin, lineUserId);
+      const personId = rows[0]?.personId ?? null;
+      if (personId) {
+        const liveCastIds = await getLiveContractedCastIds(admin, personId);
+        if (liveCastIds.length >= 2) {
+          const account = await getLineAccountForCast(castId, admin);
+          addMateFriendUrl = account?.friendAddUrl ?? null;
+          addMateName = account?.name ?? null;
+        }
+      }
+    } catch {
+      // 友だち追加の案内が出せなくても完了画面自体は表示する（LINEからも案内が届く）
+      addMateFriendUrl = null;
+    }
+  }
+
   // {price} には 月額/年額 の接頭辞込みの表記を渡す（デフォルト文言の前提）。
   // 金額不明時は「選択プランの◯額料金」という表記でフォールバックする。
   const intervalPrefix = interval === "year" ? "年額" : "月額";
@@ -129,6 +159,23 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
       </div>
       <h1 className="text-2xl font-bold text-stone-900">{title}</h1>
       <p className="mt-3 text-sm leading-relaxed text-stone-600">{body}</p>
+      {addMateFriendUrl && (
+        <div className="mt-6 w-full rounded-2xl border border-primary/20 bg-primary/5 p-5 text-left">
+          <h2 className="text-sm font-bold text-primary">
+            最後に{addMateName ? `「${addMateName}」` : "新しいメイト"}のLINEを友だち追加してください
+          </h2>
+          <p className="mt-1.5 text-sm leading-relaxed text-stone-600">
+            メイトごとにトークが分かれています。友だち追加が完了すると、このメイトとのやり取りを始められます。
+          </p>
+          <a
+            href={addMateFriendUrl}
+            className="mt-4 inline-flex items-center justify-center whitespace-nowrap rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-primary-dark"
+          >
+            友だち追加する
+          </a>
+        </div>
+      )}
+
       <p className="mt-3 text-sm text-stone-600">{copy["complete.next.primary"]}</p>
       <p className="mt-1 text-sm text-stone-600">{copy["complete.next.secondary"]}</p>
       <a

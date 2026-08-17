@@ -78,8 +78,16 @@ type PlansRow = {
   active: boolean;
 };
 
+type PersonsRow = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+};
+
 type EndUsersRow = {
   id: string;
+  /** この関係行が属する人。同じ人が別メイトと契約すると同じ person_id の行が複数できる。 */
+  person_id: string;
   line_user_id: string;
   nickname: string;
   line_display_name: string | null;
@@ -611,7 +619,7 @@ export interface Database {
       };
       end_users: {
         Row: EndUsersRow;
-        Insert: Omit<EndUsersRow, "id" | "created_at" | "updated_at" | "paused_priority_penalty" | "tags" | "birthday" | "trial_end_at" | "trial_started_at" | "subscribed_at" | "canceled_at" | "line_followed_at" | "checkout_started_at" | "stripe_checkout_session_id" | "last_guide_sent_at" | "is_blocked" | "blocked_at" | "acquisition_source" | "acquisition_recorded_at" | "assigned_cast_id" | "primary_line_account_id" | "email" | "email_verified_at" | "phone" | "line_display_name" | "line_picture_url" | "line_profile_synced_at"> & {
+        Insert: Omit<EndUsersRow, "id" | "person_id" | "created_at" | "updated_at" | "paused_priority_penalty" | "tags" | "birthday" | "trial_end_at" | "trial_started_at" | "subscribed_at" | "canceled_at" | "line_followed_at" | "checkout_started_at" | "stripe_checkout_session_id" | "last_guide_sent_at" | "is_blocked" | "blocked_at" | "acquisition_source" | "acquisition_recorded_at" | "assigned_cast_id" | "primary_line_account_id" | "email" | "email_verified_at" | "phone" | "line_display_name" | "line_picture_url" | "line_profile_synced_at"> & {
           id?: string;
           stripe_checkout_session_id?: string | null;
           last_guide_sent_at?: string | null;
@@ -619,6 +627,8 @@ export interface Database {
           blocked_at?: string | null;
           acquisition_source?: string | null;
           acquisition_recorded_at?: string | null;
+          // 未指定ならDBトリガー(end_users_ensure_person)が人を作って埋める
+          person_id?: string;
           paused_priority_penalty?: number;
           tags?: string[];
           birthday?: string | null;
@@ -638,6 +648,12 @@ export interface Database {
           line_profile_synced_at?: string | null;
         };
         Update: Partial<Omit<EndUsersRow, "id" | "created_at">>;
+        Relationships: [];
+      };
+      persons: {
+        Row: PersonsRow;
+        Insert: Partial<PersonsRow>;
+        Update: Partial<Pick<PersonsRow, "updated_at">>;
         Relationships: [];
       };
       user_login_tokens: {

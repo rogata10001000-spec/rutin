@@ -38,6 +38,7 @@ import {
   subscriptionCanceledNotification,
   cancelScheduledNotification,
 } from "@/lib/notification-templates";
+import { ensureRelationshipForCast } from "@/lib/person";
 
 type SupabaseAdmin = ReturnType<typeof createAdminSupabaseClient>;
 
@@ -640,62 +641,51 @@ export async function handleCheckoutSessionCompleted(
       session.customer_details?.email ?? session.customer_email
     );
 
-    // end_user取得または作成
-    let { data: user } = await supabase
+    // 「このメイトとの関係行」を取得または作成する。
+    // 複数メイト契約では line_user_id だけでは行が一意に決まらないため、
+    // 解決は lib/person.ts に一本化している（見込み行があれば昇格させて履歴を引き継ぐ）。
+    const relationship = await ensureRelationshipForCast(supabase, {
+      lineUserId,
+      castId,
+      planCode,
+      personId: metadata.person_id ?? null,
+    });
+
+    const { data: existingUser } = await supabase
       .from("end_users")
       .select("id, status, email")
-      .eq("line_user_id", lineUserId)
+      .eq("id", relationship.id)
       .single();
 
-    if (!user) {
-      const { data: newUser, error } = await supabase
-        .from("end_users")
-        .insert({
-          line_user_id: lineUserId,
-          nickname: endUserNicknameFromLineId(lineUserId),
-          status: subscriptionStatus,
-          plan_code: planCode,
-          assigned_cast_id: castId,
-          trial_end_at: trialEndAt,
-          line_followed_at: subscriptionStartedAt,
-          ...(subscriptionStatus === "trial"
-            ? { trial_started_at: subscriptionStartedAt }
-            : { subscribed_at: subscriptionStartedAt }),
-        })
-        .select("id")
-        .single();
+    const user = existingUser ?? { id: relationship.id, status: subscriptionStatus, email: null };
 
-      if (error) {
-        throw new Error(`Failed to create end_user: ${error.message}`);
-      }
-      user = { id: newUser.id, status: subscriptionStatus, email: null };
-    } else {
-      // 既に別のライブ契約があるなら、この完了は二重契約（レース）。
-      // 割当・状態を上書きせず、新しい方を自動キャンセルして終了する。
-      const duplicate = await cancelIfDuplicateLiveSubscription(supabase, {
-        endUserId: user.id,
-        incomingSubscriptionId: subscriptionId,
-        castId,
-        planCode,
-        eventType: "checkout.session.completed",
-      });
-      if (duplicate) {
-        return { skipped: true, reason: "duplicate live subscription auto-canceled" };
-      }
-
-      await supabase
-        .from("end_users")
-        .update({
-          status: subscriptionStatus,
-          plan_code: planCode,
-          assigned_cast_id: castId,
-          trial_end_at: trialEndAt,
-          ...(subscriptionStatus === "trial"
-            ? { trial_started_at: subscriptionStartedAt }
-            : { subscribed_at: subscriptionStartedAt }),
-        })
-        .eq("id", user.id);
+    // 同じメイトに既にライブ契約があるなら、この完了は二重契約（レース）。
+    // 関係行はメイトごとに分かれているため、別メイトの追加契約はここに来ない
+    // （＝正当な追加契約を誤ってキャンセルしない）。
+    const duplicate = await cancelIfDuplicateLiveSubscription(supabase, {
+      endUserId: user.id,
+      incomingSubscriptionId: subscriptionId,
+      castId,
+      planCode,
+      eventType: "checkout.session.completed",
+    });
+    if (duplicate) {
+      return { skipped: true, reason: "duplicate live subscription auto-canceled" };
     }
+
+    await supabase
+      .from("end_users")
+      .update({
+        status: subscriptionStatus,
+        plan_code: planCode,
+        assigned_cast_id: castId,
+        trial_end_at: trialEndAt,
+        ...(relationship.isNew ? { line_followed_at: subscriptionStartedAt } : {}),
+        ...(subscriptionStatus === "trial"
+          ? { trial_started_at: subscriptionStartedAt }
+          : { subscribed_at: subscriptionStartedAt }),
+      })
+      .eq("id", user.id);
 
     // メール取り込みは best-effort（未登録時のみ・衝突時は無視）。
     // サブスク同期本体をメール一意制約違反で失敗させない。
@@ -876,63 +866,44 @@ export async function handleSubscriptionUpsert(
       return { skipped: true, reason: "missing subscription metadata" };
     }
 
-    let { data: user } = await supabase
-      .from("end_users")
-      .select("id")
-      .eq("line_user_id", lineUserId)
-      .single();
+    // checkout.session.completed と同じく「このメイトとの関係行」で解決する
+    // （どちらのイベントが先に届いても同じ行に着地する）。
+    const relationship = await ensureRelationshipForCast(supabase, {
+      lineUserId,
+      castId,
+      planCode,
+      personId: metadata.person_id ?? null,
+    });
+    const user = { id: relationship.id };
 
     const trialEndAt = trialEndAtFromSubscription(subscription);
 
-    if (!user) {
-      const { data: newUser, error: userCreateError } = await supabase
-        .from("end_users")
-        .insert({
-          line_user_id: lineUserId,
-          nickname: endUserNicknameFromLineId(lineUserId),
-          status: newStatus,
-          plan_code: planCode,
-          assigned_cast_id: castId,
-          trial_end_at: trialEndAt,
-          line_followed_at: subscriptionStartedAt,
-          ...(newStatus === "trial"
-            ? { trial_started_at: subscriptionStartedAt }
-            : { subscribed_at: subscriptionStartedAt }),
-        })
-        .select("id")
-        .single();
-
-      if (userCreateError) {
-        throw new Error(`Failed to create end_user: ${userCreateError.message}`);
-      }
-      user = { id: newUser.id };
-    } else {
-      // 既に別のライブ契約があるなら、この作成は二重契約（レース）。
-      // checkout.session.completed 側と同じガード（どちらのイベントが先に届いても防ぐ）。
-      const duplicate = await cancelIfDuplicateLiveSubscription(supabase, {
-        endUserId: user.id,
-        incomingSubscriptionId: subscriptionId,
-        castId,
-        planCode,
-        eventType: "customer.subscription.created",
-      });
-      if (duplicate) {
-        return { skipped: true, reason: "duplicate live subscription auto-canceled" };
-      }
-
-      await supabase
-        .from("end_users")
-        .update({
-          status: newStatus,
-          plan_code: planCode,
-          assigned_cast_id: castId,
-          trial_end_at: trialEndAt,
-          ...(newStatus === "trial"
-            ? { trial_started_at: subscriptionStartedAt }
-            : { subscribed_at: subscriptionStartedAt }),
-        })
-        .eq("id", user.id);
+    // 同じメイトに既にライブ契約があるなら二重契約（レース）。
+    // 別メイトの追加契約は関係行が分かれるためここに来ない。
+    const duplicate = await cancelIfDuplicateLiveSubscription(supabase, {
+      endUserId: user.id,
+      incomingSubscriptionId: subscriptionId,
+      castId,
+      planCode,
+      eventType: "customer.subscription.created",
+    });
+    if (duplicate) {
+      return { skipped: true, reason: "duplicate live subscription auto-canceled" };
     }
+
+    await supabase
+      .from("end_users")
+      .update({
+        status: newStatus,
+        plan_code: planCode,
+        assigned_cast_id: castId,
+        trial_end_at: trialEndAt,
+        ...(relationship.isNew ? { line_followed_at: subscriptionStartedAt } : {}),
+        ...(newStatus === "trial"
+          ? { trial_started_at: subscriptionStartedAt }
+          : { subscribed_at: subscriptionStartedAt }),
+      })
+      .eq("id", user.id);
 
     const { error: insertError } = await supabase.from("subscriptions").insert({
       end_user_id: user.id,

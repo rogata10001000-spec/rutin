@@ -194,6 +194,17 @@ export type UserDetail = {
   subscriptionHistory: SubscriptionHistory[];
   recentCheckins: { date: string; status: CheckinStatus }[];
   recentGifts: { sentAt: string; giftName: string; costPoints: number }[];
+  /**
+   * 同じ人の、別メイトとの契約。
+   * 複数メイト契約では同一人物が会員一覧に複数行として現れるため、
+   * ここを出さないと運用側が「別人」と誤認する。
+   */
+  otherContracts: {
+    endUserId: string;
+    castName: string | null;
+    planCode: string;
+    status: SubscriptionStatus;
+  }[];
 };
 
 export type GetUserDetailInput = {
@@ -223,6 +234,7 @@ export async function getUserDetail(
     .from("end_users")
     .select(`
       id,
+      person_id,
       line_user_id,
       nickname,
       birthday,
@@ -254,6 +266,7 @@ export async function getUserDetail(
     { data: ledger },
     { data: checkins },
     { data: giftSends },
+    { data: siblingRows },
   ] = await Promise.all([
     supabase
       .from("subscriptions")
@@ -292,7 +305,21 @@ export async function getUserDetail(
       .eq("end_user_id", input.endUserId)
       .order("sent_at", { ascending: false })
       .limit(10),
+    // 同じ人の別メイトとの契約（複数メイト契約で同一人物が複数行になるため）
+    supabase
+      .from("end_users")
+      .select("id, plan_code, status, assigned_cast_id, staff_profiles!end_users_assigned_cast_id_fkey(display_name)")
+      .eq("person_id", user.person_id)
+      .neq("id", input.endUserId),
   ]);
+
+  const otherContracts = (siblingRows ?? []).map((row) => ({
+    endUserId: row.id,
+    castName:
+      (row.staff_profiles as unknown as { display_name: string } | null)?.display_name ?? null,
+    planCode: row.plan_code,
+    status: row.status as SubscriptionStatus,
+  }));
 
   const pointBalance = (ledger ?? []).reduce((sum, row) => sum + row.delta_points, 0);
 
@@ -353,6 +380,7 @@ export async function getUserDetail(
         giftName: (g.gift_catalog as unknown as { name: string } | null)?.name ?? "不明",
         costPoints: g.cost_points,
       })),
+      otherContracts,
     },
   };
 }

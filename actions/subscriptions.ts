@@ -32,6 +32,13 @@ import {
   type BillingInterval,
 } from "@/lib/plan-pricing";
 import type { StaffGender } from "@/lib/supabase/types";
+import {
+  getLiveContractedCastIds,
+  getRelationshipsByLineUserId,
+  hasPersonUsedTrial,
+} from "@/lib/person";
+import { canContractWithCast, MAX_CONCURRENT_MATES } from "@/lib/relationship-routing";
+import { getPersonIdForEndUser } from "@/lib/person";
 
 const serverEnv = getServerEnv();
 const APP_BASE_URL = serverEnv.APP_BASE_URL;
@@ -87,7 +94,13 @@ export type ListAvailableCastsResult = Result<{ casts: AvailableCast[] }>;
  * 権限: 公開（サブスク導線用）
  */
 export async function listAvailableCasts(
-  input: ListAvailableCastsInput = {}
+  input: ListAvailableCastsInput & {
+    /**
+     * 追加契約モード。true なら「既にライブ契約中のメイト」を候補から外す。
+     * 選択できるのに必ず失敗する状態（＝押せるのに失敗）を作らないための入口ガード。
+     */
+     excludeContractedForCurrentUser?: boolean;
+  } = {}
 ): Promise<ListAvailableCastsResult> {
   const parsed = listAvailableCastsSchema.safeParse(input);
   if (!parsed.success) {
@@ -124,7 +137,37 @@ export async function listAvailableCasts(
     };
   }
 
-  const castIds = (casts ?? []).map((c) => c.id);
+  // 追加契約では既に契約中のメイトを候補から外す
+  let excludedCastIds: string[] = [];
+  if (input.excludeContractedForCurrentUser) {
+    try {
+      const user = await getUserFromServerCookies();
+      if (user.ok) {
+        let personId: string | null = null;
+        if (user.endUserId) {
+          personId = await getPersonIdForEndUser(supabase, user.endUserId);
+        } else if (user.lineUserId) {
+          const rows = await getRelationshipsByLineUserId(supabase, user.lineUserId);
+          personId = rows[0]?.personId ?? null;
+        }
+        if (personId) {
+          excludedCastIds = await getLiveContractedCastIds(supabase, personId);
+        }
+      }
+    } catch (err) {
+      // 除外に失敗しても一覧は出す（サーバー側の契約ガードが最終防衛線として弾く）。
+      // ここで落とすと「追加契約の入口ごと開けない」ほうの損失が大きい。
+      logger.warn("listAvailableCasts: contracted-cast exclusion failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+  }
+
+  const visibleCasts = excludedCastIds.length
+    ? (casts ?? []).filter((c) => !excludedCastIds.includes(c.id))
+    : (casts ?? []);
+
+  const castIds = visibleCasts.map((c) => c.id);
   if (castIds.length === 0) {
     return { ok: true, data: { casts: [] } };
   }
@@ -219,7 +262,7 @@ export async function listAvailableCasts(
   }
 
   const result: AvailableCast[] = [];
-  for (const cast of casts ?? []) {
+  for (const cast of visibleCasts) {
     const assignedCount = assignedCountByCast.get(cast.id) ?? 0;
 
     // キャパシティチェック
@@ -361,42 +404,63 @@ export async function createSubscriptionCheckoutSession(
     };
   }
 
-  // end_users.line_user_id は unique なので、同じLINE IDの行は最大1件。
-  // 「契約中チェック」と「トライアル利用歴チェック」は同じ1行を見るため、1クエリにまとめる
-  // （従来は同一条件で2回問い合わせていた）。
-  // あわせて subscriptions 側のライブ契約も確認する（互いに独立なので並列）。
-  // end_users.status だけを見ていると、両テーブルの状態がズレたときに決済まで進んでしまい、
-  // webhook 側のガードで「課金後に自動キャンセル＋返金対応」になる。入口で止める方が損失が小さい。
-  const [{ data: existingUser }, { data: liveSubscriptions }] = await Promise.all([
-    supabase
-      .from("end_users")
-      .select("id, status, trial_started_at, stripe_checkout_session_id")
-      .eq("line_user_id", parsed.data.lineUserId)
-      .maybeSingle(),
-    supabase
-      .from("subscriptions")
-      .select("id, end_users!inner(line_user_id)")
-      .eq("end_users.line_user_id", parsed.data.lineUserId)
-      .in("status", ["trial", "active", "past_due", "paused"])
-      .limit(1),
-  ]);
+  // 複数メイト契約に対応したため、判定単位が2つに分かれる。
+  //   人（person）単位 … トライアル権・同時契約数の上限
+  //   メイト単位        … このメイトと既に契約していないか（＝重複契約）
+  // どちらも end_users.status だけでは足りない（両テーブルの状態がズレると
+  // 決済まで進んでしまい、webhook 側で「課金後に自動キャンセル＋返金」になる）。
+  const relationships = await getRelationshipsByLineUserId(supabase, parsed.data.lineUserId);
+  const personId = relationships[0]?.personId ?? null;
 
-  // 既存ユーザーチェック（同じLINE IDで既にアクティブなサブスクがあるか）
-  const hasLiveSubscription = (liveSubscriptions?.length ?? 0) > 0;
-  const isContractedStatus =
-    existingUser && !["incomplete", "canceled"].includes(existingUser.status);
+  // このメイトとの関係行（追加契約では存在しないのが普通）
+  const castRelationship = relationships.find(
+    (r) => r.assignedCastId === parsed.data.castId
+  );
 
-  if (isContractedStatus || hasLiveSubscription) {
+  const liveCastIds = personId ? await getLiveContractedCastIds(supabase, personId) : [];
+
+  const gate = canContractWithCast({
+    castId: parsed.data.castId,
+    liveCastIds,
+    maxConcurrent: MAX_CONCURRENT_MATES,
+  });
+
+  if (gate !== "ok") {
     return {
       ok: false,
-      error: { code: "CONFLICT", message: "既に契約中のプランがあります" },
+      error: {
+        code: "CONFLICT",
+        message:
+          gate === "already_contracted"
+            ? "このメイトとは既にご契約中です。"
+            : `同時にご契約いただけるメイトは${MAX_CONCURRENT_MATES}人までです。`,
+      },
     };
   }
 
-  // トライアルの重複付与を防ぐ: 過去に一度でもトライアルを開始した相手には付与しない
-  // （解約→再契約で無料トライアルを無限取得する濫用を防止）。
-  // trial_started_at は初回トライアル開始時に Stripe Webhook が設定する。
-  const hasUsedTrial = Boolean(existingUser?.trial_started_at);
+  // トライアルの重複付与を防ぐ: **人単位**で、過去に一度でもトライアルを開始していたら付与しない。
+  // 関係行（end_users）単位で見ると「メイトを変えるたびに無料トライアル」の穴になる。
+  const hasUsedTrial = personId ? await hasPersonUsedTrial(supabase, personId) : false;
+
+  // 前回のチェックアウトセッションは**このメイトとの関係行**のものだけを失効させる
+  // （メイトAの決済ページを開いたままメイトBを申し込んでも互いを潰さない）。
+  const existingUser = castRelationship
+    ? (
+        await supabase
+          .from("end_users")
+          .select("id, status, trial_started_at, stripe_checkout_session_id")
+          .eq("id", castRelationship.endUserId)
+          .maybeSingle()
+      ).data
+    : relationships.find((r) => r.assignedCastId === null)
+      ? (
+          await supabase
+            .from("end_users")
+            .select("id, status, trial_started_at, stripe_checkout_session_id")
+            .eq("id", relationships.find((r) => r.assignedCastId === null)!.endUserId)
+            .maybeSingle()
+        ).data
+      : null;
 
   // トライアル: 月額はstandard/premiumのみ、年額は全プランに付与。ただし利用済みなら付与しない。
   const trialDays = hasUsedTrial
@@ -413,6 +477,7 @@ export async function createSubscriptionCheckoutSession(
       successUrl: subscribeCheckoutSuccessUrl(),
       cancelUrl: subscribeCheckoutCancelUrl(),
       trialPeriodDays: trialDays,
+      personId,
     });
 
     if (!url) {
@@ -428,6 +493,10 @@ export async function createSubscriptionCheckoutSession(
     const checkoutTrialDays = trialDays;
     const checkoutSessionId = sessionId;
     const previousSessionId = existingUser?.stripe_checkout_session_id ?? null;
+    // 更新対象は「このメイトとの関係行」に限定する。line_user_id で更新すると
+    // 複数メイト契約時に他メイトの行のセッションIDまで上書きし、
+    // 別メイトの決済ページを巻き込んで失効させてしまう。
+    const checkoutEndUserId = existingUser?.id ?? null;
     // 「カートに入れた時刻」は後処理の実行時刻ではなく操作時刻を記録する
     const checkoutStartedAt = new Date().toISOString();
 
@@ -447,15 +516,20 @@ export async function createSubscriptionCheckoutSession(
 
         // 最新の未決済セッションIDを記録（次回発行時の失効対象）。
         // カゴ落ちリカバリ配信の起点も記録（未契約=incomplete のみ。決済完了で status が変わり対象外になる）
-        await supabase
-          .from("end_users")
-          .update({ stripe_checkout_session_id: checkoutSessionId })
-          .eq("line_user_id", checkoutLineUserId);
-        await supabase
-          .from("end_users")
-          .update({ checkout_started_at: checkoutStartedAt })
-          .eq("line_user_id", checkoutLineUserId)
-          .eq("status", "incomplete");
+        //
+        // 関係行がまだ無い（このメイトが初めて＆見込み行も無い）ケースでは記録先が無い。
+        // その場合の失効は Stripe Webhook 側のガードに任せる（行が無い＝並行セッションも無い）。
+        if (checkoutEndUserId) {
+          await supabase
+            .from("end_users")
+            .update({ stripe_checkout_session_id: checkoutSessionId })
+            .eq("id", checkoutEndUserId);
+          await supabase
+            .from("end_users")
+            .update({ checkout_started_at: checkoutStartedAt })
+            .eq("id", checkoutEndUserId)
+            .eq("status", "incomplete");
+        }
 
         await writeAuditLog({
           action: "SUBSCRIPTION_CHECKOUT_CREATE",
@@ -551,3 +625,35 @@ export async function createSubscriptionCheckout(
 // 呼び出し元がゼロのまま plans.name / priority_level / daily_checkin_enabled を
 // 返しており、「設定できるように見えて誰も読まない」死んだ設定の温床になっていた。
 // プラン表示名は funnel_copy（/admin/preview）、SLAは lib/plan-sla.ts が正。
+
+/**
+ * いまログイン中の人に無料トライアルが付くか。
+ *
+ * トライアル権は **person 単位**（メイトを増やすたびに無料になる穴を塞ぐため）。
+ * 画面のCTA・注記はこの値で切り替える。「◯日間無料」と書いてあるのに
+ * 実際は即課金、という表示と請求の食い違いを防ぐ
+ * （表示と確定は同じ判定を使う＝[共有関数1つ]）。
+ */
+export async function isTrialAvailableForCurrentUser(): Promise<boolean> {
+  try {
+    const user = await getUserFromServerCookies();
+    if (!user.ok) return true; // 未ログイン（新規想定）は従来どおりトライアル前提で見せる
+
+    const supabase = createAdminSupabaseClient();
+    let personId: string | null = null;
+    if (user.endUserId) {
+      personId = await getPersonIdForEndUser(supabase, user.endUserId);
+    } else if (user.lineUserId) {
+      const rows = await getRelationshipsByLineUserId(supabase, user.lineUserId);
+      personId = rows[0]?.personId ?? null;
+    }
+    if (!personId) return true;
+
+    return !(await hasPersonUsedTrial(supabase, personId));
+  } catch (err) {
+    logger.warn("isTrialAvailableForCurrentUser failed, assuming available", {
+      error: err instanceof Error ? err.message : "unknown",
+    });
+    return true;
+  }
+}

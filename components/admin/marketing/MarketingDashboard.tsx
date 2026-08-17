@@ -40,11 +40,61 @@ export async function MarketingDashboard({ summary }: MarketingDashboardProps) {
         <KpiCard
           label="推定MRR（税込）"
           value={formatYen(summary.estimatedMrrJpy)}
-          note={`${summary.activeUsers} active・ユーザーの支払い額ベース`}
+          note={`${summary.activeUsers}契約・ユーザーの支払い額ベース`}
         />
-        <KpiCard label="ARPU（税込）" value={formatYen(summary.arpuJpy)} note="推定MRR / active人数" />
-        <KpiCard label="LTV近似（税込）" value={formatYen(summary.ltvApproxJpy)} note="ARPU / 月次解約率" />
+        {/* 複数メイト契約では「契約数 ≠ 人数」。どちらの母数かをラベルで明示する
+            （明示しないと、追加契約が増えるほど1人あたりの支払いが実態より小さく見える）。 */}
+        <KpiCard
+          label="ARPU（1契約あたり・税込）"
+          value={formatYen(summary.arpuJpy)}
+          note="推定MRR / 契約数"
+        />
+        <KpiCard
+          label="LTV近似（1契約あたり・税込）"
+          value={formatYen(summary.ltvApproxJpy)}
+          note="ARPU / 月次解約率"
+        />
         <KpiCard label="平均リードタイム" value={formatDays(summary.avgLeadTimeDays)} note="LINE追加 → 契約" />
+      </div>
+
+      {/* 人（person）単位。複数メイト契約の効果測定 */}
+      <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-5">
+        <div>
+          <h2 className="text-sm font-bold text-stone-800">1人あたりの状況（複数メイト契約）</h2>
+          <p className="mt-0.5 text-xs text-stone-500">
+            同じ方が複数のメイトと契約できるため、契約数と実人数は一致しません。ここは
+            <strong className="font-semibold text-stone-700">実人数</strong>を母数にした指標です。金額は税込。
+          </p>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            label="実人数"
+            value={summary.personCount}
+            note={`${summary.activeUsers}契約を利用中`}
+          />
+          <KpiCard
+            label="複数メイト率"
+            value={formatRate(summary.multiMateRatio)}
+            note={`${summary.multiMatePersonCount}人が2人以上と契約`}
+          />
+          <KpiCard
+            label="ARPU（1人あたり・税込）"
+            value={formatYen(summary.arpuPerPersonJpy)}
+            note="推定MRR / 実人数"
+          />
+          <KpiCard
+            label="LTV近似（1人あたり・税込）"
+            value={formatYen(summary.ltvPerPersonJpy)}
+            note="1人あたりARPU / 月次解約率"
+          />
+        </div>
+        <p className="mt-3 text-xs text-stone-500">
+          1人あたりの平均契約メイト数:{" "}
+          <strong className="font-semibold text-stone-700">
+            {summary.avgMatesPerPerson === null ? "-" : summary.avgMatesPerPerson.toFixed(2)}
+          </strong>
+          人。この数値と複数メイト率が上がるほど、1人あたりのLTVが伸びています。
+        </p>
       </div>
 
       <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-5">

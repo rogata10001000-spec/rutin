@@ -76,9 +76,32 @@ export async function notifyOperatorsOfNewMember(
 
     const { data: member } = await supabase
       .from("end_users")
-      .select("nickname, line_display_name")
+      .select("nickname, line_display_name, person_id, assigned_cast_id")
       .eq("id", params.endUserId)
       .maybeSingle();
+
+    // 同じ人が何人目のメイトを契約したかを数える（新規獲得と追加契約を区別して見るため）。
+    // 追加契約はLTVの伸びを示す指標なので、通知の時点で分かるようにする。
+    let mateCount = 1;
+    if (member?.person_id) {
+      const { data: liveRows } = await supabase
+        .from("subscriptions")
+        .select("end_users!inner(person_id, assigned_cast_id)")
+        .eq("end_users.person_id", member.person_id)
+        .in("status", ["trial", "active", "past_due", "paused"]);
+      const castIds = new Set(
+        (liveRows ?? [])
+          .map(
+            (r) =>
+              (r as unknown as { end_users: { assigned_cast_id: string | null } }).end_users
+                ?.assigned_cast_id
+          )
+          .filter((v): v is string => Boolean(v))
+      );
+      // このイベントのメイトがまだ集計に入っていない場合（同期タイミング差）を吸収
+      if (member.assigned_cast_id) castIds.add(member.assigned_cast_id);
+      mateCount = Math.max(1, castIds.size);
+    }
 
     const name = resolveMemberName(member?.nickname ?? null, member?.line_display_name ?? null);
     // プラン名は /admin/preview で改名できるため、通知文でも設定値を正とする
@@ -92,8 +115,11 @@ export async function notifyOperatorsOfNewMember(
       minute: "2-digit",
     });
 
+    const isAdditional = mateCount > 1;
     const message =
-      `🎉 新しい会員が登録されました\n\n` +
+      (isAdditional
+        ? `🎉 追加でメイトを契約されました（${mateCount}人目）\n\n`
+        : `🎉 新しい会員が登録されました\n\n`) +
       `お名前: ${name}さん\n` +
       `プラン: ${plan}\n` +
       `区分: ${kind}\n` +

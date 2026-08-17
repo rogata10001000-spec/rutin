@@ -9,6 +9,8 @@ import {
   checkoutErrorCodeFromResult,
   getCheckoutErrorMessage,
 } from "@/lib/subscribe-checkout-errors";
+import { parseSubscribeMode } from "@/lib/subscribe-paths";
+import { isTrialAvailableForCurrentUser } from "@/actions/subscriptions";
 import { getTrialPeriodDays, isTrialEligiblePlan, formatYen } from "@/lib/trial";
 import { getFunnelCopyValues } from "@/lib/funnel-copy";
 import { renderFunnelCopy } from "@/lib/funnel-copy-defs";
@@ -26,6 +28,8 @@ type PageProps = {
     canceled?: string;
     interval?: string;
     preview?: string;
+    /** add = 追加契約 */
+    mode?: string;
   }>;
 };
 
@@ -34,13 +38,19 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
   const castId = params?.castId;
   // 管理画面プレビュー（下書き文言を優先表示）
   const isPreview = params?.preview === "1";
+  const mode = parseSubscribeMode(params?.mode);
   const castBackUrl = buildSubscribeCastUrl({
     gender: params?.gender,
     canceled: params?.canceled,
     preview: params?.preview,
+    mode: mode === "add" ? "add" : undefined,
   });
   const checkoutErrorMessage = getCheckoutErrorMessage(params?.checkoutError);
   const trialDays = getTrialPeriodDays();
+  // トライアルの有無は「モード」ではなく「実際に付与されるか」で決める。
+  // 追加契約はもちろん、解約後の再契約でも2回目以降は付かないため、
+  // ここを mode で分けると「◯日間無料」と書いてあるのに即課金、の食い違いになる。
+  const trialAvailable = await isTrialAvailableForCurrentUser();
 
   if (!castId) {
     return (
@@ -157,6 +167,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
     if (params?.gender) qs.set("gender", params.gender);
     if (params?.canceled) qs.set("canceled", params.canceled);
     if (params?.preview) qs.set("preview", params.preview);
+    if (params?.mode) qs.set("mode", params.mode);
     redirect(`/subscribe/plan?${qs.toString()}`);
   }
 
@@ -167,6 +178,7 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
     if (params?.gender) qs.set("gender", params.gender);
     if (params?.canceled) qs.set("canceled", params.canceled);
     if (params?.preview) qs.set("preview", params.preview);
+    if (params?.mode) qs.set("mode", params.mode);
     qs.set("interval", iv);
     return `/subscribe/plan?${qs.toString()}`;
   };
@@ -208,12 +220,20 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
               担当: {cast.displayName}
             </div>
             <p className="text-sm leading-relaxed text-[#2D241E]">
-              {interval === "year"
-                ? renderFunnelCopy(copy["plan.notice.annualHero"], { days: trialDays })
-                : renderFunnelCopy(copy["plan.notice.trial"], {
-                    days: trialDays,
-                    price: `月額${formatYen(cast.prices.standard)}`,
-                  })}
+              {/* トライアル権が無い人（追加契約・再契約）には無料をうたわない */}
+              {!trialAvailable
+                ? renderFunnelCopy(copy["plan.notice.notrial"], {
+                    price:
+                      interval === "year"
+                        ? `年額${formatYen(cast.annualPrices.standard)}`
+                        : `月額${formatYen(cast.prices.standard)}`,
+                  })
+                : interval === "year"
+                  ? renderFunnelCopy(copy["plan.notice.annualHero"], { days: trialDays })
+                  : renderFunnelCopy(copy["plan.notice.trial"], {
+                      days: trialDays,
+                      price: `月額${formatYen(cast.prices.standard)}`,
+                    })}
             </p>
           </div>
         </div>
@@ -266,12 +286,18 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
             const priceSuffix = isAnnual ? "/年" : "/月";
             const monthlyEquivalent = isAnnual ? Math.round(price / 12) : null;
             // {price} には 月額/年額 の接頭辞込みの表記を渡す（デフォルト文言の前提）
+            // 年額は全プランにトライアルが付くが、いずれも「トライアル権が残っている人」だけ。
+            const withTrial = trialAvailable && (isAnnual || isTrialEligiblePlan(planCode));
             const notice = isAnnual
-              ? renderFunnelCopy(copy["plan.notice.annualCard"], {
-                  days: trialDays,
-                  price: `年額${formatYen(price)}`,
-                })
-              : isTrialEligiblePlan(planCode)
+              ? withTrial
+                ? renderFunnelCopy(copy["plan.notice.annualCard"], {
+                    days: trialDays,
+                    price: `年額${formatYen(price)}`,
+                  })
+                : renderFunnelCopy(copy["plan.notice.notrial"], {
+                    price: `年額${formatYen(price)}`,
+                  })
+              : withTrial
                 ? renderFunnelCopy(copy["plan.notice.trial"], {
                     days: trialDays,
                     price: `月額${formatYen(price)}`,
@@ -279,11 +305,9 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                 : renderFunnelCopy(copy["plan.notice.notrial"], {
                     price: `月額${formatYen(price)}`,
                   });
-            // 年額は全プランにトライアルが付くため常にトライアル文言
-            const buttonLabel =
-              isAnnual || isTrialEligiblePlan(planCode)
-                ? renderFunnelCopy(copy["plan.cta.trial"], { days: trialDays })
-                : copy["plan.cta.notrial"];
+            const buttonLabel = withTrial
+              ? renderFunnelCopy(copy["plan.cta.trial"], { days: trialDays })
+              : copy["plan.cta.notrial"];
             const isRecommended = planCode === recommendedPlan;
 
             return (

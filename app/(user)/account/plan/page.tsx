@@ -1,11 +1,11 @@
-import { getMySubscription } from "@/actions/subscription-management";
-import { PlanManager } from "@/components/user/PlanManager";
+import { getMySubscriptions } from "@/actions/subscription-management";
+import { MyContracts } from "@/components/user/MyContracts";
 import { SUBSCRIBE_PATHS } from "@/lib/subscribe-paths";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountPlanPage() {
-  const result = await getMySubscription();
+  const result = await getMySubscriptions();
 
   if (!result.ok) {
     const needsLogin = result.error.code === "UNAUTHORIZED";
@@ -25,7 +25,7 @@ export default async function AccountPlanPage() {
     );
   }
 
-  if (!result.data.hasSubscription || !result.data.subscription) {
+  if (result.data.subscriptions.length === 0) {
     return (
       <div className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
         <h1 className="text-lg font-bold text-stone-800">ご契約中のプランはありません</h1>
@@ -42,5 +42,5 @@ export default async function AccountPlanPage() {
     );
   }
 
-  return <PlanManager subscription={result.data.subscription} />;
+  return <MyContracts data={result.data} />;
 }

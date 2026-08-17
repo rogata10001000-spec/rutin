@@ -21,7 +21,7 @@ import {
   getLineAccountForCast,
   type ResolvedLineAccount,
 } from "@/lib/line-accounts";
-import { shouldRejectAsWrongMate, shouldSwitchPrimaryAccount } from "@/lib/mate-routing";
+import { shouldSwitchPrimaryAccount } from "@/lib/mate-routing";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { withWebhookIdempotency } from "@/lib/webhook";
 import { writeAuditLog } from "@/lib/audit";
@@ -36,12 +36,17 @@ import {
 } from "@/lib/push-notifications";
 import { applyAcquisitionToEndUser } from "@/lib/acquisition";
 import {
-  ensureIncompleteEndUser,
   sendLineUncontractedOnboarding,
   syncLineProfileToEndUser,
 } from "@/lib/line-onboarding";
 import { buildAccountPlanUrl } from "@/lib/subscribe-paths";
 import { recordSubscriptionLifecycleEvent } from "@/lib/subscription-lifecycle";
+import {
+  ensureInboundRelationship,
+  getLiveContractedCastIds,
+  getRelationshipsByLineUserId,
+} from "@/lib/person";
+import { pickRelationshipRow } from "@/lib/relationship-routing";
 
 type LineFollowEvent = {
   type: "follow";
@@ -149,20 +154,22 @@ async function replyUncontractedGuide(
 }
 
 /**
- * 契約者が担当外メイトのアカウントへ送ってきたときの案内。
- * 担当スレッドへ黙って混ぜると「Bのアカウントに書いた内容が担当メイトAに見える／
- * Aの返信がB名義で届く」事故になるため（1ユーザー=1メイト仕様）、
- * 保存・通知はせず、担当メイトとのトークへ誘導する（reply API=無料枠を消費しない）。
- * 案内は last_guide_sent_at で GUIDE_THROTTLE_MS の連投防止をかける。
+ * 既に別のメイトと契約中の人が、まだ契約していないメイトへ連絡してきたときの案内。
+ *
+ * 以前はこのケースを「担当外メイトへの誤送信」として弾いていたが、
+ * 複数メイト契約に対応した今は**追加契約の機会**なので、そのメイトを追加できると案内する。
+ * 新規向けの勧誘文言をそのまま出すと「もう払っているのに」と受け取られるため文言を分ける。
+ *
+ * 保存・スタッフ通知はしない（まだこのメイトとの契約はないため）。
+ * reply API を使うので無料メッセージ枠を消費しない。連投は last_guide_sent_at で抑制する。
  */
-async function replyWrongMateGuide(
+async function replyAddMateGuide(
   supabase: SupabaseAdmin,
   account: ResolvedLineAccount,
   params: {
     endUserId: string;
     lineUserId: string;
     replyToken: string;
-    assignedCastId: string;
     lastGuideSentAt: string | null;
   }
 ): Promise<void> {
@@ -174,17 +181,12 @@ async function replyWrongMateGuide(
   }
 
   try {
-    // 誘導先: 担当メイトの個別アカウント。無ければ共通Rutin公式LINE。
-    const mateAccount = await getLineAccountForCast(params.assignedCastId, supabase);
-    const target = mateAccount ?? (await getDefaultLineAccount(supabase));
-
     const lines = [
-      "メッセージありがとうございます。こちらのアカウントではお返事ができません。",
-      `いつもの「${target.name}」とのトークからメッセージをお送りください。`,
+      "メッセージありがとうございます。",
+      `${account.name}とのご契約はまだお持ちでないため、このトークではお返事ができません。`,
+      "マイページから追加でご契約いただくと、この場でやり取りできるようになります。",
+      `${buildAccountPlanUrl(generateUserToken(params.lineUserId))}（リンクは30分間有効です）`,
     ];
-    if (target.friendAddUrl) {
-      lines.push(`友だち追加がまだの場合はこちらから:\n${target.friendAddUrl}`);
-    }
 
     await replyMessages(account.credentials, params.replyToken, [
       { type: "text", text: lines.join("\n") },
@@ -194,7 +196,7 @@ async function replyWrongMateGuide(
       .update({ last_guide_sent_at: new Date().toISOString() })
       .eq("id", params.endUserId);
   } catch (err) {
-    logger.warn("LINE wrong-mate guide reply failed", {
+    logger.warn("LINE add-mate guide reply failed", {
       lineUserId: params.lineUserId,
       endUserId: params.endUserId,
       error: err instanceof Error ? err.message : "unknown",
@@ -551,18 +553,29 @@ export async function handleLineWebhook(
 
     // ブロック済みユーザーは一切処理しない（保存・通知・案内・プロフィール同期すべてしない）。
     // 拡散されたメイトLINEを荒らす相手を運用側で完全に遮断するための関門。
-    const { data: blockState } = await supabase
+    //
+    // 複数メイト対応で同じUIDに複数の関係行がありうるため maybeSingle は使えない
+    // （2行目ができた瞬間にエラーで全イベントが落ちる）。ブロックは人単位の判断なので
+    // 「1行でもブロックされていれば遮断」でよい。
+    const { data: blockedRows } = await supabase
       .from("end_users")
-      .select("is_blocked")
+      .select("id")
       .eq("line_user_id", lineUserId)
-      .maybeSingle();
-    if (blockState?.is_blocked) {
+      .eq("is_blocked", true)
+      .limit(1);
+    if ((blockedRows?.length ?? 0) > 0) {
       continue;
     }
 
     if (event.type === "follow") {
       const result = await withWebhookIdempotency("line", eventId, "follow", async () => {
-        const user = await ensureIncompleteEndUser(supabase, lineUserId, DEFAULT_PLAN_CODE);
+        // 受信した公式アカウントの担当メイトで着地先の関係行を決める
+        // （複数メイト契約では UID だけでは行が一意に決まらない）。
+        const user = await ensureInboundRelationship(supabase, {
+          lineUserId,
+          accountCastId: account.castId,
+          planCode: DEFAULT_PLAN_CODE,
+        });
         const followedAt = new Date(event.timestamp).toISOString();
 
         await supabase
@@ -682,11 +695,14 @@ export async function handleLineWebhook(
       }
       if (isMenuSelectMateCommand) {
         const cmd = await withWebhookIdempotency("line", eventId, "menu_select_mate", async () => {
-          const { data: menuUser } = await supabase
-            .from("end_users")
-            .select("status")
-            .eq("line_user_id", lineUserId)
-            .maybeSingle();
+          // 「このメイトと契約済みか」で判定する。別メイトと契約中でも、
+          // このメイトはまだ契約していないなら追加契約の案内を出してよい。
+          const menuRows = await getRelationshipsByLineUserId(supabase, lineUserId);
+          const menuPicked = pickRelationshipRow(
+            menuRows.map((r) => ({ id: r.endUserId, assignedCastId: r.assignedCastId })),
+            account.castId
+          );
+          const menuUser = menuRows.find((r) => r.endUserId === menuPicked?.id) ?? null;
 
           const isContracted =
             menuUser && !CONTRACTED_STATUSES_EXCLUDED.includes(menuUser.status as never);
@@ -721,13 +737,22 @@ export async function handleLineWebhook(
       }
 
       const result = await withWebhookIdempotency("line", eventId, "message", async () => {
-        const { data: existing } = await supabase
-          .from("end_users")
-          .select(
-            "id, status, nickname, line_profile_synced_at, last_guide_sent_at, assigned_cast_id, primary_line_account_id"
-          )
-          .eq("line_user_id", lineUserId)
-          .maybeSingle();
+        // 着地先の関係行を「受信した公式アカウントの担当メイト」で決める。
+        // UIDだけで引くと、複数メイト契約時にどちらのトークに保存されるか不定になる。
+        const relationshipRows = await getRelationshipsByLineUserId(supabase, lineUserId);
+        const pickedRow = pickRelationshipRow(
+          relationshipRows.map((r) => ({ id: r.endUserId, assignedCastId: r.assignedCastId })),
+          account.castId
+        );
+        const { data: existing } = pickedRow
+          ? await supabase
+              .from("end_users")
+              .select(
+                "id, status, nickname, line_profile_synced_at, last_guide_sent_at, assigned_cast_id, primary_line_account_id"
+              )
+              .eq("id", pickedRow.id)
+              .maybeSingle()
+          : { data: null };
 
         // ユーザー行の解決（無ければ作成）。follow を取りこぼした初回メッセージでも
         // ファネル計上と案内のために行は用意する。会話自体の保存は契約状態で判断する。
@@ -737,6 +762,10 @@ export async function handleLineWebhook(
         let assignedCastId: string | null = null;
         let primaryLineAccountId: string | null = null;
         let isNew = false;
+        // 追加契約の案内判定（この人が他メイトと契約中か）に使う
+        let personId: string | null = pickedRow
+          ? relationshipRows.find((r) => r.endUserId === pickedRow.id)?.personId ?? null
+          : null;
 
         if (existing) {
           userId = existing.id;
@@ -752,11 +781,16 @@ export async function handleLineWebhook(
             lastSyncedAt: existing.line_profile_synced_at,
           });
         } else {
-          const createdUser = await ensureIncompleteEndUser(supabase, lineUserId, DEFAULT_PLAN_CODE);
+          const createdUser = await ensureInboundRelationship(supabase, {
+            lineUserId,
+            accountCastId: account.castId,
+            planCode: DEFAULT_PLAN_CODE,
+          });
           userId = createdUser.id;
           status = "incomplete";
           lastGuideSentAt = null;
           isNew = createdUser.isNew;
+          personId = createdUser.personId;
 
           const firstContactAt = new Date(event.timestamp).toISOString();
           await supabase
@@ -797,6 +831,24 @@ export async function handleLineWebhook(
         // 未契約（incomplete / canceled）ユーザーの連絡は受け付けない。
         // 保存・画像取得・スタッフ通知を行わず、契約への案内のみ返す（＝管理画面にも出ない）。
         if (isUncontractedStatus(status)) {
+          // 別のメイトと契約中の人がこのメイトへ連絡してきた場合は、
+          // 初回の勧誘ではなく「このメイトを追加で契約できます」の案内にする
+          // （既に払っている人に新規向けの文言を出すと不信になる）。
+          const otherLiveCastIds = personId
+            ? await getLiveContractedCastIds(supabase, personId).catch(() => [])
+            : [];
+          const isExistingCustomer = otherLiveCastIds.length > 0;
+
+          if (isExistingCustomer) {
+            await replyAddMateGuide(supabase, account, {
+              endUserId: userId,
+              lineUserId,
+              replyToken: event.replyToken,
+              lastGuideSentAt,
+            });
+            return { uncontracted: true, addMateInvited: true as const, userId };
+          }
+
           if (isNew) {
             // 初回接触は welcome + リッチメニューで迎える（follow 取りこぼしの保険）。
             await sendLineUncontractedOnboarding(
@@ -822,30 +874,10 @@ export async function handleLineWebhook(
           return { uncontracted: true, userId };
         }
 
-        // 契約者が担当外メイトのアカウントへ送った場合は担当スレッドへ混ぜない
-        // （1ユーザー=1メイト仕様。Bのアカウントに書いた内容が担当メイトAにだけ見え、
-        //  Bには一切見えない「静かな混線」になるため）。保存・画像取得・通知を行わず、
-        //  担当メイトとのトークへ案内する。共通Rutin公式LINEは全員の窓口なので対象外。
-        //
-        // 判定ルールは lib/mate-routing.ts に集約している（単体テストで固定）。
-        if (
-          shouldRejectAsWrongMate({
-            accountId: account.id,
-            accountCastId: account.castId,
-            isDefaultAccount: account.isDefault,
-            assignedCastId,
-            primaryLineAccountId,
-          })
-        ) {
-          await replyWrongMateGuide(supabase, account, {
-            endUserId: userId,
-            lineUserId,
-            replyToken: event.replyToken,
-            assignedCastId,
-            lastGuideSentAt,
-          });
-          return { uncontracted: false, wrongMate: true as const, userId };
-        }
+        // 「担当外メイトへの誤送信」の弾き出しは不要になった。
+        // 着地先の関係行を「受信した公式アカウントの担当メイト」で解決するようになったため、
+        // メイトBへ送ったメッセージがメイトAのトークに混ざることは構造的に起きない
+        // （pickRelationshipRow が契約中メイトの行を返すのは accountCastId が一致するときだけ）。
 
         // 契約者（trial / active / past_due / paused）は従来どおり受信・保存する。
         const content = await resolveInboundContent(supabase, account, userId, inboundMessage);
@@ -916,11 +948,13 @@ export async function handleLineWebhook(
             postbackData.date ||
             new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
 
-          const { data: user } = await supabase
-            .from("end_users")
-            .select("id")
-            .eq("line_user_id", lineUserId)
-            .maybeSingle();
+          // チェックインは「そのメイトとの関係」に記録する（複数メイトで取り違えない）
+          const checkinRows = await getRelationshipsByLineUserId(supabase, lineUserId);
+          const checkinPicked = pickRelationshipRow(
+            checkinRows.map((r) => ({ id: r.endUserId, assignedCastId: r.assignedCastId })),
+            account.castId
+          );
+          const user = checkinPicked ? { id: checkinPicked.id } : null;
 
           if (!user) {
             logger.warn("LINE checkin: user not found", { lineUserId });
@@ -995,15 +1029,12 @@ export async function handleLineWebhook(
           eventId,
           "postback_manage_subscription",
           async () => {
-            const { data: user } = await supabase
-              .from("end_users")
-              .select("id, status")
-              .eq("line_user_id", lineUserId)
-              .maybeSingle();
-
-            // 契約者以外（未契約・解約済み）は新規契約導線へ案内
-            const isContracted =
-              user && !CONTRACTED_STATUSES_EXCLUDED.includes(user.status as never);
+            // マイページは「その人のすべての契約」を扱うため、
+            // どれか1つでも契約中なら契約者として案内する（人単位の判定）。
+            const manageRows = await getRelationshipsByLineUserId(supabase, lineUserId);
+            const isContracted = manageRows.some(
+              (r) => !CONTRACTED_STATUSES_EXCLUDED.includes(r.status as never)
+            );
 
             if (!isContracted) {
               await sendSubscribeGuideFlexMessage(

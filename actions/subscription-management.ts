@@ -33,6 +33,13 @@ import {
   type CancelSubscriptionInput,
 } from "@/schemas/subscription-management";
 import type { PlanCode, SubscriptionStatus } from "@/lib/supabase/types";
+import {
+  getLiveContractedCastIds,
+  getRelationshipsByLineUserId,
+  getRelationshipsByPerson,
+  LIVE_SUBSCRIPTION_STATUSES,
+} from "@/lib/person";
+import { MAX_CONCURRENT_MATES } from "@/lib/relationship-routing";
 
 // 操作可能なステータス（解約済み・未契約は不可）
 const MANAGEABLE_STATUSES: SubscriptionStatus[] = ["trial", "active", "past_due", "paused"];
@@ -69,6 +76,7 @@ export type GetMySubscriptionResult = Result<{
 }>;
 
 type ResolvedContext = {
+  personId: string;
   endUserId: string;
   lineUserId: string;
   subscription: {
@@ -89,12 +97,64 @@ type ResolvedContext = {
   trialEndAt: string | null;
 };
 
+type PersonScope =
+  | {
+      ok: true;
+      personId: string;
+      lineUserId: string | null;
+      /** この人が持つ関係行（メイトごとに1行） */
+      endUserIds: string[];
+    }
+  | { ok: false; code: "UNAUTHORIZED" | "NOT_FOUND"; message: string };
+
+/**
+ * Cookie の本人情報から「人（person）」とその関係行をすべて解決する。
+ *
+ * 複数メイト契約に対応したため、1人が複数の end_users 行を持つ。
+ * `.eq("line_user_id", uid).maybeSingle()` は2行目ができた瞬間に壊れるため使わない。
+ */
+async function resolvePersonScope(
+  supabase: ReturnType<typeof createAdminSupabaseClient>,
+  user: { endUserId?: string | null; lineUserId?: string | null }
+): Promise<PersonScope> {
+  let personId: string | null = null;
+  let lineUserId: string | null = user.lineUserId ?? null;
+
+  if (user.endUserId) {
+    const { data } = await supabase
+      .from("end_users")
+      .select("person_id, line_user_id")
+      .eq("id", user.endUserId)
+      .maybeSingle();
+    personId = data?.person_id ?? null;
+    lineUserId = lineUserId ?? data?.line_user_id ?? null;
+  } else if (user.lineUserId) {
+    const rows = await getRelationshipsByLineUserId(supabase, user.lineUserId);
+    personId = rows[0]?.personId ?? null;
+  } else {
+    return { ok: false, code: "UNAUTHORIZED", message: "ログインが必要です。" };
+  }
+
+  if (!personId) {
+    return { ok: false, code: "NOT_FOUND", message: "契約情報が見つかりません。" };
+  }
+
+  const relationships = await getRelationshipsByPerson(supabase, personId);
+  return {
+    ok: true,
+    personId,
+    lineUserId: lineUserId ?? relationships.find((r) => r.lineUserId)?.lineUserId ?? null,
+    endUserIds: relationships.map((r) => r.endUserId),
+  };
+}
+
 /**
  * Cookie の LINE トークンから、本人の最新サブスク文脈を解決する。
  * 解約済み/未契約や、本人以外の契約は操作対象にしない。
  */
 async function resolveCurrentUserSubscription(
-  supabase: ReturnType<typeof createAdminSupabaseClient>
+  supabase: ReturnType<typeof createAdminSupabaseClient>,
+  targetEndUserId?: string
 ): Promise<
   | { ok: true; ctx: ResolvedContext; code?: undefined; message?: undefined }
   | { ok: false; ctx?: undefined; code: "UNAUTHORIZED" | "NOT_FOUND"; message: string }
@@ -111,34 +171,45 @@ async function resolveCurrentUserSubscription(
     };
   }
 
-  // 本人解決は end_user_id を優先、無ければ line_user_id でフォールバック
-  let endUserQuery = supabase
-    .from("end_users")
-    .select("id, line_user_id, assigned_cast_id, trial_end_at");
-  if (user.endUserId) {
-    endUserQuery = endUserQuery.eq("id", user.endUserId);
-  } else if (user.lineUserId) {
-    endUserQuery = endUserQuery.eq("line_user_id", user.lineUserId);
-  } else {
-    return { ok: false, code: "UNAUTHORIZED", message: "ログインが必要です。" };
+  // 複数メイト契約に対応したため、本人（person）の関係行は複数ありうる。
+  // どの契約を操作するかは targetEndUserId で明示し、未指定なら最新のライブ契約を選ぶ。
+  const scope = await resolvePersonScope(supabase, user);
+  if ("code" in scope) {
+    return { ok: false, code: scope.code, message: scope.message };
   }
-  const { data: endUser } = await endUserQuery.maybeSingle();
 
-  if (!endUser) {
+  // 他人の契約を操作させない（Cookie の本人が持つ関係行だけを対象にする）
+  if (targetEndUserId && !scope.endUserIds.includes(targetEndUserId)) {
+    return { ok: false, code: "NOT_FOUND", message: "ご契約情報が見つかりません。" };
+  }
+
+  const targetIds = targetEndUserId ? [targetEndUserId] : scope.endUserIds;
+
+  const { data: subscriptions } = await supabase
+    .from("subscriptions")
+    .select(
+      "id, end_user_id, stripe_subscription_id, stripe_customer_id, status, plan_code, applied_stripe_price_id, billing_interval, current_period_end, cancel_at_period_end"
+    )
+    .in("end_user_id", targetIds)
+    .order("created_at", { ascending: false });
+
+  // ライブ契約を優先して選ぶ（解約済みが最新でも、操作対象は生きている契約）
+  const subscription =
+    (subscriptions ?? []).find((row) =>
+      (LIVE_SUBSCRIPTION_STATUSES as readonly string[]).includes(row.status)
+    ) ?? (subscriptions ?? [])[0];
+
+  if (!subscription) {
     return { ok: false, code: "NOT_FOUND", message: "契約情報が見つかりません。" };
   }
 
-  const { data: subscription } = await supabase
-    .from("subscriptions")
-    .select(
-      "id, stripe_subscription_id, stripe_customer_id, status, plan_code, applied_stripe_price_id, billing_interval, current_period_end, cancel_at_period_end"
-    )
-    .eq("end_user_id", endUser.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
+  const { data: endUser } = await supabase
+    .from("end_users")
+    .select("id, line_user_id, assigned_cast_id, trial_end_at")
+    .eq("id", subscription.end_user_id)
     .maybeSingle();
 
-  if (!subscription) {
+  if (!endUser) {
     return { ok: false, code: "NOT_FOUND", message: "契約情報が見つかりません。" };
   }
 
@@ -155,6 +226,7 @@ async function resolveCurrentUserSubscription(
   return {
     ok: true,
     ctx: {
+      personId: scope.personId,
       endUserId: endUser.id,
       lineUserId: endUser.line_user_id,
       subscription: {
@@ -179,9 +251,11 @@ async function resolveCurrentUserSubscription(
  * 契約・プランページ表示用のデータ取得
  * 権限: LINE 案内リンクから入った本人のみ
  */
-export async function getMySubscription(): Promise<GetMySubscriptionResult> {
+export async function getMySubscription(input?: {
+  endUserId?: string;
+}): Promise<GetMySubscriptionResult> {
   const supabase = createAdminSupabaseClient();
-  const resolved = await resolveCurrentUserSubscription(supabase);
+  const resolved = await resolveCurrentUserSubscription(supabase, input?.endUserId);
 
   if (!resolved.ok) {
     if (resolved.code === "NOT_FOUND") {
@@ -282,6 +356,8 @@ export type ChangeMyPlanResult = Result<{ planCode: PlanCode }>;
  */
 export async function changeMyPlan(input: {
   planCode: PlanCode;
+  /** 操作対象の契約（複数メイト契約時に必須。未指定なら最新のライブ契約） */
+  endUserId?: string;
 }): Promise<ChangeMyPlanResult> {
   const parsed = changePlanSchema.safeParse(input);
   if (!parsed.success) {
@@ -292,7 +368,7 @@ export async function changeMyPlan(input: {
   }
 
   const supabase = createAdminSupabaseClient();
-  const resolved = await resolveCurrentUserSubscription(supabase);
+  const resolved = await resolveCurrentUserSubscription(supabase, input?.endUserId);
   if (!resolved.ok) {
     return { ok: false, error: { code: resolved.code, message: resolved.message } };
   }
@@ -451,7 +527,7 @@ export async function cancelMySubscription(
   const reasonDetail = parsed.data.reasonDetail?.trim() || null;
 
   const supabase = createAdminSupabaseClient();
-  const resolved = await resolveCurrentUserSubscription(supabase);
+  const resolved = await resolveCurrentUserSubscription(supabase, input?.endUserId);
   if (!resolved.ok) {
     return { ok: false, error: { code: resolved.code, message: resolved.message } };
   }
@@ -559,9 +635,11 @@ export type ResumeMySubscriptionResult = Result<{ resumed: boolean }>;
  * 解約予定を取り消す（cancel_at_period_end = false）
  * 権限: LINE 案内リンクから入った本人のみ
  */
-export async function resumeMySubscription(): Promise<ResumeMySubscriptionResult> {
+export async function resumeMySubscription(
+  input?: { endUserId?: string }
+): Promise<ResumeMySubscriptionResult> {
   const supabase = createAdminSupabaseClient();
-  const resolved = await resolveCurrentUserSubscription(supabase);
+  const resolved = await resolveCurrentUserSubscription(supabase, input?.endUserId);
   if (!resolved.ok) {
     return { ok: false, error: { code: resolved.code, message: resolved.message } };
   }
@@ -653,9 +731,11 @@ export type PauseMySubscriptionResult = Result<{ paused: boolean }>;
  * 請求を一時停止する（解約防止の代替策）。Stripe pause_collection(void) を設定。
  * 権限: LINE 案内リンクから入った本人のみ
  */
-export async function pauseMySubscription(): Promise<PauseMySubscriptionResult> {
+export async function pauseMySubscription(
+  input?: { endUserId?: string }
+): Promise<PauseMySubscriptionResult> {
   const supabase = createAdminSupabaseClient();
-  const resolved = await resolveCurrentUserSubscription(supabase);
+  const resolved = await resolveCurrentUserSubscription(supabase, input?.endUserId);
   if (!resolved.ok) {
     return { ok: false, error: { code: resolved.code, message: resolved.message } };
   }
@@ -738,9 +818,11 @@ export type ResumePausedSubscriptionResult = Result<{ status: SubscriptionStatus
  * 一時停止を解除して再開する。pause_collection を解除し、Stripe の最新ステータスに同期。
  * 権限: LINE 案内リンクから入った本人のみ
  */
-export async function resumeMyPausedSubscription(): Promise<ResumePausedSubscriptionResult> {
+export async function resumeMyPausedSubscription(
+  input?: { endUserId?: string }
+): Promise<ResumePausedSubscriptionResult> {
   const supabase = createAdminSupabaseClient();
-  const resolved = await resolveCurrentUserSubscription(supabase);
+  const resolved = await resolveCurrentUserSubscription(supabase, input?.endUserId);
   if (!resolved.ok) {
     return { ok: false, error: { code: resolved.code, message: resolved.message } };
   }
@@ -809,9 +891,11 @@ export type BillingPortalResult = Result<{ url: string }>;
  * 支払い方法の更新などができる Stripe カスタマーポータルのURLを発行する（支払い失敗リカバリ）。
  * 権限: LINE 案内リンクから入った本人のみ
  */
-export async function createMyBillingPortalSession(): Promise<BillingPortalResult> {
+export async function createMyBillingPortalSession(
+  input?: { endUserId?: string }
+): Promise<BillingPortalResult> {
   const supabase = createAdminSupabaseClient();
-  const resolved = await resolveCurrentUserSubscription(supabase);
+  const resolved = await resolveCurrentUserSubscription(supabase, input?.endUserId);
   if (!resolved.ok) {
     return { ok: false, error: { code: resolved.code, message: resolved.message } };
   }
@@ -840,4 +924,119 @@ export async function createMyBillingPortalSession(): Promise<BillingPortalResul
       error: { code: "EXTERNAL_API_ERROR", message: "お支払い管理ページを開けませんでした。" },
     };
   }
+}
+
+// =====================================================
+// 複数メイト契約: マイページ用の一覧取得
+// =====================================================
+
+export type AvailableMate = {
+  castId: string;
+  displayName: string;
+  photoUrl: string | null;
+};
+
+export type MySubscriptionsView = {
+  /** 契約ごと（メイトごと）のカード。ライブ契約のみ */
+  subscriptions: (MySubscriptionView & { endUserId: string })[];
+  /** 追加契約できるメイトが残っているか（CTAの表示可否） */
+  canAddMate: boolean;
+  /** 追加できない理由（CTAを出さないときの説明用） */
+  addMateBlockedReason: "limit_reached" | "no_available_mate" | null;
+  /** 同時契約できるメイト数の上限 */
+  maxConcurrentMates: number;
+};
+
+export type GetMySubscriptionsResult = Result<MySubscriptionsView>;
+
+/**
+ * その人のすべてのライブ契約を返す（マイページ用）。
+ *
+ * 1契約しか無い場合も配列1件で返す。画面側は件数で出し分けるだけでよく、
+ * 「1契約用の画面」と「複数契約用の画面」を作り分けない
+ * （[同一データの複数の出口はパリティを保つ] の通り、出口を増やすとズレる）。
+ */
+export async function getMySubscriptions(): Promise<GetMySubscriptionsResult> {
+  const supabase = createAdminSupabaseClient();
+
+  const user = await getUserFromServerCookies();
+  if (!user.ok) {
+    const isExpired = "error" in user && user.error === "expired";
+    return {
+      ok: false,
+      error: {
+        code: "UNAUTHORIZED",
+        message: isExpired
+          ? "ログインの有効期限が切れています。もう一度ログインしてください。"
+          : "ログインが必要です。LINEまたはメールからアクセスしてください。",
+      },
+    };
+  }
+
+  const scope = await resolvePersonScope(supabase, user);
+  if ("code" in scope) {
+    if (scope.code === "NOT_FOUND") {
+      return {
+        ok: true,
+        data: {
+          subscriptions: [],
+          canAddMate: true,
+          addMateBlockedReason: null,
+          maxConcurrentMates: MAX_CONCURRENT_MATES,
+        },
+      };
+    }
+    return { ok: false, error: { code: scope.code, message: scope.message } };
+  }
+
+  // ライブ契約を持つ関係行だけを対象にする（解約済みはカードに出さない）
+  const { data: liveRows } = await supabase
+    .from("subscriptions")
+    .select("end_user_id")
+    .in("end_user_id", scope.endUserIds)
+    .in("status", [...LIVE_SUBSCRIPTION_STATUSES]);
+
+  const liveEndUserIds = [...new Set((liveRows ?? []).map((r) => r.end_user_id))];
+
+  // 契約ごとの詳細は既存の1件取得を再利用する（表示ロジックを二重に持たない）
+  const views: (MySubscriptionView & { endUserId: string })[] = [];
+  for (const endUserId of liveEndUserIds) {
+    const one = await getMySubscription({ endUserId });
+    if (one.ok && one.data.subscription) {
+      views.push({ ...one.data.subscription, endUserId });
+    }
+  }
+
+  // 表示順は「契約が新しい順」ではなく メイト名 で安定させる
+  // （並びが読み込みごとに変わると、解約ボタンの位置が動いて誤操作の元になる）
+  views.sort((a, b) => (a.castName ?? "").localeCompare(b.castName ?? "", "ja"));
+
+  const liveCastIds = await getLiveContractedCastIds(supabase, scope.personId);
+
+  // 追加できるメイトが実在するかまで見る（枠が空いていても候補ゼロならCTAを出さない）
+  const { data: castRows } = await supabase
+    .from("staff_profiles")
+    .select("id")
+    .eq("role", "cast")
+    .eq("active", true)
+    .eq("accepting_new_users", true);
+
+  const selectableCount = (castRows ?? []).filter((c) => !liveCastIds.includes(c.id)).length;
+
+  const limitReached = liveCastIds.length >= MAX_CONCURRENT_MATES;
+  const canAddMate = !limitReached && selectableCount > 0;
+
+  return {
+    ok: true,
+    data: {
+      subscriptions: views,
+      canAddMate,
+      addMateBlockedReason: canAddMate
+        ? null
+        : limitReached
+          ? "limit_reached"
+          : "no_available_mate",
+      maxConcurrentMates: MAX_CONCURRENT_MATES,
+    },
+  };
 }

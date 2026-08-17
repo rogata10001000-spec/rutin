@@ -68,8 +68,15 @@ export async function createSubscriptionCheckout(params: {
   successUrl: string;
   cancelUrl: string;
   trialPeriodDays?: number;
+  /**
+   * 契約する人（persons.id）。複数メイト契約では line_user_id だけでは
+   * どの関係行に紐づけるか決まらないため、Webhook が行を作るのに使う。
+   */
+  personId?: string | null;
 }): Promise<{ url: string | null; sessionId: string }> {
   const billingInterval = params.billingInterval ?? "month";
+  // metadata の値は文字列のみ。未確定（初回契約で person がまだ無い）ときは載せない。
+  const personMeta = params.personId ? { person_id: params.personId } : {};
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     payment_method_types: ["card"],
@@ -87,6 +94,7 @@ export async function createSubscriptionCheckout(params: {
         plan_code: params.planCode,
         stripe_price_id: params.stripePriceId,
         billing_interval: billingInterval,
+        ...personMeta,
       },
     },
     metadata: {
@@ -96,6 +104,7 @@ export async function createSubscriptionCheckout(params: {
       stripe_price_id: params.stripePriceId,
       billing_interval: billingInterval,
       type: "subscription",
+      ...personMeta,
     },
     customer_email: params.customerEmail,
     success_url: params.successUrl,

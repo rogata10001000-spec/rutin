@@ -37,10 +37,18 @@ function formatJaDate(iso: string | null): string | null {
 }
 
 type PlanManagerProps = {
-  subscription: MySubscriptionView;
+  subscription: MySubscriptionView & { endUserId?: string };
+  /**
+   * 複数契約を並べるときは false にして、ページ見出しは呼び出し側で1つだけ出す
+   * （契約ごとに「契約・プラン」が繰り返されると、どこまでが1契約か分からなくなる）。
+   */
+  showHeading?: boolean;
 };
 
-export function PlanManager({ subscription }: PlanManagerProps) {
+export function PlanManager({ subscription, showHeading = true }: PlanManagerProps) {
+  // どの契約への操作かをサーバーへ明示する。複数メイト契約では
+  // 省略すると「最新のライブ契約」が対象になり、別メイトの契約を解約してしまう。
+  const endUserId = subscription.endUserId;
   const router = useRouter();
   const { showToast, ToastContainer } = useToast();
   const [isPending, startTransition] = useTransition();
@@ -69,7 +77,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
     setBusy(true);
     setPendingPlan(plan.code);
     try {
-      const result = await changeMyPlan({ planCode: plan.code });
+      const result = await changeMyPlan({ planCode: plan.code, endUserId });
       if (result.ok) {
         showToast(`${plan.label}プランに変更しました`, "success");
         refresh();
@@ -89,6 +97,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
       const result = await cancelMySubscription({
         reasonCode: (reasonCode ?? undefined) as CancelSubscriptionInput["reasonCode"],
         reasonDetail: reasonDetail.trim() || undefined,
+        endUserId,
       });
       if (result.ok) {
         showToast("解約予定を受け付けました", "success");
@@ -105,7 +114,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
   async function handleDowngradeToLight() {
     setBusy(true);
     try {
-      const result = await changeMyPlan({ planCode: "light" });
+      const result = await changeMyPlan({ planCode: "light", endUserId });
       if (result.ok) {
         showToast("ライトプランに変更しました", "success");
         setCancelFlowOpen(false);
@@ -121,7 +130,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
   async function handlePause() {
     setBusy(true);
     try {
-      const result = await pauseMySubscription();
+      const result = await pauseMySubscription({ endUserId });
       if (result.ok) {
         showToast("一時停止しました。いつでも再開できます", "success");
         setCancelFlowOpen(false);
@@ -137,7 +146,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
   async function handleResumePause() {
     setBusy(true);
     try {
-      const result = await resumeMyPausedSubscription();
+      const result = await resumeMyPausedSubscription({ endUserId });
       if (result.ok) {
         showToast("利用を再開しました", "success");
         refresh();
@@ -152,7 +161,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
   async function handleUpdatePayment() {
     setBusy(true);
     try {
-      const result = await createMyBillingPortalSession();
+      const result = await createMyBillingPortalSession({ endUserId });
       if (result.ok) {
         window.location.href = result.data.url;
       } else {
@@ -168,7 +177,7 @@ export function PlanManager({ subscription }: PlanManagerProps) {
   async function handleResume() {
     setBusy(true);
     try {
-      const result = await resumeMySubscription();
+      const result = await resumeMySubscription({ endUserId });
       if (result.ok) {
         showToast("解約予定を取り消しました", "success");
         refresh();
@@ -186,10 +195,12 @@ export function PlanManager({ subscription }: PlanManagerProps) {
     <div className="space-y-5">
       <ToastContainer />
 
-      <header className="space-y-1">
-        <h1 className="text-xl font-bold text-stone-800">契約・プラン</h1>
-        <p className="text-sm text-stone-500">現在のご契約内容の確認と変更ができます。</p>
-      </header>
+      {showHeading && (
+        <header className="space-y-1">
+          <h1 className="text-xl font-bold text-stone-800">契約・プラン</h1>
+          <p className="text-sm text-stone-500">現在のご契約内容の確認と変更ができます。</p>
+        </header>
+      )}
 
       {/* 現在の契約サマリー */}
       <section className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">

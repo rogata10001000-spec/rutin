@@ -21,31 +21,13 @@ export type InboundRoutingContext = {
   primaryLineAccountId: string | null;
 };
 
-/**
- * 担当外メイト宛のメッセージとして弾くべきか。
- *
- * 弾く条件（すべて満たすとき）:
- *   - 共通アカウント宛ではない（共通は全員の窓口なので常に受け取る）
- *   - そのアカウントに担当メイトが紐づいている
- *   - ユーザーに担当メイトが決まっている
- *   - その担当メイトのアカウントではない
- *   - かつ「会話が現在乗っているアカウント」でもない
- *
- * 最後の条件が重要。担当変更(A→B)の直後は primary が旧メイトAのアカウントのままで、
- * 新担当Bの返信も getSendAccountForEndUser 経由でAのアカウントから送られる。
- * ここを弾くと「メッセージは届くのに返信すると無視される」手詰まりになる。
- */
-export function shouldRejectAsWrongMate(ctx: InboundRoutingContext): boolean {
-  if (ctx.isDefaultAccount) return false;
-  if (!ctx.accountCastId) return false;
-  if (!ctx.assignedCastId) return false;
-  if (ctx.accountCastId === ctx.assignedCastId) return false;
-
-  // 会話が現在乗っているアカウント宛なら受け取る
-  if (ctx.accountId !== null && ctx.accountId === ctx.primaryLineAccountId) return false;
-
-  return true;
-}
+// shouldRejectAsWrongMate は削除した。
+// 受信の着地先を「受信した公式アカウントの担当メイト」で解決するようになった結果
+// （lib/person.ts の ensureInboundRelationship / pickRelationshipRow）、
+// メイトBへのメッセージがメイトAのトークへ混ざることは構造的に起きなくなり、
+// この判定は常に false を返す到達不能コードになった。
+// 別メイトと契約中の人が未契約メイトへ連絡してきた場合は、弾かずに
+// 「そのメイトを追加契約できる」案内を返す（複数メイト契約対応）。
 
 /**
  * 会話アカウント（primary_line_account_id）を、このアカウントへ張り替えてよいか。

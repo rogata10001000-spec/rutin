@@ -10,6 +10,7 @@ import {
 } from "@/lib/date-jst";
 import { PLAN_CODES, resolveCastPlanPricing } from "@/lib/plan-pricing";
 import type { PlanCode, SubscriptionStatus } from "@/lib/supabase/types";
+import { computePersonMetrics } from "@/lib/person-metrics";
 
 export type MarketingPeriodPreset = "current_month" | "previous_month" | "last_3_months" | "custom";
 
@@ -52,8 +53,23 @@ export type MarketingSummary = {
   churnRate: number | null;
   trialConversionRate: number | null;
   estimatedMrrJpy: number;
+  /** 1契約あたりのARPU（MRR ÷ 契約数）。複数メイト契約後は契約数 ≠ 人数になる点に注意 */
   arpuJpy: number | null;
+  /** 1契約あたりのLTV近似 */
   ltvApproxJpy: number | null;
+  // --- 人（person）単位。複数メイト契約の効果測定用 ---
+  /** ライブ契約を持つ実人数（同じ人が複数メイトと契約していても1） */
+  personCount: number;
+  /** 2人以上のメイトと契約している人数 */
+  multiMatePersonCount: number;
+  /** 複数メイト率（multiMatePersonCount ÷ personCount）＝この施策のKPI */
+  multiMateRatio: number | null;
+  /** 1人あたりの平均契約メイト数 */
+  avgMatesPerPerson: number | null;
+  /** 1人あたりのARPU（MRR ÷ 実人数） */
+  arpuPerPersonJpy: number | null;
+  /** 1人あたりのLTV近似 */
+  ltvPerPersonJpy: number | null;
   netAdds: number;
   avgLeadTimeDays: number | null;
   planBreakdown: MarketingPlanBreakdown[];
@@ -136,7 +152,7 @@ export async function getMarketingSummary(
       supabase
         .from("end_users")
         .select(
-          "id, status, plan_code, assigned_cast_id, line_followed_at, trial_started_at, subscribed_at, canceled_at"
+          "id, person_id, status, plan_code, assigned_cast_id, line_followed_at, trial_started_at, subscribed_at, canceled_at"
         )
         .neq("status", "incomplete"),
       supabase
@@ -216,6 +232,23 @@ export async function getMarketingSummary(
   const churnRate = safeRate(cancellations, activeAtStart);
   const arpuJpy = activeUsers > 0 ? Math.round(estimatedMrrJpy / activeUsers) : null;
   const ltvApproxJpy = arpuJpy && churnRate && churnRate > 0 ? Math.round(arpuJpy / churnRate) : null;
+
+  // --- 人（person）単位の指標 ---
+  // 算出は lib/person-metrics.ts の純関数に集約（単体テストで固定）。
+  const {
+    personCount,
+    multiMatePersonCount,
+    multiMateRatio,
+    avgMatesPerPerson,
+    arpuPerPersonJpy,
+    ltvPerPersonJpy,
+  } = computePersonMetrics({
+    activePersonIds: allUsers
+      .filter((user) => ACTIVE_STATUSES.includes(user.status as SubscriptionStatus))
+      .map((user) => user.person_id),
+    estimatedMrrJpy,
+    churnRate,
+  });
 
   const planBreakdown: MarketingPlanBreakdown[] = PLAN_CODES.map((planCode) => {
     const entry = planCount.get(planCode) ?? { count: 0, mrr: 0 };
@@ -322,6 +355,12 @@ export async function getMarketingSummary(
       estimatedMrrJpy,
       arpuJpy,
       ltvApproxJpy,
+      personCount,
+      multiMatePersonCount,
+      multiMateRatio,
+      avgMatesPerPerson,
+      arpuPerPersonJpy,
+      ltvPerPersonJpy,
       netAdds: subscriptions - cancellations,
       avgLeadTimeDays: average(leadTimes),
       planBreakdown,
