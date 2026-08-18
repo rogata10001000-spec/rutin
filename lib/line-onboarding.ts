@@ -77,13 +77,30 @@ export async function syncLineProfileToEndUser(
       updates.nickname = profile.displayName;
     }
 
+    // LINE表示名・写真はUID（＝人）の属性。複数メイト契約では同じ人の関係行が
+    // 複数あるため、1行だけ更新すると管理画面で同じ人が別々の名前・写真で並ぶ
+    // （行単位のイベントで人単位の属性を書くときは、人の全行へ反映する）。
     const { error } = await supabase
       .from("end_users")
-      .update(updates)
-      .eq("id", endUserId);
+      .update({
+        line_display_name: updates.line_display_name,
+        line_picture_url: updates.line_picture_url,
+        line_profile_synced_at: updates.line_profile_synced_at,
+      })
+      .eq("line_user_id", lineUserId);
 
     if (error) {
       throw new Error(`Failed to update end_user profile: ${error.message}`);
+    }
+
+    // 自動生成ニックネーム（ユーザー_xxx）の実名化も全行に適用する。
+    // 手で付けたニックネームは行ごとの運用値なので上書きしない（LIKE条件で自動生成のみ）。
+    if (updates.nickname) {
+      await supabase
+        .from("end_users")
+        .update({ nickname: updates.nickname })
+        .eq("line_user_id", lineUserId)
+        .like("nickname", "ユーザー\_%");
     }
   } catch (err) {
     logger.warn("LINE profile sync failed", {

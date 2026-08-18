@@ -205,3 +205,31 @@ describe("P6: 複数メイト対応後の単一行前提が再発しないこと
     expect(src).toMatch(/\.is\("assigned_cast_id", null\)\s*\n\s*\.select\("id"\)/);
   });
 });
+
+describe("P7: 人単位の資源を行単位で書かないこと（集約レベルの取り違え）", () => {
+  it("ブロックは人の全行へ反映する（1行だけのブロックは非対称を生む）", () => {
+    const src = read(join(ROOT, "actions/users.ts"));
+    const blockSection = src.slice(src.indexOf("setEndUserBlocked"));
+    // ブロック更新が person_id 基準であること
+    expect(blockSection).toMatch(/is_blocked[\s\S]{0,300}\.eq\("person_id"/);
+  });
+
+  it("LINEプロフィール同期は同じUIDの全行へ反映する", () => {
+    const src = read(join(ROOT, "lib/line-onboarding.ts"));
+    const syncSection = src.slice(src.indexOf("syncLineProfileToEndUser"));
+    expect(syncSection).toMatch(/line_display_name[\s\S]{0,400}\.eq\("line_user_id", lineUserId\)/);
+  });
+
+  it("契約者への追加契約案内は message と follow の両経路にある", () => {
+    // 片方だけだと「友だち追加の瞬間だけ新規向けwelcomeが届く」取りこぼしになる
+    const src = read(join(ROOT, "lib/line-webhook-handler.ts"));
+    const calls = src.match(/replyAddMateGuide\(supabase, account/g) ?? [];
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("ステップ配信は人単位のライブ契約で契約者を除外している", () => {
+    const src = read(join(ROOT, "lib/line-step-delivery.ts"));
+    expect(src).toContain("contractedPersonIds");
+    expect(src).toMatch(/\.in\("status", \["trial", "active", "past_due", "paused"\]\)/);
+  });
+});

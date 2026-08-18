@@ -513,6 +513,24 @@ export async function setEndUserBlocked(input: {
 
   const supabase = await createServerSupabaseClient();
 
+  // ブロックは「人」への操作（荒らし・迷惑行為者の遮断）。
+  // 複数メイト契約では同じ人の関係行が複数あるため、1行だけ更新すると
+  // 「この画面ではブロック済みなのに、別メイトの画面では未ブロックに見える」
+  // 非対称ができ、解除操作がどの行に効いているのか分からなくなる。
+  // 対象行の person を引き、その人の全行へ同時に反映する。
+  const { data: target } = await supabase
+    .from("end_users")
+    .select("person_id")
+    .eq("id", input.endUserId)
+    .maybeSingle();
+
+  if (!target) {
+    return {
+      ok: false,
+      error: { code: "NOT_FOUND", message: "ユーザーが見つかりません" },
+    };
+  }
+
   const { error } = await supabase
     .from("end_users")
     .update({
@@ -520,7 +538,7 @@ export async function setEndUserBlocked(input: {
       blocked_at: input.blocked ? new Date().toISOString() : null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", input.endUserId);
+    .eq("person_id", target.person_id);
 
   if (error) {
     logger.error("setEndUserBlocked: update failed", { error: error.message });

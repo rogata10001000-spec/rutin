@@ -640,22 +640,41 @@ export async function handleLineWebhook(
         if (isContracted) {
           await applyDefaultContractedRichMenu(account, lineUserId);
         } else {
-          // welcome push は連投しない（再追加のたびに無料枠を消費しない）。
-          // 直近に案内済みなら welcome を送らず、未送信なら送って last_guide_sent_at を更新。
-          const lastGuide = statusRow?.last_guide_sent_at ?? null;
-          const recentlyGuided =
-            lastGuide && Date.now() - new Date(lastGuide).getTime() < GUIDE_THROTTLE_MS;
+          // この行は未契約でも「人」は別メイトと契約中のことがある
+          // （契約者が追加契約を検討して別メイトのLINEを友だち追加したケース）。
+          // 支払い中の人に新規向けwelcomeを送ると不信になるため、追加契約の案内に切り替える。
+          // ※メッセージ受信経路には同じ分岐が既にあり、ここはフォロー経路の対（漏れると
+          //   「友だち追加した瞬間だけ新規扱い」という取りこぼしになる）。
+          const followerLiveCastIds = await getLiveContractedCastIds(
+            supabase,
+            user.personId
+          ).catch(() => []);
 
-          if (!recentlyGuided) {
-            await sendLineUncontractedOnboarding(
-              account,
+          if (followerLiveCastIds.length > 0) {
+            await replyAddMateGuide(supabase, account, {
+              endUserId: user.id,
               lineUserId,
-              await buildWelcomeMessage(lineUserId)
-            );
-            await supabase
-              .from("end_users")
-              .update({ last_guide_sent_at: new Date().toISOString() })
-              .eq("id", user.id);
+              replyToken: event.replyToken,
+              lastGuideSentAt: statusRow?.last_guide_sent_at ?? null,
+            });
+          } else {
+            // welcome push は連投しない（再追加のたびに無料枠を消費しない）。
+            // 直近に案内済みなら welcome を送らず、未送信なら送って last_guide_sent_at を更新。
+            const lastGuide = statusRow?.last_guide_sent_at ?? null;
+            const recentlyGuided =
+              lastGuide && Date.now() - new Date(lastGuide).getTime() < GUIDE_THROTTLE_MS;
+
+            if (!recentlyGuided) {
+              await sendLineUncontractedOnboarding(
+                account,
+                lineUserId,
+                await buildWelcomeMessage(lineUserId)
+              );
+              await supabase
+                .from("end_users")
+                .update({ last_guide_sent_at: new Date().toISOString() })
+                .eq("id", user.id);
+            }
           }
         }
 
