@@ -29,24 +29,28 @@ export type PersonRelationship = {
   personId: string;
   lineUserId: string | null;
   assignedCastId: string | null;
+  primaryLineAccountId: string | null;
   status: string;
   planCode: string;
   nickname: string;
   lineProfileSyncedAt: string | null;
+  createdAt: string;
 };
 
 const RELATIONSHIP_COLUMNS =
-  "id, person_id, line_user_id, assigned_cast_id, status, plan_code, nickname, line_profile_synced_at";
+  "id, person_id, line_user_id, assigned_cast_id, primary_line_account_id, status, plan_code, nickname, line_profile_synced_at, created_at";
 
 type RawRelationshipRow = {
   id: string;
   person_id: string;
   line_user_id: string | null;
   assigned_cast_id: string | null;
+  primary_line_account_id: string | null;
   status: string;
   plan_code: string;
   nickname: string;
   line_profile_synced_at: string | null;
+  created_at: string;
 };
 
 function toRelationship(row: RawRelationshipRow): PersonRelationship {
@@ -55,10 +59,12 @@ function toRelationship(row: RawRelationshipRow): PersonRelationship {
     personId: row.person_id,
     lineUserId: row.line_user_id,
     assignedCastId: row.assigned_cast_id,
+    primaryLineAccountId: row.primary_line_account_id,
     status: row.status,
     planCode: row.plan_code,
     nickname: row.nickname,
     lineProfileSyncedAt: row.line_profile_synced_at,
+    createdAt: row.created_at,
   };
 }
 
@@ -121,6 +127,8 @@ export async function ensureInboundRelationship(
     lineUserId: string;
     /** 受信した公式アカウントの担当メイト（共通アカウントは null） */
     accountCastId: string | null;
+    /** 受信した公式アカウントのID（会話アカウント判定・共通アカウントのフォールバックに使う） */
+    accountId?: string | null;
     planCode: string;
   }
 ): Promise<{
@@ -132,8 +140,13 @@ export async function ensureInboundRelationship(
 }> {
   const rows = await getRelationshipsByLineUserId(supabase, params.lineUserId);
   const picked = pickRelationshipRow(
-    rows.map<RelationshipRow>((r) => ({ id: r.endUserId, assignedCastId: r.assignedCastId })),
-    params.accountCastId
+    rows.map<RelationshipRow>((r) => ({
+      id: r.endUserId,
+      assignedCastId: r.assignedCastId,
+      primaryLineAccountId: r.primaryLineAccountId,
+    })),
+    params.accountCastId,
+    params.accountId ?? null
   );
 
   if (picked) {
@@ -177,8 +190,13 @@ export async function ensureInboundRelationship(
   if (error?.code === "23505") {
     const retry = await getRelationshipsByLineUserId(supabase, params.lineUserId);
     const again = pickRelationshipRow(
-      retry.map<RelationshipRow>((r) => ({ id: r.endUserId, assignedCastId: r.assignedCastId })),
-      params.accountCastId
+      retry.map<RelationshipRow>((r) => ({
+        id: r.endUserId,
+        assignedCastId: r.assignedCastId,
+        primaryLineAccountId: r.primaryLineAccountId,
+      })),
+      params.accountCastId,
+      params.accountId ?? null
     );
     if (again) {
       const found = retry.find((r) => r.endUserId === again.id)!;
@@ -220,18 +238,23 @@ export async function ensureRelationshipForCast(
 
   const lead = rows.find((r) => r.assignedCastId === null);
   if (lead) {
-    // 見込み行をこのメイトとの関係行へ昇格
-    const { error } = await supabase
+    // 見込み行をこのメイトとの関係行へ昇格。
+    // .is("assigned_cast_id", null) 条件付きなので、並行する別メイトの決済が先に
+    // 昇格させていると0件更新になる。0件更新はエラーにならず黙って成功するため、
+    // .select() で実際に更新できた行数を確認する（確認しないと別メイトの行を
+    // 自分の関係行として返し、契約・入金の紐付け先を取り違える）。
+    const { data: promoted, error } = await supabase
       .from("end_users")
       .update({ assigned_cast_id: params.castId })
       .eq("id", lead.endUserId)
-      .is("assigned_cast_id", null);
-    if (!error) {
+      .is("assigned_cast_id", null)
+      .select("id");
+    if (!error && (promoted?.length ?? 0) === 1) {
       return { id: lead.endUserId, personId: lead.personId, isNew: false };
     }
-    logger.warn("ensureRelationshipForCast: lead promotion failed, creating new row", {
+    logger.warn("ensureRelationshipForCast: lead promotion did not apply, creating new row", {
       endUserId: lead.endUserId,
-      error: error.message,
+      error: error?.message ?? "0 rows updated (raced with another promotion)",
     });
   }
 

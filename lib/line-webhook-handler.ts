@@ -574,6 +574,7 @@ export async function handleLineWebhook(
         const user = await ensureInboundRelationship(supabase, {
           lineUserId,
           accountCastId: account.castId,
+          accountId: account.id,
           planCode: DEFAULT_PLAN_CODE,
         });
         const followedAt = new Date(event.timestamp).toISOString();
@@ -699,8 +700,13 @@ export async function handleLineWebhook(
           // このメイトはまだ契約していないなら追加契約の案内を出してよい。
           const menuRows = await getRelationshipsByLineUserId(supabase, lineUserId);
           const menuPicked = pickRelationshipRow(
-            menuRows.map((r) => ({ id: r.endUserId, assignedCastId: r.assignedCastId })),
-            account.castId
+            menuRows.map((r) => ({
+              id: r.endUserId,
+              assignedCastId: r.assignedCastId,
+              primaryLineAccountId: r.primaryLineAccountId,
+            })),
+            account.castId,
+            account.id
           );
           const menuUser = menuRows.find((r) => r.endUserId === menuPicked?.id) ?? null;
 
@@ -741,8 +747,13 @@ export async function handleLineWebhook(
         // UIDだけで引くと、複数メイト契約時にどちらのトークに保存されるか不定になる。
         const relationshipRows = await getRelationshipsByLineUserId(supabase, lineUserId);
         const pickedRow = pickRelationshipRow(
-          relationshipRows.map((r) => ({ id: r.endUserId, assignedCastId: r.assignedCastId })),
-          account.castId
+          relationshipRows.map((r) => ({
+            id: r.endUserId,
+            assignedCastId: r.assignedCastId,
+            primaryLineAccountId: r.primaryLineAccountId,
+          })),
+          account.castId,
+          account.id
         );
         const { data: existing } = pickedRow
           ? await supabase
@@ -784,6 +795,7 @@ export async function handleLineWebhook(
           const createdUser = await ensureInboundRelationship(supabase, {
             lineUserId,
             accountCastId: account.castId,
+            accountId: account.id,
             planCode: DEFAULT_PLAN_CODE,
           });
           userId = createdUser.id;
@@ -951,8 +963,13 @@ export async function handleLineWebhook(
           // チェックインは「そのメイトとの関係」に記録する（複数メイトで取り違えない）
           const checkinRows = await getRelationshipsByLineUserId(supabase, lineUserId);
           const checkinPicked = pickRelationshipRow(
-            checkinRows.map((r) => ({ id: r.endUserId, assignedCastId: r.assignedCastId })),
-            account.castId
+            checkinRows.map((r) => ({
+              id: r.endUserId,
+              assignedCastId: r.assignedCastId,
+              primaryLineAccountId: r.primaryLineAccountId,
+            })),
+            account.castId,
+            account.id
           );
           const user = checkinPicked ? { id: checkinPicked.id } : null;
 

@@ -6,6 +6,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { writeAuditLog, buildAuditMetadata } from "@/lib/audit";
 import { createPointCheckout } from "@/lib/stripe";
 import { verifyUserToken, getUserFromServerCookies } from "@/lib/auth";
+import { getRelationshipsByLineUserId } from "@/lib/person";
 import { getServerEnv } from "@/lib/env";
 
 const APP_BASE_URL = getServerEnv().APP_BASE_URL;
@@ -86,12 +87,16 @@ export async function createPointCheckoutSession(
   // service_roleでDB操作（ユーザー向けページはRLSバイパス）
   const supabase = createAdminSupabaseClient();
 
-  // ユーザー取得
-  const { data: user } = await supabase
-    .from("end_users")
-    .select("id")
-    .eq("line_user_id", lineUserId)
-    .single();
+  // ユーザー取得。
+  // 複数メイト契約では同じUIDに関係行が複数ありうるため .single() は使えない
+  // （2行目ができた瞬間にエラー→「ユーザーが見つかりません」で機能全体が死ぬ）。
+  // ポイント・ギフトは本来「人」単位のもの。MVPでは未ローンチのため、
+  // 暫定で最も古い行（＝人のアンカー行）に台帳を寄せて残高の分裂を防ぐ。
+  // ローンチ時には user_point_ledger を person_id 参照へ移行すること。
+  const anchorRows = await getRelationshipsByLineUserId(supabase, lineUserId);
+  const user = [...anchorRows]
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map((r) => ({ id: r.endUserId }))[0] ?? null;
 
   if (!user) {
     return {
@@ -391,11 +396,11 @@ export async function getUserPointBalance(input?: {
     };
   }
 
-  const { data: user } = await supabase
-    .from("end_users")
-    .select("id")
-    .eq("line_user_id", lineUserId)
-    .single();
+  // 上と同じ理由で UID からはアンカー行（最古の関係行）へ寄せる
+  const giftRows = await getRelationshipsByLineUserId(supabase, lineUserId);
+  const user = [...giftRows]
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    .map((r) => ({ id: r.endUserId }))[0] ?? null;
 
   if (!user) {
     return {

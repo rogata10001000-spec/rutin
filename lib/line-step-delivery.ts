@@ -49,7 +49,7 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
 
     const { data: users } = await supabase
       .from("end_users")
-      .select("id, line_user_id, primary_line_account_id")
+      .select("id, person_id, line_user_id, primary_line_account_id")
       .eq("status", "incomplete")
       .not("line_user_id", "is", null)
       .not(anchorColumn, "is", null)
@@ -58,10 +58,29 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
 
     if (!users || users.length === 0) continue;
 
+    // 複数メイト契約対応: 「行が incomplete」でも「人が契約者」のことがある。
+    // 契約者が未契約メイトへ連絡すると見込み行（incomplete）が作られるため、
+    // 行の状態だけで対象にすると、支払い中の人に新規向けの勧誘ステップが届く。
+    // 人単位でライブ契約の有無を確認し、契約者の見込み行は配信対象から外す。
+    const personIds = [...new Set(users.map((u) => u.person_id).filter(Boolean))];
+    const contractedPersonIds = new Set<string>();
+    if (personIds.length > 0) {
+      const { data: liveRows } = await supabase
+        .from("end_users")
+        .select("person_id")
+        .in("person_id", personIds)
+        .in("status", ["trial", "active", "past_due", "paused"]);
+      for (const row of liveRows ?? []) {
+        if (row.person_id) contractedPersonIds.add(row.person_id);
+      }
+    }
+    const eligibleUsers = users.filter((u) => !contractedPersonIds.has(u.person_id));
+    if (eligibleUsers.length === 0) continue;
+
     const bodyText = step.body?.trim() ?? "";
     if (!step.image_url && !bodyText) continue; // 送信内容が無いステップはスキップ（通常は起きない）
 
-    const userIds = users.map((u) => u.id);
+    const userIds = eligibleUsers.map((u) => u.id);
     const { data: delivered } = await supabase
       .from("step_deliveries")
       .select("end_user_id")
@@ -69,7 +88,7 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
       .in("end_user_id", userIds);
     const deliveredSet = new Set((delivered ?? []).map((d) => d.end_user_id));
 
-    const targets = users.filter((u) => u.line_user_id && !deliveredSet.has(u.id));
+    const targets = eligibleUsers.filter((u) => u.line_user_id && !deliveredSet.has(u.id));
 
     // 1件ずつ送信。冪等は step_deliveries の (end_user_id, step_message_id) UNIQUE で担保。
     const sendOne = async (user: (typeof targets)[number]): Promise<void> => {

@@ -6,6 +6,7 @@ import { USER_SESSION_COOKIE } from "@/lib/constants";
 import { normalizeEmail } from "@/lib/email-address";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import { getRelationshipsByLineUserId } from "@/lib/person";
 
 export const dynamic = "force-dynamic";
 
@@ -52,15 +53,29 @@ export async function POST(req: NextRequest) {
   const lineUserId = verified.lineUserId;
   const supabase = createAdminSupabaseClient();
 
-  const { data: endUser } = await supabase
-    .from("end_users")
-    .select("id, email")
-    .eq("line_user_id", lineUserId)
-    .maybeSingle();
+  // 複数メイト契約では同じUIDに関係行が複数ありうるため maybeSingle は使えない
+  // （2行目ができた瞬間にエラー→エラー破棄でセッションが縮退する）。
+  // アンカーは最も古い行に固定する（毎回同じ行を指す＝決定的）。
+  let endUser: { id: string } | null = null;
+  try {
+    const relationships = await getRelationshipsByLineUserId(supabase, lineUserId);
+    const anchor = [...relationships].sort((a, b) =>
+      a.createdAt.localeCompare(b.createdAt)
+    )[0];
+    if (anchor) {
+      endUser = { id: anchor.endUserId };
+    }
+  } catch (err) {
+    logger.warn("liff/session: relationship lookup failed", {
+      message: err instanceof Error ? err.message : "unknown",
+    });
+  }
 
-  // IDトークンに email があり、未登録なら補完（best-effort・衝突時は無視）
+  // IDトークンに email があれば補完（best-effort）。
+  // .is("email", null) ガード＋emailのUNIQUE制約により、
+  // 既に値がある／同じ人の別の行が持っている場合は何も起きない（衝突はwarnのみ）。
   const verifiedEmail = normalizeEmail(verified.email);
-  if (endUser && verifiedEmail && !endUser.email) {
+  if (endUser && verifiedEmail) {
     const { error: emailErr } = await supabase
       .from("end_users")
       .update({ email: verifiedEmail })

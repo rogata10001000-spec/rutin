@@ -591,12 +591,14 @@ export async function createEndUser(
 
   const supabase = await createServerSupabaseClient();
 
-  // LINE User IDの重複チェック
-  const { data: existing } = await supabase
+  // LINE User IDの重複チェック。
+  // 複数メイト契約では同じUIDの行が複数ありうるため .single() は使えない（複数行でエラー）。
+  const { data: existingRows } = await supabase
     .from("end_users")
     .select("id")
     .eq("line_user_id", lineUserId)
-    .single();
+    .limit(1);
+  const existing = (existingRows?.length ?? 0) > 0;
 
   if (existing) {
     return {

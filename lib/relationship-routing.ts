@@ -13,29 +13,52 @@ export type RelationshipRow = {
   id: string;
   /** 担当メイト。null = まだどのメイトとも契約していない見込み行 */
   assignedCastId: string | null;
+  /** 会話が現在乗っているLINE公式アカウント（end_users.primary_line_account_id） */
+  primaryLineAccountId?: string | null;
 };
 
 /**
- * 受信したLINE公式アカウントの担当メイトから、着地させる関係行を選ぶ。
+ * 受信したLINE公式アカウントから、着地させる関係行を選ぶ。
  *
  * 優先順位:
- *   1. そのメイトと契約している行（＝契約者の会話。最優先）
- *   2. 未契約の見込み行（＝そのメイトをまだ契約していない人の会話）
- *   3. なし（呼び出し側が新規作成する）
- *
- * 共通(Rutin公式)アカウント宛（castId = null）は、契約中の行があってもそこへは寄せず
- * 見込み行を使う。共通アカウントは特定メイトとの会話ではないため、
- * 契約中メイトのトーク履歴に混ぜてはいけない。
+ *   1. そのアカウントの担当メイトと契約している行（＝契約者の会話。最優先）
+ *   2. 会話が現在そのアカウントに乗っている行（primary_line_account_id 一致）。
+ *      担当変更(A→B)の直後は、行の担当はBでも会話は旧メイトAのアカウントに
+ *      乗ったままになる（getSendAccountForEndUser がAから返信する）。
+ *      この規則が無いと、その期間のユーザー返信が見込み行へ落ちて
+ *      「返信したのに新規向けの勧誘が返ってくる」手詰まりになる
+ *      （旧 shouldRejectAsWrongMate の isConversationAccount 例外と同じ意図）。
+ *   3. 未契約の見込み行
+ *   4. 共通(Rutin公式)アカウント宛のみ: 契約中の行へフォールバック。
+ *      1メイト運用では従来「共通アカウント宛も本人の唯一の行」に載っていたため、
+ *      ここを落とすと契約者が共通アカウントへ送った瞬間に見込み行が作られ、
+ *      支払い済みの人に新規向けの契約案内が返る退行になる。
+ *      複数契約なら行IDで決定的に1行へ寄せる（毎回同じスレッドに載せる）。
+ *   5. なし（呼び出し側が新規作成する）
  */
 export function pickRelationshipRow(
   rows: readonly RelationshipRow[],
-  accountCastId: string | null
+  accountCastId: string | null,
+  accountId?: string | null
 ): RelationshipRow | null {
   if (accountCastId) {
     const contracted = rows.find((r) => r.assignedCastId === accountCastId);
     if (contracted) return contracted;
   }
-  return rows.find((r) => r.assignedCastId === null) ?? null;
+
+  if (accountId) {
+    const conversation = rows.find((r) => r.primaryLineAccountId === accountId);
+    if (conversation) return conversation;
+  }
+
+  const lead = rows.find((r) => r.assignedCastId === null);
+  if (lead) return lead;
+
+  if (!accountCastId && rows.length > 0) {
+    return [...rows].sort((a, b) => a.id.localeCompare(b.id))[0];
+  }
+
+  return null;
 }
 
 /**

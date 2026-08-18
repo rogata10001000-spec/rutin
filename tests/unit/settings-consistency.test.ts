@@ -177,3 +177,31 @@ describe("P5: 表示名・単価・単位の定義が分裂していないこと
     expect(marketing).toContain("税込");
   });
 });
+
+describe("P6: 複数メイト対応後の単一行前提が再発しないこと", () => {
+  it("end_users を line_user_id 単独で single/maybeSingle しない", () => {
+    // 複数メイト契約では同じUIDに関係行が複数ある。
+    // .eq("line_user_id", ...).single() は2行目ができた瞬間にエラーになり、
+    // エラー破棄と組み合わさると「ユーザーが見つかりません」やセッション縮退として
+    // 静かに壊れる。UIDからの解決は lib/person.ts を通すこと。
+    const offenders: string[] = [];
+    for (const f of SOURCE_FILES) {
+      if (f.endsWith("lib/person.ts")) continue;
+      const src = read(f);
+      // from("end_users") ... eq("line_user_id" ... single()/maybeSingle() の連なりを検出
+      const chainRe =
+        /from\("end_users"\)[\s\S]{0,200}?\.eq\("line_user_id"[\s\S]{0,120}?\.(?:maybeSingle|single)\(\)/g;
+      if (chainRe.test(src)) {
+        offenders.push(f.replace(ROOT + "/", ""));
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("見込み行の昇格は0件更新を検出する（select確認付き）", () => {
+    // 並行する別メイトの決済が先に昇格させると0件更新になり、
+    // エラーにならないため「昇格できたつもり」で別メイトの行を返してしまう
+    const src = read(join(ROOT, "lib/person.ts"));
+    expect(src).toMatch(/\.is\("assigned_cast_id", null\)\s*\n\s*\.select\("id"\)/);
+  });
+});

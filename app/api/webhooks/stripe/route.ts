@@ -38,7 +38,11 @@ import {
   subscriptionCanceledNotification,
   cancelScheduledNotification,
 } from "@/lib/notification-templates";
-import { ensureRelationshipForCast } from "@/lib/person";
+import {
+  ensureRelationshipForCast,
+  getLiveContractedCastIds,
+  getPersonIdForEndUser,
+} from "@/lib/person";
 
 type SupabaseAdmin = ReturnType<typeof createAdminSupabaseClient>;
 
@@ -558,16 +562,38 @@ export async function handleSubscriptionDeleted(
   const lineUserId = endUser.line_user_id;
   if (lineUserId) {
     // 契約変更・解約導線は共通Rutin公式LINEのリッチメニューで管理する。
-    const defaultAccount = await getDefaultLineAccount(supabase);
-    const uncontractedMenuId = defaultAccount.richMenuUncontractedId;
-    if (uncontractedMenuId) {
-      try {
-        await switchRichMenu(defaultAccount.credentials, lineUserId, uncontractedMenuId);
-      } catch (err) {
-        logger.error("Stripe webhook rich menu revert failed", {
-          lineUserId,
-          error: err instanceof Error ? err.message : "unknown",
-        });
+    // ただしリッチメニューは「人」につき1つ。複数メイト契約者が1契約だけ
+    // 解約したときに未契約メニューへ戻すと、まだ支払い中の人に
+    // 新規向けの契約導線が出てしまうため、他にライブ契約が残っていれば触らない。
+    let hasOtherLiveContract = false;
+    try {
+      const personId = await getPersonIdForEndUser(supabase, sub.end_user_id);
+      if (personId) {
+        const otherLive = await getLiveContractedCastIds(supabase, personId);
+        hasOtherLiveContract = otherLive.length > 0;
+      }
+    } catch (err) {
+      // 判定に失敗したら「残っている」側に倒す（契約者に未契約メニューを
+      // 出す害 > メニュー戻し漏れの害。戻し漏れは次の解約時に再試行される）
+      hasOtherLiveContract = true;
+      logger.warn("subscription.deleted: other-live check failed, keeping contracted menu", {
+        endUserId: sub.end_user_id,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+
+    if (!hasOtherLiveContract) {
+      const defaultAccount = await getDefaultLineAccount(supabase);
+      const uncontractedMenuId = defaultAccount.richMenuUncontractedId;
+      if (uncontractedMenuId) {
+        try {
+          await switchRichMenu(defaultAccount.credentials, lineUserId, uncontractedMenuId);
+        } catch (err) {
+          logger.error("Stripe webhook rich menu revert failed", {
+            lineUserId,
+            error: err instanceof Error ? err.message : "unknown",
+          });
+        }
       }
     }
   }
