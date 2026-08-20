@@ -39,13 +39,31 @@ export async function fetchStripeSubscription(
   return stripe.subscriptions.retrieve(subscriptionId);
 }
 
-/** 初回契約時の担当割当・リッチメニュー（冪等） */
+/**
+ * 契約成立時の副作用（担当割当・リッチメニュー・案内push・担当への通知）。
+ *
+ * checkout.session.completed と customer.subscription.created の**両方**から呼ばれる。
+ * 2つのイベントはどちらが先に届くか・片方しか届かないかが保証されないため、
+ * 両方から呼ぶ設計自体は正しい（片方だけに寄せると取りこぼす）。
+ *
+ * その代わり、この関数の中身は「1契約につき1回」を自分で保証する必要がある:
+ *   - 冪等な操作（trial_end_at・担当割当・リッチメニュー切替）は素通し
+ *     （2回走っても同じ結果。途中クラッシュ時にもう片方のイベントで再試行される）
+ *   - **送信系（友だち追加の案内push・担当メイトへのWeb Push）は claim-first で1回だけ**。
+ *     イベント単位の冪等化では防げない（イベントIDが違うため）。
+ *     実害: 契約直後に「ご契約ありがとうございます」が2通届いた（2026-08-18 実機で発生）。
+ */
 export async function syncNewSubscriptionSideEffects(
   supabase: SupabaseAdmin,
   params: {
     endUserId: string;
     lineUserId: string;
     castId: string;
+    /** 送信系の1回制御キー（この契約について案内を送ったか） */
+    stripeSubscriptionId: string;
+    /** 運営向け新規会員通知に使う（claimゲートの中で1回だけ送る） */
+    planCode: string;
+    status: string;
     trialEndAt?: string | null;
   }
 ): Promise<void> {
@@ -97,6 +115,33 @@ export async function syncNewSubscriptionSideEffects(
     }
   }
 
+  // ここから先は送信系。webhook_events の (provider, event_id) UNIQUE を業務キーで
+  // 再利用し、「この契約の案内送信」を1回に制限する（claim-first）。
+  // 顧客向け通知は 二重送信の害 > 送信漏れの害 なので、claim後のクラッシュは
+  // 送信漏れ側に倒す（案内は契約完了画面にも出ており、届かなくても復旧手段がある）。
+  const now = new Date().toISOString();
+  const { error: claimError } = await supabase.from("webhook_events").insert({
+    provider: "stripe",
+    event_id: `activation-notify:${params.stripeSubscriptionId}`,
+    event_type: "subscription_activation_notify",
+    status: "processed",
+    processing_started_at: now,
+    processed_at: now,
+    success: true,
+  });
+
+  if (claimError) {
+    if (claimError.code !== "23505") {
+      // DB障害などの不明エラー: 送ると二重の危険があるため送らない側に倒す
+      logger.warn("activation notify claim failed, skipping sends", {
+        stripeSubscriptionId: params.stripeSubscriptionId,
+        error: claimError.message,
+      });
+    }
+    // 23505 = もう片方のイベントが送信済み。正常系
+    return;
+  }
+
   // 担当メイトの公式LINEがあれば、友だち追加を案内する（共通アカウントから送信）。
   try {
     const mateAccount = await getLineAccountForCast(params.castId, supabase);
@@ -140,6 +185,24 @@ export async function syncNewSubscriptionSideEffects(
   } catch (err) {
     logger.error("Stripe webhook new-contract push failed", {
       castId: params.castId,
+      error: err instanceof Error ? err.message : "unknown",
+    });
+  }
+
+  // 運営向けの新規会員通知も同じclaimの中で送る。
+  // 以前は checkout.session.completed 側の「INSERTに勝ったときだけ」送っていたため、
+  // customer.subscription.created が先に届いてINSERTに勝つと（そちらには通知呼び出しが無く）
+  // 通知が1回も飛ばなかった。イベントの到着順に依存させず、ここで確実に1回送る。
+  try {
+    const { notifyOperatorsOfNewMember } = await import("@/lib/operator-notifications");
+    await notifyOperatorsOfNewMember(supabase, {
+      endUserId: params.endUserId,
+      planCode: params.planCode,
+      status: params.status,
+    });
+  } catch (err) {
+    logger.error("Stripe webhook operator notify failed", {
+      endUserId: params.endUserId,
       error: err instanceof Error ? err.message : "unknown",
     });
   }

@@ -7,7 +7,6 @@ import {
   cancelStripeSubscription,
 } from "@/lib/stripe";
 import {
-  notifyOperatorsOfNewMember,
   pushToOperatorRecipients,
 } from "@/lib/operator-notifications";
 import { getServerEnv } from "@/lib/env";
@@ -791,27 +790,18 @@ export async function handleCheckoutSessionCompleted(
       endUserId: user.id,
       lineUserId,
       castId,
+      stripeSubscriptionId: subscriptionId,
+      planCode,
+      status: subscriptionStatus,
       trialEndAt,
     });
 
     // 同時申込レースでの定員超過を検知（決済済みのため割当は維持、運用へ通知）
     await warnIfCastOverCapacity(supabase, castId);
 
-    // 新規会員登録を運営の通知先へLINE通知（新規サブスク作成時のみ）。
-    // Webhookは withWebhookIdempotency で1イベント1回のため二重通知にならない。
-    // 応答をブロックしないよう after() で送る（完了は保証される）。
-    if (!subError) {
-      const notifyPlan = planCode;
-      const notifyStatus = subscriptionStatus;
-      const notifyUserId = user.id;
-      after(() =>
-        notifyOperatorsOfNewMember(supabase, {
-          endUserId: notifyUserId,
-          planCode: notifyPlan,
-          status: notifyStatus,
-        })
-      );
-    }
+    // 運営向けの新規会員通知は syncNewSubscriptionSideEffects のclaimゲートの中で送る。
+    // ここ（INSERTに勝った側だけ）で送ると、customer.subscription.created が先に
+    // INSERTした場合に通知が1回も飛ばない（あちらの経路には通知呼び出しが無かった）。
 
     // 監査ログ
     await writeAuditLog({
@@ -993,6 +983,9 @@ export async function handleSubscriptionUpsert(
       endUserId: user.id,
       lineUserId,
       castId,
+      stripeSubscriptionId: subscriptionId,
+      planCode,
+      status: newStatus,
       trialEndAt,
     });
 
