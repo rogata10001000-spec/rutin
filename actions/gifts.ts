@@ -90,9 +90,9 @@ export async function createPointCheckoutSession(
   // ユーザー取得。
   // 複数メイト契約では同じUIDに関係行が複数ありうるため .single() は使えない
   // （2行目ができた瞬間にエラー→「ユーザーが見つかりません」で機能全体が死ぬ）。
-  // ポイント・ギフトは本来「人」単位のもの。MVPでは未ローンチのため、
-  // 暫定で最も古い行（＝人のアンカー行）に台帳を寄せて残高の分裂を防ぐ。
-  // ローンチ時には user_point_ledger を person_id 参照へ移行すること。
+  // 台帳の person_id 移行は完了済み（20260823100000）: 残高は person 単位のRPCで集計され、
+  // INSERT時の person_id はDBトリガーが自動導出する。ここでの行の選択は
+  // 「書き込みの end_user_id をどれにするか」の決定的なアンカーに過ぎず、どの行でも残高は同じ。
   const anchorRows = await getRelationshipsByLineUserId(supabase, lineUserId);
   const user = [...anchorRows]
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))

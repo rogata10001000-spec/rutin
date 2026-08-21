@@ -326,3 +326,30 @@ describe("P10: ポイント残高は人単位・枠警告は表示と通知で�
     expect(alerts).toContain("assessLineQuota");
   });
 });
+
+describe("P11: 表示だけの監視を作らない・完了済み指示コメントを残さない", () => {
+  it("Webhook接続の異常は日次サマリーから運営通知に配線されている", () => {
+    // 接続ずれは「会員のメッセージが痕跡なく消える」無音の全損。
+    // 管理画面の表示だけでは、画面を開かない限り気づけない。
+    const src = read(join(ROOT, "app/api/jobs/daily-summary/route.ts"));
+    expect(src).toContain("auditLineWebhookEndpoints");
+    expect(src).toContain("webhook-health-alert:");
+  });
+
+  it("Webhook接続の判定は表示と通知で同じ関数を共有している", () => {
+    // 別実装だと「画面は赤いのに通知が来ない」ズレが生まれる
+    const action = read(join(ROOT, "actions/admin/line-accounts.ts"));
+    expect(action).toContain("auditAllLineWebhookEndpoints");
+    const audit = read(join(ROOT, "lib/line-webhook-audit.ts"));
+    expect(audit).toContain("buildLineWebhookUrl");
+  });
+
+  it("完了済みの移行指示コメントが残っていない", () => {
+    // 「〜すること」型の指示コメントは完了後に残ると二重対応を誘発する
+    const offenders = SOURCE_FILES.filter((f) => {
+      const src = read(f);
+      return /person_id 参照へ移行すること/.test(src);
+    }).map((f) => f.replace(ROOT + "/", ""));
+    expect(offenders).toEqual([]);
+  });
+});

@@ -156,6 +156,52 @@ export async function GET(request: Request) {
       });
     }
 
+    // LINE Webhook接続の実測突合。
+    // 接続先URLのずれは「会員のメッセージが痕跡なく消える」無音の全損で、
+    // 管理画面（/admin/line-accounts）の表示だけでは画面を開かない限り気づけない。
+    // 表示と同じ判定（getLineWebhookHealth）を日次で実行し、異常があれば運営へ通知する。
+    try {
+      // 判定本体は lib/line-webhook-audit.ts（管理画面の表示と同じ基準を共有）
+      const { auditLineWebhookEndpoints } = await import("@/lib/line-webhook-audit");
+      const problems = await auditLineWebhookEndpoints(supabase);
+      for (const p of problems) {
+        const claimTs2 = new Date().toISOString();
+        const { error: claimError2 } = await supabase.from("webhook_events").insert({
+          provider: "line",
+          event_id: `webhook-health-alert:${todayJst}:${p.accountKey}:${p.status}`,
+          event_type: "line_webhook_health_alert",
+          status: "processed",
+          processing_started_at: claimTs2,
+          processed_at: claimTs2,
+          success: true,
+        });
+        if (claimError2) continue; // 本日通知済み or 障害時は送らない側に倒す
+
+        const { pushToOperatorRecipients } = await import("@/lib/operator-notifications");
+        const reason =
+          p.status === "mismatch"
+            ? `別のURLが設定されています（設定中: ${p.configuredUrl ?? "不明"}）`
+            : p.status === "unset"
+              ? "Webhook URLが未設定です"
+              : "Webhookの利用がオフになっています";
+        await pushToOperatorRecipients(
+          supabase,
+          "new_member",
+          `🚨 LINE Webhookの接続に問題があります\n\n` +
+            `アカウント: ${p.name}\n` +
+            `状態: ${reason}\n\n` +
+            `このままでは、このアカウント宛の会員メッセージがシステムに届かず、\n` +
+            `どこにも記録されずに消えます。\n` +
+            `管理画面「LINE公式アカウント」の\n` +
+            `「Webhook接続の状態」からワンタップで修正できます。`
+        );
+      }
+    } catch (err) {
+      logger.warn("daily summary: webhook health alert failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+
     // 監査ログに保存
     await supabase.from("audit_logs").insert({
       actor_staff_id: null,

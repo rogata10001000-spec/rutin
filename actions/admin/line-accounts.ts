@@ -12,6 +12,7 @@ import {
   upsertLineAccountSchema,
   type UpsertLineAccountInput,
 } from "@/schemas/line-accounts";
+import { buildLineWebhookUrl } from "@/lib/line-webhook-audit";
 
 export type LineAccountListItem = {
   id: string;
@@ -43,8 +44,8 @@ export type GetLineAccountsResult = Result<{
 }>;
 
 function buildWebhookUrl(id: string): string {
-  const base = getServerEnv().APP_BASE_URL.replace(/\/$/, "");
-  return `${base}/api/webhooks/line/${id}`;
+  // 正規の組み立ては lib/line-webhook-audit.ts に一本化（表示・通知・修復で同じURL）
+  return buildLineWebhookUrl(id);
 }
 
 /**
@@ -486,57 +487,23 @@ export async function getLineWebhookHealth(): Promise<GetLineWebhookHealthResult
     };
   }
 
-  const { getLineAccountById } = await import("@/lib/line-accounts");
+  // 判定本体は lib/line-webhook-audit.ts（日次cronの運営通知と同じ基準を共有）
+  const { auditAllLineWebhookEndpoints } = await import("@/lib/line-webhook-audit");
   const adminClient = createAdminSupabaseClient();
+  const items = await auditAllLineWebhookEndpoints(adminClient);
 
-  const { data: accounts } = await adminClient
-    .from("line_official_accounts")
-    .select("id, name")
-    .eq("active", true)
-    .order("is_default", { ascending: false })
-    .order("name");
-
-  const items: LineWebhookHealthItem[] = await Promise.all(
-    (accounts ?? []).map(async (row) => {
-      const expectedUrl = buildWebhookUrl(row.id);
-      const base = { accountId: row.id, name: row.name, expectedUrl };
-
-      const resolved = await getLineAccountById(row.id, adminClient);
-      if (!resolved) {
-        return { ...base, status: "unreachable" as const, configuredUrl: null };
-      }
-
-      try {
-        const res = await fetch("https://api.line.me/v2/bot/channel/webhook/endpoint", {
-          headers: { Authorization: `Bearer ${resolved.credentials.accessToken}` },
-          cache: "no-store",
-          signal: AbortSignal.timeout(8000),
-        });
-        if (res.status === 404) {
-          // 未設定のチャネルは 404 が返る
-          return { ...base, status: "unset" as const, configuredUrl: null };
-        }
-        if (!res.ok) {
-          return { ...base, status: "unreachable" as const, configuredUrl: null };
-        }
-        const body = (await res.json()) as { endpoint?: string; active?: boolean };
-        if (!body.endpoint) {
-          return { ...base, status: "unset" as const, configuredUrl: null };
-        }
-        if (body.endpoint !== expectedUrl) {
-          return { ...base, status: "mismatch" as const, configuredUrl: body.endpoint };
-        }
-        if (!body.active) {
-          return { ...base, status: "inactive" as const, configuredUrl: body.endpoint };
-        }
-        return { ...base, status: "ok" as const, configuredUrl: body.endpoint };
-      } catch {
-        return { ...base, status: "unreachable" as const, configuredUrl: null };
-      }
-    })
-  );
-
-  return { ok: true, data: { items } };
+  return {
+    ok: true,
+    data: {
+      items: items.map((i) => ({
+        accountId: i.accountKey,
+        name: i.name,
+        expectedUrl: i.expectedUrl,
+        status: i.status,
+        configuredUrl: i.configuredUrl,
+      })),
+    },
+  };
 }
 
 export type RepairLineWebhookResult = Result<{ verified: boolean }>;

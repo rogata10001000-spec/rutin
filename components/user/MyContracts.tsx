@@ -69,12 +69,18 @@ export function MyContracts({ data }: MyContractsProps) {
                     <span className="block truncate text-base font-bold text-stone-800">
                       {sub.castName ? `${sub.castName}さん` : "担当メイト未設定"}
                     </span>
-                    <span className="mt-0.5 block text-sm text-stone-500">
+                    <span className="mt-0.5 block truncate text-sm text-stone-500">
                       {sub.planLabel}
-                      {sub.monthlyPrice != null &&
-                        ` ・ ¥${sub.monthlyPrice.toLocaleString("ja-JP")}${
-                          sub.interval === "year" ? "/年" : "/月"
-                        }`}
+                      {sub.monthlyPrice != null && (
+                        <>
+                          {" ・ "}
+                          {/* 金額と /月 は不可分のペア。折り返し境界で分離させない */}
+                          <span className="whitespace-nowrap">
+                            ¥{sub.monthlyPrice.toLocaleString("ja-JP")}
+                            {sub.interval === "year" ? "/年" : "/月"}
+                          </span>
+                        </>
+                      )}
                     </span>
                   </span>
 
