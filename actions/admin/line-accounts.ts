@@ -446,3 +446,180 @@ export async function getLineAccountQuotas(): Promise<GetLineAccountQuotasResult
 
   return { ok: true, data: { items } };
 }
+
+// =====================================================
+// LINE側Webhook設定の実測突合（接続の開通確認）
+// =====================================================
+
+export type LineWebhookHealthItem = {
+  accountId: string;
+  name: string;
+  expectedUrl: string;
+  /**
+   * ok         = LINE側の設定がこのアカウントの正しいURL・有効
+   * mismatch   = 別のURLが設定されている（別アカウントのURL取り違えが典型）
+   * inactive   = URLは正しいがWebhookの利用がオフ
+   * unset      = URL未設定
+   * unreachable= LINE APIから設定を取得できない（トークン不備等）
+   */
+  status: "ok" | "mismatch" | "inactive" | "unset" | "unreachable";
+  configuredUrl: string | null;
+};
+
+export type GetLineWebhookHealthResult = Result<{ items: LineWebhookHealthItem[] }>;
+
+/**
+ * 各アカウントのLINE Developers側Webhook設定を実測し、期待URLと突合する（Admin専用）。
+ *
+ * Webhook URLはLINE側に手動設定する値で、間違っていても**どこにもエラーが出ない**
+ * （宛先違いは署名不一致で401破棄され、痕跡すら残らない）。
+ * 実例: ゆいのチャネルにれんのURLが設定され、会員のメッセージが数日間すべて
+ * 消えていた（2026-08-21 発覚）。コード・DBには現れない設定のため、
+ * 実測して画面に常設表示することでしか発見できない。
+ */
+export async function getLineWebhookHealth(): Promise<GetLineWebhookHealthResult> {
+  const auth = await requireAdmin();
+  if (!auth) {
+    return {
+      ok: false,
+      error: { code: "FORBIDDEN", message: "LINE公式アカウント管理はAdminのみ可能です" },
+    };
+  }
+
+  const { getLineAccountById } = await import("@/lib/line-accounts");
+  const adminClient = createAdminSupabaseClient();
+
+  const { data: accounts } = await adminClient
+    .from("line_official_accounts")
+    .select("id, name")
+    .eq("active", true)
+    .order("is_default", { ascending: false })
+    .order("name");
+
+  const items: LineWebhookHealthItem[] = await Promise.all(
+    (accounts ?? []).map(async (row) => {
+      const expectedUrl = buildWebhookUrl(row.id);
+      const base = { accountId: row.id, name: row.name, expectedUrl };
+
+      const resolved = await getLineAccountById(row.id, adminClient);
+      if (!resolved) {
+        return { ...base, status: "unreachable" as const, configuredUrl: null };
+      }
+
+      try {
+        const res = await fetch("https://api.line.me/v2/bot/channel/webhook/endpoint", {
+          headers: { Authorization: `Bearer ${resolved.credentials.accessToken}` },
+          cache: "no-store",
+          signal: AbortSignal.timeout(8000),
+        });
+        if (res.status === 404) {
+          // 未設定のチャネルは 404 が返る
+          return { ...base, status: "unset" as const, configuredUrl: null };
+        }
+        if (!res.ok) {
+          return { ...base, status: "unreachable" as const, configuredUrl: null };
+        }
+        const body = (await res.json()) as { endpoint?: string; active?: boolean };
+        if (!body.endpoint) {
+          return { ...base, status: "unset" as const, configuredUrl: null };
+        }
+        if (body.endpoint !== expectedUrl) {
+          return { ...base, status: "mismatch" as const, configuredUrl: body.endpoint };
+        }
+        if (!body.active) {
+          return { ...base, status: "inactive" as const, configuredUrl: body.endpoint };
+        }
+        return { ...base, status: "ok" as const, configuredUrl: body.endpoint };
+      } catch {
+        return { ...base, status: "unreachable" as const, configuredUrl: null };
+      }
+    })
+  );
+
+  return { ok: true, data: { items } };
+}
+
+export type RepairLineWebhookResult = Result<{ verified: boolean }>;
+
+/**
+ * LINE側のWebhook URLをこのアカウントの正しいURLへ設定し直し、疎通テストまで行う（Admin専用）。
+ * mismatch / unset / inactive をワンタップで復旧するための操作。
+ */
+export async function repairLineWebhookEndpoint(input: {
+  accountId: string;
+}): Promise<RepairLineWebhookResult> {
+  const auth = await requireAdmin();
+  if (!auth) {
+    return {
+      ok: false,
+      error: { code: "FORBIDDEN", message: "LINE公式アカウント管理はAdminのみ可能です" },
+    };
+  }
+
+  const { getLineAccountById } = await import("@/lib/line-accounts");
+  const adminClient = createAdminSupabaseClient();
+  const resolved = await getLineAccountById(input.accountId, adminClient);
+  if (!resolved) {
+    return {
+      ok: false,
+      error: { code: "NOT_FOUND", message: "アカウントが見つからないか、トークンが未設定です" },
+    };
+  }
+
+  const expectedUrl = buildWebhookUrl(input.accountId);
+
+  try {
+    const put = await fetch("https://api.line.me/v2/bot/channel/webhook/endpoint", {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${resolved.credentials.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ endpoint: expectedUrl }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!put.ok) {
+      return {
+        ok: false,
+        error: { code: "EXTERNAL_API_ERROR", message: `URLの設定に失敗しました（${put.status}）` },
+      };
+    }
+
+    // LINE→本番エンドポイントの疎通テスト（会員への通知は発生しない）
+    let verified = false;
+    try {
+      const test = await fetch("https://api.line.me/v2/bot/channel/webhook/test", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resolved.credentials.accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ endpoint: expectedUrl }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const result = (await test.json()) as { success?: boolean };
+      verified = Boolean(result.success);
+    } catch {
+      verified = false;
+    }
+
+    await writeAuditLog({
+      action: "LINE_WEBHOOK_REPAIR",
+      targetType: "line_official_accounts",
+      targetId: input.accountId,
+      success: true,
+      metadata: { endpoint: expectedUrl, verified },
+    });
+
+    revalidatePath("/admin/line-accounts");
+    return { ok: true, data: { verified } };
+  } catch (err) {
+    return {
+      ok: false,
+      error: {
+        code: "EXTERNAL_API_ERROR",
+        message: err instanceof Error ? err.message : "設定の更新に失敗しました",
+      },
+    };
+  }
+}

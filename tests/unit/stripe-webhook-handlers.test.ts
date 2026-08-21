@@ -16,6 +16,16 @@ vi.mock("@/lib/stripe", async (importOriginal) => {
   };
 });
 
+// 行の新規作成フォールバックが参照する「Stripeの現在状態」を差し替える。
+// 既定は取得失敗（＝イベントペイロードで続行する経路）。
+vi.mock("@/lib/stripe-subscription-sync", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/stripe-subscription-sync")>();
+  return {
+    ...actual,
+    fetchStripeSubscription: vi.fn().mockRejectedValue(new Error("no live fetch in test")),
+  };
+});
+
 type Mod = typeof import("@/app/api/webhooks/stripe/route");
 let mod: Mod;
 
@@ -291,6 +301,65 @@ describe("handleSubscriptionUpsert", () => {
     // スキップせず行が作られること（従来は created 以外を弾いていた）
     expect(res).not.toMatchObject({ skipped: true });
     expect(calls).toContainEqual({ table: "subscriptions", op: "insert" });
+  });
+
+
+  it("行の新規作成はイベントペイロードでなくStripeの現在状態を正とする（古いactiveの復活防止）", async () => {
+    // updated(canceled) が「行なし」で捨てられた後、遅延した created(active) が
+    // フォールバックで行を作るケース。ペイロードの active を信じると
+    // Stripe上は解約済みなのにDBだけ active になる。現在状態(canceled)で作ること。
+    const { fetchStripeSubscription } = await import("@/lib/stripe-subscription-sync");
+    vi.mocked(fetchStripeSubscription).mockResolvedValueOnce({
+      id: "sub_stale_created",
+      status: "canceled",
+      pause_collection: null,
+      cancel_at_period_end: false,
+      items: { data: [{ price: { id: "price_1" }, current_period_end: 1_700_000_000 }] },
+    } as never);
+
+    const inserts: Array<Record<string, unknown>> = [];
+    const supabase = createMockSupabase(({ table, op, payload }) => {
+      if (table === "subscriptions" && op === "select") return { data: null };
+      if (table === "subscriptions" && op === "insert" && payload) {
+        inserts.push(payload as Record<string, unknown>);
+        return { data: null };
+      }
+      if (table === "end_users" && op === "select") {
+        return {
+          data: [
+            {
+              id: "user_1",
+              person_id: "person_1",
+              line_user_id: "U".padEnd(33, "0"),
+              assigned_cast_id: "cast_1",
+              status: "incomplete",
+              plan_code: "light",
+              nickname: "テスト",
+              line_profile_synced_at: null,
+            },
+          ],
+        };
+      }
+      return { data: null };
+    });
+
+    await mod.handleSubscriptionUpsert(
+      supabase,
+      makeSubscription({
+        id: "sub_stale_created",
+        status: "active", // ← 古いペイロード
+        metadata: {
+          line_user_id: "U".padEnd(33, "0"),
+          cast_id: "cast_1",
+          plan_code: "light",
+        },
+      }),
+      "customer.subscription.created",
+      "evt_stale_payload"
+    );
+
+    const subInsert = inserts.find((i) => "stripe_subscription_id" in i);
+    expect(subInsert?.status).toBe("canceled");
   });
 
   it("行が無く metadata も無い updated は従来どおりスキップ（外部作成サブスクを取り込まない）", async () => {

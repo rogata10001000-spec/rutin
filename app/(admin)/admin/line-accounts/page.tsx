@@ -1,5 +1,10 @@
-import { getLineAccounts, getLineAccountQuotas } from "@/actions/admin/line-accounts";
+import {
+  getLineAccounts,
+  getLineAccountQuotas,
+  getLineWebhookHealth,
+} from "@/actions/admin/line-accounts";
 import { LineQuotaSection } from "@/components/admin/line-accounts/LineQuotaSection";
+import { LineWebhookHealthSection } from "@/components/admin/line-accounts/LineWebhookHealthSection";
 import { LineAccountSetupGuide } from "@/components/admin/line-accounts/LineAccountSetupGuide";
 import { LineAccountsTable } from "@/components/admin/line-accounts/LineAccountsTable";
 
@@ -7,9 +12,10 @@ export const dynamic = "force-dynamic";
 
 export default async function LineAccountsPage() {
   // 一覧と枠の取得は独立 → 並列（枠はLINE APIを叩くため直列に足すとページが遅くなる）
-  const [result, quotasResult] = await Promise.all([
+  const [result, quotasResult, webhookHealthResult] = await Promise.all([
     getLineAccounts(),
     getLineAccountQuotas(),
+    getLineWebhookHealth(),
   ]);
 
   if (!result.ok) {
@@ -38,6 +44,10 @@ export default async function LineAccountsPage() {
           <code className="ml-1 rounded bg-amber-100 px-1.5 py-0.5">openssl rand -base64 32</code>
           で生成してください。
         </div>
+      )}
+
+      {webhookHealthResult.ok && (
+        <LineWebhookHealthSection items={webhookHealthResult.data.items} />
       )}
 
       {quotasResult.ok && <LineQuotaSection items={quotasResult.data.items} />}

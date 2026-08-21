@@ -72,6 +72,7 @@ export type AuditAction =
   // LINE公式アカウント
   | "LINE_ACCOUNT_CREATE"
   | "LINE_ACCOUNT_UPDATE"
+  | "LINE_WEBHOOK_REPAIR"
   // スタッフ管理
   | "STAFF_PROFILE_UPDATE"
   | "CAST_ACCEPTING_TOGGLED"

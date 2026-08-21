@@ -233,3 +233,43 @@ describe("P7: 人単位の資源を行単位で書かないこと（集約レベ
     expect(src).toMatch(/\.in\("status", \["trial", "active", "past_due", "paused"\]\)/);
   });
 });
+
+describe("P8: 外部イベント処理の無音故障を作らないこと", () => {
+  it("invoiceのサブスクID解決は新旧両形対応のリーダー関数に集約されている", () => {
+    // Stripe APIバージョン(basil/clover)で invoice.subscription が
+    // parent.subscription_details.subscription へ移動した。旧形だけ読むと
+    // 全invoice.paidが無音skipになり売上記録が全欠落する（実際に起きた）。
+    const src = read(join(ROOT, "app/api/webhooks/stripe/route.ts"));
+    const reader = src.slice(
+      src.indexOf("function subscriptionIdFromInvoice"),
+      src.indexOf("function subscriptionIdFromInvoice") + 1500
+    );
+    expect(reader).toContain("subscription_details");
+    expect(reader).toMatch(/raw\.subscription|legacy/);
+  });
+
+  it("売上が記録されないskipは error ログで可視化されている（無音skip禁止）", () => {
+    const src = read(join(ROOT, "app/api/webhooks/stripe/route.ts"));
+    const matches = src.match(/revenue NOT recorded/g) ?? [];
+    // 解決不能・行なし・担当なし・税率なし・配分ルールなし の5箇所
+    expect(matches.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("契約行の新規作成フォールバックは作成イベント以外にも開かれている（到着順逆転対策）", () => {
+    const src = read(join(ROOT, "app/api/webhooks/stripe/route.ts"));
+    // 「created 以外なら skip」の早期return が復活していないこと
+    expect(src).not.toMatch(
+      /eventType !== "customer\.subscription\.created"\)\s*\{\s*\n\s*logger\.warn\("stripe webhook: subscription not found"/
+    );
+    // 新規作成時は現在状態を fetch していること
+    expect(src).toMatch(/fetchStripeSubscription\(subscriptionId\)/);
+  });
+
+  it("LINE Webhook設定の実測突合とワンタップ修復が管理画面に配線されている", () => {
+    const action = read(join(ROOT, "actions/admin/line-accounts.ts"));
+    expect(action).toContain("getLineWebhookHealth");
+    expect(action).toContain("repairLineWebhookEndpoint");
+    const page = read(join(ROOT, "app/(admin)/admin/line-accounts/page.tsx"));
+    expect(page).toContain("LineWebhookHealthSection");
+  });
+});

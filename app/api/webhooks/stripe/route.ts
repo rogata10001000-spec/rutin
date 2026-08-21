@@ -340,11 +340,22 @@ export async function recognizeSubscriptionRevenue(
   invoice: Stripe.Invoice
 ): Promise<RevenueRecognitionResult> {
   const subscriptionId = subscriptionIdFromInvoice(invoice);
+  const amountInclTax = invoice.amount_paid ?? 0;
+
   if (!subscriptionId) {
+    // 金額のある請求でサブスクを解決できないのは「売上が記録されない」事故。
+    // かつてAPIバージョン差（invoice.subscription の廃止）で全件がここに落ち、
+    // ログも出さなかったため数ヶ月間の売上欠落に気づけなかった。
+    // 無音skipにせず、金額があるものは error で可視化する（0円請求はskipでよい）。
+    if (amountInclTax > 0) {
+      logger.error("invoice.paid: cannot resolve subscription id (revenue NOT recorded)", {
+        stripeInvoiceId: invoice.id,
+        amountInclTax,
+      });
+    }
     return { skipped: true, reason: "invoice has no subscription" };
   }
 
-  const amountInclTax = invoice.amount_paid ?? 0;
   if (amountInclTax <= 0) {
     return { skipped: true, reason: "invoice amount is zero" };
   }
@@ -356,9 +367,11 @@ export async function recognizeSubscriptionRevenue(
     .single();
 
   if (!subscription) {
-    logger.warn("invoice.paid: subscription row not found", {
+    // 金額のある支払いに対応する契約行が無い＝売上が記録されない事故（error で可視化）
+    logger.error("invoice.paid: subscription row not found (revenue NOT recorded)", {
       stripeInvoiceId: invoice.id,
       stripeSubscriptionId: subscriptionId,
+      amountInclTax,
     });
     return { skipped: true, reason: "subscription not found in database" };
   }
@@ -408,7 +421,7 @@ export async function recognizeSubscriptionRevenue(
   const endUser = subscription.end_users as unknown as { assigned_cast_id: string | null };
   const castId = endUser.assigned_cast_id;
   if (!castId) {
-    logger.warn("invoice.paid: assigned cast missing", {
+    logger.error("invoice.paid: assigned cast missing (revenue NOT recorded)", {
       stripeInvoiceId: invoice.id,
       subscriptionId: subscription.id,
     });
@@ -423,7 +436,7 @@ export async function recognizeSubscriptionRevenue(
   try {
     taxRate = await getActiveTaxRate(supabase);
   } catch (err) {
-    logger.warn("invoice.paid: active tax rate not found", {
+    logger.error("invoice.paid: active tax rate not found (revenue NOT recorded)", {
       stripeInvoiceId: invoice.id,
       error: err instanceof Error ? err.message : "unknown",
     });
@@ -487,7 +500,7 @@ export async function recognizeSubscriptionRevenue(
     occurredOn
   );
   if (!payoutRule) {
-    logger.warn("invoice.paid: payout rule not found", {
+    logger.error("invoice.paid: payout rule not found (revenue NOT recorded)", {
       stripeInvoiceId: invoice.id,
       castId,
       planCode: subscription.plan_code,
@@ -959,6 +972,28 @@ export async function handleSubscriptionUpsert(
       return { skipped: true, reason: "missing subscription metadata" };
     }
 
+    // イベントペイロードの status は「そのイベント時点」のスナップショットで、
+    // 到着順が逆転していると古い（例: updated(canceled) が先に届いて「行なし」で捨てられ、
+    // 遅れて届いた created(active) がこのフォールバックで行を作ると、Stripe上は解約済み
+    // なのにDBだけ active になる）。行を新規に作るときだけは現在状態を取得して正とする。
+    let effectiveStatus = newStatus;
+    let effectivePeriodEnd = currentPeriodEnd;
+    let effectiveCancelAtPeriodEnd = cancelAtPeriodEnd;
+    let effectiveSubscription = subscription;
+    try {
+      const live = await fetchStripeSubscription(subscriptionId);
+      effectiveStatus = live.pause_collection ? "paused" : toSubscriptionStatus(live.status);
+      effectivePeriodEnd = currentPeriodEndFromStripeSubscription(live);
+      effectiveCancelAtPeriodEnd = live.cancel_at_period_end;
+      effectiveSubscription = live;
+    } catch (err) {
+      // 取得できないときはペイロードで続行（invoice.paid の最終収束が控えている）
+      logger.warn("subscription create-fallback: live fetch failed, using event payload", {
+        subscriptionId,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+
     // checkout.session.completed と同じく「このメイトとの関係行」で解決する
     // （どちらのイベントが先に届いても同じ行に着地する）。
     const relationship = await ensureRelationshipForCast(supabase, {
@@ -969,7 +1004,7 @@ export async function handleSubscriptionUpsert(
     });
     const user = { id: relationship.id };
 
-    const trialEndAt = trialEndAtFromSubscription(subscription);
+    const trialEndAt = trialEndAtFromSubscription(effectiveSubscription);
 
     // 同じメイトに既にライブ契約があるなら二重契約（レース）。
     // 別メイトの追加契約は関係行が分かれるためここに来ない。
@@ -987,12 +1022,12 @@ export async function handleSubscriptionUpsert(
     await supabase
       .from("end_users")
       .update({
-        ...statusPatch(newStatus),
+        ...statusPatch(effectiveStatus),
         plan_code: planCode,
         assigned_cast_id: castId,
         trial_end_at: trialEndAt,
         ...(relationship.isNew ? { line_followed_at: subscriptionStartedAt } : {}),
-        ...(newStatus === "trial"
+        ...(effectiveStatus === "trial"
           ? { trial_started_at: subscriptionStartedAt }
           : { subscribed_at: subscriptionStartedAt }),
       })
@@ -1002,12 +1037,12 @@ export async function handleSubscriptionUpsert(
       end_user_id: user.id,
       stripe_customer_id: customerId,
       stripe_subscription_id: subscriptionId,
-      status: newStatus,
+      status: effectiveStatus,
       plan_code: planCode,
       applied_stripe_price_id: appliedStripePriceId,
       billing_interval: billingInterval,
-      current_period_end: currentPeriodEnd,
-      cancel_at_period_end: cancelAtPeriodEnd,
+      current_period_end: effectivePeriodEnd,
+      cancel_at_period_end: effectiveCancelAtPeriodEnd,
     });
 
     if (insertError && insertError.code !== "23505") {
@@ -1030,11 +1065,11 @@ export async function handleSubscriptionUpsert(
       await supabase
         .from("subscriptions")
         .update({
-          ...statusPatch(newStatus),
-          cancel_at_period_end: cancelAtPeriodEnd,
+          ...statusPatch(effectiveStatus),
+          cancel_at_period_end: effectiveCancelAtPeriodEnd,
           applied_stripe_price_id: appliedStripePriceId,
           billing_interval: billingInterval,
-          ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
+          ...(effectivePeriodEnd ? { current_period_end: effectivePeriodEnd } : {}),
         })
         .eq("stripe_subscription_id", subscriptionId);
     }
@@ -1042,7 +1077,7 @@ export async function handleSubscriptionUpsert(
     await recordSubscriptionLifecycleEvent(supabase, {
       endUserId: user.id,
       castId,
-      eventType: newStatus === "trial" ? "trial_start" : "subscribe",
+      eventType: effectiveStatus === "trial" ? "trial_start" : "subscribe",
       planCode,
       occurredAt: subscriptionStartedAt,
       sourceRefType: "stripe:subscription_initial",
@@ -1050,7 +1085,7 @@ export async function handleSubscriptionUpsert(
       metadata: {
         stripe_event_id: eventId,
         stripe_subscription_id: subscriptionId,
-        status: newStatus,
+        status: effectiveStatus,
         trial_end_at: trialEndAt,
         synced_from: "subscription.created",
       },
@@ -1062,7 +1097,7 @@ export async function handleSubscriptionUpsert(
       castId,
       stripeSubscriptionId: subscriptionId,
       planCode,
-      status: newStatus,
+      status: effectiveStatus,
       trialEndAt,
     });
 
@@ -1076,13 +1111,13 @@ export async function handleSubscriptionUpsert(
       success: true,
       metadata: {
         event: eventType,
-        new_status: newStatus,
+        new_status: effectiveStatus,
         synced_from: "subscription.created",
       },
       actorStaffId: null,
     });
 
-    return { subscriptionId, newStatus, created: true };
+    return { subscriptionId, effectiveStatus, created: true };
   }
 
   const previousStatus = sub.status;
