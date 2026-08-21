@@ -14,7 +14,9 @@ export function RevenueSummaryCards({ summary }: RevenueSummaryCardsProps) {
         <p className="mt-2 text-2xl font-bold text-stone-900">
           {formatYen(summary.totalInclTaxJpy)}
         </p>
-        <p className="mt-1 text-xs text-stone-500">税込（ユーザー支払い額）</p>
+        <p className="mt-1 text-xs text-stone-500">
+          税込（ユーザー支払い額）・期間内に確定した請求のみ
+        </p>
       </div>
       <div className="rounded-2xl border border-stone-200 bg-white shadow-soft p-4">
         <h3 className="text-sm font-medium text-stone-500">メイト配分合計</h3>

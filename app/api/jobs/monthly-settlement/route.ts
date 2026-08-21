@@ -27,6 +27,27 @@ export async function GET(request: Request) {
   try {
     const supabase = createAdminSupabaseClient();
 
+    // 取り残し検知: 前月より古い未精算配分が残っていないか。
+    // このcronは「前月」しか見ないため、過去月の売上が後から修復・遅延到着すると
+    // その月の精算は永遠に作られない（実例: invoice.paid の欠落バグ修復後、
+    // 7月分の精算が「8/1実行時は対象なし」のまま取り残された）。
+    // 検知したら error ログで可視化する（Sentryに乗る）。復旧は
+    // 管理画面の期間指定作成か、create_settlement_batch_atomic の直接実行で行う。
+    const { data: strandedRows } = await supabase
+      .from("payout_calculations")
+      .select("id, amount_jpy, revenue_events!inner(occurred_on)")
+      .is("settlement_batch_id", null)
+      .lt("revenue_events.occurred_on", periodFrom)
+      .limit(50);
+    if ((strandedRows?.length ?? 0) > 0) {
+      const total = (strandedRows ?? []).reduce((s, r) => s + (r.amount_jpy ?? 0), 0);
+      logger.error("monthly settlement: stranded unsettled payouts detected (older than previous month)", {
+        count: strandedRows?.length,
+        totalJpy: total,
+        olderThan: periodFrom,
+      });
+    }
+
     // 冪等性: 同一期間の精算が既に存在すればスキップ
     const { data: existing } = await supabase
       .from("settlement_batches")

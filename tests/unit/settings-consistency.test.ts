@@ -273,3 +273,31 @@ describe("P8: 外部イベント処理の無音故障を作らないこと", () 
     expect(page).toContain("LineWebhookHealthSection");
   });
 });
+
+describe("P9: 時間窓ジョブのバックフィル耐性と表示の誤解防止", () => {
+  it("日次ロールアップは日付指定で再実行できる（上流修復後のバックフィル手段）", () => {
+    const src = read(join(ROOT, "app/api/jobs/daily-metrics-rollup/route.ts"));
+    expect(src).toContain('searchParams.get("date")');
+    expect(src).toContain("runDailyMetricsRollup(dateParam");
+  });
+
+  it("月次精算は取り残し（前月より古い未精算配分）を検知する", () => {
+    const src = read(join(ROOT, "app/api/jobs/monthly-settlement/route.ts"));
+    expect(src).toContain("stranded");
+    expect(src).toMatch(/\.is\("settlement_batch_id", null\)/);
+  });
+
+  it("開発メモ的文言（参考実装・仮実装）が本番UIに残っていない", () => {
+    const offenders = SOURCE_FILES.filter((f) => {
+      if (!/\.(tsx)$/.test(f)) return false;
+      const src = read(f);
+      return /参考実装|仮実装/.test(src);
+    }).map((f) => f.replace(ROOT + "/", ""));
+    expect(offenders).toEqual([]);
+  });
+
+  it("周期イベントの一覧には「期間内に発生した分のみ」の説明がある", () => {
+    const page = read(join(ROOT, "app/(admin)/admin/revenue/page.tsx"));
+    expect(page).toContain("表示期間内に請求が発生したメイトのみ");
+  });
+});
