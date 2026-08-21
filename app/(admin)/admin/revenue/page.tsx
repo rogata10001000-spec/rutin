@@ -75,6 +75,8 @@ export default async function RevenuePage({
               <h2 className="text-sm font-bold text-stone-800">メイト別売上</h2>
               <p className="mt-0.5 text-xs text-stone-500">
                 メイトへの配分額（税抜）。精算画面と同じ基準です。
+                表示期間内に請求が発生したメイトのみ表示されます（請求日は各会員の契約日に依存するため、
+                月の途中では今月分がまだ表示されないメイトがいます）。
               </p>
             </div>
             <MateRevenueTable items={result.data.summary.mateRows} />

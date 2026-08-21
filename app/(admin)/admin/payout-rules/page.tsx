@@ -25,7 +25,7 @@ export default async function PayoutRulesPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-stone-900">配分ルール</h1>
         <p className="mt-1 text-sm text-stone-500">
-          ギフト売上のメイト配分率を設定します
+          サブスク売上のメイト配分率を設定します（メイト別 → 全体の順に優先）
         </p>
       </div>
 
