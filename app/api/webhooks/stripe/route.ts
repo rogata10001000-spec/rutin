@@ -25,7 +25,7 @@ import {
   trialEndAtFromSubscription,
 } from "@/lib/stripe-subscription-sync";
 import { recordSubscriptionLifecycleEvent } from "@/lib/subscription-lifecycle";
-import type { PayoutScopeType } from "@/lib/supabase/types";
+import type { PayoutScopeType, SubscriptionStatus } from "@/lib/supabase/types";
 import {
   PLAN_CODES,
   resolvePlanCodeFromAppliedPrice,
@@ -54,10 +54,28 @@ function stripeWebhookErrorResponse(eventType: string, eventId: string, message:
 }
 
 function subscriptionIdFromInvoice(invoice: Stripe.Invoice): string | null {
-  const rawSubscription = (invoice as unknown as { subscription?: string | { id: string } | null })
-    .subscription;
-  if (!rawSubscription) return null;
-  return typeof rawSubscription === "string" ? rawSubscription : rawSubscription.id;
+  // Stripe APIバージョンで invoice の形が違う:
+  //   〜acacia: invoice.subscription
+  //   basil以降(2025-03〜): invoice.parent.subscription_details.subscription
+  // Webhookイベントは「Stripeダッシュボードのアカウント設定バージョン」で送られるため、
+  // SDKの apiVersion 固定では守れない。旧形しか読んでいなかった結果、
+  // 全ての invoice.paid が「サブスクリプションなし」として黙ってスキップされ、
+  // 売上記録(revenue_events)がサービス開始以来1件も書かれていなかった
+  // （2026-08-21 発覚。支払い失敗の past_due 遷移・通知も同様に不発だった）。
+  const raw = invoice as unknown as {
+    subscription?: string | { id: string } | null;
+    parent?: {
+      subscription_details?: { subscription?: string | { id: string } | null } | null;
+    } | null;
+  };
+
+  const legacy = raw.subscription;
+  if (legacy) return typeof legacy === "string" ? legacy : legacy.id;
+
+  const nested = raw.parent?.subscription_details?.subscription;
+  if (nested) return typeof nested === "string" ? nested : nested.id;
+
+  return null;
 }
 
 async function getActiveTaxRate(supabase: SupabaseAdmin) {
@@ -301,6 +319,18 @@ async function warnIfCastOverCapacity(supabase: SupabaseAdmin, castId: string): 
   }
 }
 
+/**
+ * 状態の後退禁止。
+ * Stripeイベントは到着順が保証されず、支払い確定前に取得した incomplete が
+ * 確定後の active を上書きする「後退」が起きうる。incomplete は初期状態であり、
+ * 行が既に存在するなら常に同等以上の情報を持っているため、
+ * 既存行の status を incomplete で上書きすることは一切しない
+ * （canceled 等への遷移は正当な前進なので通す）。
+ */
+function statusPatch(nextStatus: SubscriptionStatus): { status?: SubscriptionStatus } {
+  return nextStatus === "incomplete" ? {} : { status: nextStatus };
+}
+
 export type RevenueRecognitionResult =
   | { skipped: true; reason: string }
   | { revenueEventId: string; payoutAmount: number };
@@ -321,7 +351,7 @@ export async function recognizeSubscriptionRevenue(
 
   const { data: subscription } = await supabase
     .from("subscriptions")
-    .select("id, end_user_id, plan_code, end_users!inner(assigned_cast_id)")
+    .select("id, end_user_id, plan_code, status, end_users!inner(assigned_cast_id)")
     .eq("stripe_subscription_id", subscriptionId)
     .single();
 
@@ -331,6 +361,48 @@ export async function recognizeSubscriptionRevenue(
       stripeSubscriptionId: subscriptionId,
     });
     return { skipped: true, reason: "subscription not found in database" };
+  }
+
+  // 支払い確定は「契約が生きている」ことの確実なシグナル。
+  // イベント到着順の逆転（updated が行の無い時点で届いてスキップ→ completed/created が
+  // 支払い確定前の incomplete を保存）で取り残された行を、ここで最終的に収束させる。
+  // 実例: 2026-08-20 の追加契約が incomplete のまま残り、課金済みなのに未契約扱いになった。
+  if (subscription.status === "incomplete") {
+    try {
+      const live = await fetchStripeSubscription(subscriptionId);
+      const liveStatus = toSubscriptionStatus(live.status);
+      if (liveStatus !== "incomplete") {
+        await supabase
+          .from("subscriptions")
+          .update({
+            status: liveStatus,
+            ...(currentPeriodEndFromStripeSubscription(live)
+              ? { current_period_end: currentPeriodEndFromStripeSubscription(live) }
+              : {}),
+          })
+          .eq("id", subscription.id);
+        await supabase
+          .from("end_users")
+          .update({ status: liveStatus })
+          .eq("id", subscription.end_user_id);
+        // 支払い済み＝subscribed_at が空なら補完（単調ガード: 既に値があれば触らない）
+        await supabase
+          .from("end_users")
+          .update({ subscribed_at: new Date().toISOString() })
+          .eq("id", subscription.end_user_id)
+          .is("subscribed_at", null);
+        logger.warn("invoice.paid: recovered stuck incomplete subscription", {
+          subscriptionId: subscription.id,
+          newStatus: liveStatus,
+        });
+      }
+    } catch (err) {
+      // 収束は best-effort（売上認識自体は止めない）。次の invoice.paid で再試行される
+      logger.error("invoice.paid: incomplete recovery failed", {
+        subscriptionId: subscription.id,
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
   }
 
   const endUser = subscription.end_users as unknown as { assigned_cast_id: string | null };
@@ -701,7 +773,7 @@ export async function handleCheckoutSessionCompleted(
     await supabase
       .from("end_users")
       .update({
-        status: subscriptionStatus,
+        ...statusPatch(subscriptionStatus),
         plan_code: planCode,
         assigned_cast_id: castId,
         trial_end_at: trialEndAt,
@@ -761,7 +833,7 @@ export async function handleCheckoutSessionCompleted(
       await supabase
         .from("subscriptions")
         .update({
-          status: subscriptionStatus,
+          ...statusPatch(subscriptionStatus),
           applied_stripe_price_id: metadata.stripe_price_id ?? "",
           billing_interval: billingInterval,
           ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
@@ -861,11 +933,15 @@ export async function handleSubscriptionUpsert(
     .single();
 
   if (!sub) {
-    if (eventType !== "customer.subscription.created") {
-      logger.warn("stripe webhook: subscription not found", { subscriptionId });
-      return { skipped: true };
-    }
-
+    // 行が無い場合の作成フォールバック。
+    // 以前は customer.subscription.created だけが行を作れたが、Stripeのイベントは
+    // 到着順が保証されない。実例（2026-08-20 ゆい契約）:
+    //   04:01:14.9 updated(incomplete→active) ← 最初に届き「行が無い」でスキップ
+    //   04:01:15.0 checkout.session.completed ← 支払い確定前に取得した incomplete で行を作成
+    //   04:01:16.0 created ← payload の status も incomplete
+    // → active への遷移を運ぶイベントが消費済みになり、契約が incomplete のまま
+    //   永遠に取り残された（会員は課金されているのに未契約扱い）。
+    // metadata が揃っていればイベント種別を問わず作成し、到着順への依存を断つ。
     const metadata = subscription.metadata ?? {};
     const lineUserId = metadata.line_user_id;
     const castId = metadata.cast_id;
@@ -876,7 +952,8 @@ export async function handleSubscriptionUpsert(
         : subscription.customer?.id;
 
     if (!lineUserId || !castId || !planCode || !customerId || !appliedStripePriceId) {
-      logger.warn("customer.subscription.created: missing metadata", {
+      // 旧サブスク・外部作成など metadata の無いものはここで止まる（作らない）
+      logger.warn(`${eventType}: missing metadata, cannot create subscription row`, {
         subscriptionId,
       });
       return { skipped: true, reason: "missing subscription metadata" };
@@ -910,7 +987,7 @@ export async function handleSubscriptionUpsert(
     await supabase
       .from("end_users")
       .update({
-        status: newStatus,
+        ...statusPatch(newStatus),
         plan_code: planCode,
         assigned_cast_id: castId,
         trial_end_at: trialEndAt,
@@ -953,7 +1030,7 @@ export async function handleSubscriptionUpsert(
       await supabase
         .from("subscriptions")
         .update({
-          status: newStatus,
+          ...statusPatch(newStatus),
           cancel_at_period_end: cancelAtPeriodEnd,
           applied_stripe_price_id: appliedStripePriceId,
           billing_interval: billingInterval,
@@ -1040,7 +1117,7 @@ export async function handleSubscriptionUpsert(
   const { error: syncError } = await supabase
     .from("subscriptions")
     .update({
-      status: newStatus,
+      ...statusPatch(newStatus),
       cancel_at_period_end: cancelAtPeriodEnd,
       billing_interval: billingInterval,
       ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
@@ -1077,7 +1154,7 @@ export async function handleSubscriptionUpsert(
   const endUser = sub.end_users as unknown as { assigned_cast_id: string | null };
   const castId = endUser.assigned_cast_id;
   const lifecycleUserUpdate = {
-    status: newStatus,
+    ...statusPatch(newStatus),
     ...(trialEndAt ? { trial_end_at: trialEndAt } : {}),
     ...(trialConverted ? { subscribed_at: new Date().toISOString() } : {}),
     ...(planCodeToSync ? { plan_code: planCodeToSync } : {}),

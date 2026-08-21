@@ -242,4 +242,146 @@ describe("handleSubscriptionUpsert", () => {
     expect(calls).toContainEqual({ table: "end_users", op: "insert" });
     expect(calls).toContainEqual({ table: "subscriptions", op: "insert" });
   });
+
+  it("updated が最初に届いても（行なし・metadataあり）契約行を作成する（到着順の逆転対策）", async () => {
+    // 実例（2026-08-20）: updated(active) が最初に届いて「行が無い」でスキップされ、
+    // 後続イベントが支払い確定前の incomplete を保存 → active への遷移が永遠に
+    // 反映されず、課金済みの会員が未契約扱いのまま取り残された。
+    const calls: Array<{ table: string; op: string }> = [];
+
+    const supabase = createMockSupabase(({ table, op }) => {
+      calls.push({ table, op });
+      if (table === "subscriptions" && op === "select") {
+        return { data: null }; // 行はまだ無い
+      }
+      if (table === "end_users" && op === "select") {
+        return {
+          data: [
+            {
+              id: "user_1",
+              person_id: "person_1",
+              line_user_id: "U".padEnd(33, "0"),
+              assigned_cast_id: "cast_1",
+              status: "incomplete",
+              plan_code: "light",
+              nickname: "テスト",
+              line_profile_synced_at: null,
+            },
+          ],
+        };
+      }
+      return { data: null };
+    });
+
+    const res = await mod.handleSubscriptionUpsert(
+      supabase,
+      makeSubscription({
+        id: "sub_first_event_updated",
+        status: "active",
+        metadata: {
+          line_user_id: "U".padEnd(33, "0"),
+          cast_id: "cast_1",
+          plan_code: "light",
+        },
+      }),
+      "customer.subscription.updated",
+      "evt_order_flip"
+    );
+
+    // スキップせず行が作られること（従来は created 以外を弾いていた）
+    expect(res).not.toMatchObject({ skipped: true });
+    expect(calls).toContainEqual({ table: "subscriptions", op: "insert" });
+  });
+
+  it("行が無く metadata も無い updated は従来どおりスキップ（外部作成サブスクを取り込まない）", async () => {
+    const supabase = createMockSupabase(({ table }) => {
+      if (table === "end_users") return { data: [] };
+      return { data: null };
+    });
+    const res = await mod.handleSubscriptionUpsert(
+      supabase,
+      makeSubscription({ id: "sub_no_meta", status: "active", metadata: {} }),
+      "customer.subscription.updated",
+      "evt_no_meta"
+    );
+    expect(res).toMatchObject({ skipped: true, reason: "missing subscription metadata" });
+  });
+
+  it("既存行への同期で incomplete への後退は書き込まない（支払い確定後の巻き戻し防止）", async () => {
+    const updates: Array<Record<string, unknown>> = [];
+    const supabase = createMockSupabase(({ table, op, payload }) => {
+      if (table === "subscriptions" && op === "select") {
+        return {
+          data: {
+            id: "row_live",
+            end_user_id: "user_1",
+            status: "active",
+            plan_code: "light",
+            cancel_at_period_end: false,
+            end_users: { assigned_cast_id: "cast_1" },
+          },
+        };
+      }
+      if (op === "update" && payload) updates.push(payload as Record<string, unknown>);
+      return { data: null };
+    });
+
+    await mod.handleSubscriptionUpsert(
+      supabase,
+      makeSubscription({ id: "sub_live", status: "incomplete" }),
+      "customer.subscription.updated",
+      "evt_stale_incomplete"
+    );
+
+    // status キー自体が含まれない（incomplete で上書きしない）
+    for (const u of updates) {
+      expect(u.status).not.toBe("incomplete");
+    }
+  });
+});
+
+describe("subscriptionIdFromInvoice（invoice.paid の形の互換）", () => {
+  // 直接exportされていないため、handleInvoicePaymentFailed 経由で間接検証する:
+  // subscription を解決できれば「subscriptions 検索」へ進み、できなければ即スキップになる。
+  it("新形（parent.subscription_details）の invoice からサブスクIDを解決できる", async () => {
+    const calls: string[] = [];
+    const supabase = createMockSupabase(({ table }) => {
+      calls.push(table);
+      return { data: null };
+    });
+    await mod.handleInvoicePaymentFailed(
+      supabase,
+      {
+        id: "in_new_shape",
+        parent: { subscription_details: { subscription: "sub_from_parent" } },
+      } as unknown as import("stripe").Stripe.Invoice,
+      "invoice.payment_failed"
+    );
+    // 解決できていれば subscriptions テーブルを検索しにいく
+    expect(calls).toContain("subscriptions");
+  });
+
+  it("旧形（invoice.subscription）も引き続き解決できる", async () => {
+    const calls: string[] = [];
+    const supabase = createMockSupabase(({ table }) => {
+      calls.push(table);
+      return { data: null };
+    });
+    await mod.handleInvoicePaymentFailed(
+      supabase,
+      { id: "in_old_shape", subscription: "sub_legacy" } as unknown as import("stripe").Stripe.Invoice,
+      "invoice.payment_failed"
+    );
+    expect(calls).toContain("subscriptions");
+  });
+
+  it("どちらの形にも無ければスキップ（外部作成の単発請求）", async () => {
+    const supabase = createMockSupabase(() => ({ data: null }));
+    const res = await mod.handleInvoicePaymentFailed(
+      supabase,
+      { id: "in_no_sub" } as unknown as import("stripe").Stripe.Invoice,
+      "invoice.payment_failed"
+    );
+    expect(res).toMatchObject({ skipped: true });
+  });
 });

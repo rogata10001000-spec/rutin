@@ -4,10 +4,16 @@
  * handler({ table, op }) の戻り値を返す。
  */
 export type MockResult = { data?: unknown; error?: unknown };
-export type MockHandler = (ctx: { table: string; op: string }) => MockResult;
+export type MockHandler = (ctx: {
+  table: string;
+  op: string;
+  /** insert/update/upsert に渡された値（書き込み内容の検証用。既存テストは無視してよい） */
+  payload?: unknown;
+}) => MockResult;
 
 class MockBuilder implements PromiseLike<MockResult> {
   private op = "select";
+  private payload: unknown = undefined;
   constructor(
     private readonly table: string,
     private readonly handler: MockHandler
@@ -16,20 +22,23 @@ class MockBuilder implements PromiseLike<MockResult> {
   select() {
     return this;
   }
-  insert() {
+  insert(values?: unknown) {
     this.op = "insert";
+    this.payload = values;
     return this;
   }
-  update() {
+  update(values?: unknown) {
     this.op = "update";
+    this.payload = values;
     return this;
   }
   delete() {
     this.op = "delete";
     return this;
   }
-  upsert() {
+  upsert(values?: unknown) {
     this.op = "upsert";
+    this.payload = values;
     return this;
   }
   eq() {
@@ -68,7 +77,7 @@ class MockBuilder implements PromiseLike<MockResult> {
   }
 
   private result(): MockResult {
-    return this.handler({ table: this.table, op: this.op });
+    return this.handler({ table: this.table, op: this.op, payload: this.payload });
   }
 
   then<TResult1 = MockResult, TResult2 = never>(
