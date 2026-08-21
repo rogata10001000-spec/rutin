@@ -112,6 +112,50 @@ export async function GET(request: Request) {
       castSummary,
     };
 
+    // LINE月間メッセージ枠の上限接近チェック。
+    // 管理画面（/admin/line-accounts）にも表示しているが、画面を開かない日が続くと
+    // 気づけない。上限到達＝通知・送信の無音全停止なので、警告圏に入ったら
+    // 運営LINEへ自動で知らせる（同日・同アカウント・同レベルは1回に制限）。
+    try {
+      const { getLineAccountQuotaAlerts } = await import("@/lib/line-quota-alerts");
+      const alerts = await getLineAccountQuotaAlerts(supabase);
+      for (const alert of alerts) {
+        // 同日重複の1回制御（webhook_events の (provider, event_id) UNIQUE を業務キーで再利用）
+        const claimTs = new Date().toISOString();
+        const { error: claimError } = await supabase.from("webhook_events").insert({
+          provider: "line",
+          event_id: `quota-alert:${todayJst}:${alert.accountKey}:${alert.warnLevel}`,
+          event_type: "line_quota_alert",
+          status: "processed",
+          processing_started_at: claimTs,
+          processed_at: claimTs,
+          success: true,
+        });
+        if (claimError) continue; // 23505=本日送信済み / その他=送らない側に倒す
+
+        const { pushToOperatorRecipients } = await import("@/lib/operator-notifications");
+        await pushToOperatorRecipients(
+          supabase,
+          "new_member",
+          `⚠️ LINEメッセージ枠が残りわずかです\n\n` +
+            `アカウント: ${alert.name}\n` +
+            `今月の送信: ${alert.used.toLocaleString("ja-JP")} / ${
+              alert.limit === null ? "無制限" : `${alert.limit.toLocaleString("ja-JP")}通`
+            }\n` +
+            (alert.limit !== null ? `残り: ${alert.remaining?.toLocaleString("ja-JP")}通\n` : "") +
+            `このペースの月末見込み: 約${alert.projectedMonthEnd.toLocaleString("ja-JP")}通\n\n` +
+            `上限に達すると、このアカウントからの通知・メッセージ送信がすべて止まります。\n` +
+            `LINE Official Account Manager で有料プランへの切り替えをご検討ください。\n` +
+            `https://manager.line.biz/`
+        );
+      }
+    } catch (err) {
+      // 枠チェックの失敗でサマリー本体を止めない
+      logger.warn("daily summary: line quota alert failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+
     // 監査ログに保存
     await supabase.from("audit_logs").insert({
       actor_staff_id: null,

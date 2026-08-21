@@ -100,7 +100,7 @@ export async function getChatThread(
   const [
     { data: messagesData, error: msgError },
     { data: user },
-    { data: ledger },
+    { data: personBalance },
     { data: pinnedMemos },
     { data: checkins },
     pregenerated,
@@ -132,10 +132,8 @@ export async function getChatThread(
       `)
       .eq("id", input.endUserId)
       .single(),
-    supabase
-      .from("user_point_ledger")
-      .select("delta_points")
-      .eq("end_user_id", input.endUserId),
+    // 残高は person 単位（複数メイト契約でも同じ人なら同じ残高を表示する）
+    supabase.rpc("point_balance_for_end_user", { p_end_user: input.endUserId }),
     supabase
       .from("memos")
       .select("id, category, latest_body")
@@ -193,7 +191,7 @@ export async function getChatThread(
       .filter((s) => !INACTIVE_SUB_STATUSES.has(s.status))
       .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))[0] ?? null;
 
-  const pointBalance = (ledger ?? []).reduce((sum, row) => sum + row.delta_points, 0);
+  const pointBalance = Number(personBalance ?? 0);
 
   const staffProfile = user?.staff_profiles as unknown as { display_name: string } | null;
   const lineAccount = user?.line_official_accounts as unknown as { name: string } | null;

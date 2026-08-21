@@ -301,3 +301,28 @@ describe("P9: 時間窓ジョブのバックフィル耐性と表示の誤解防
     expect(page).toContain("表示期間内に請求が発生したメイトのみ");
   });
 });
+
+describe("P10: ポイント残高は人単位・枠警告は表示と通知で同じ判定", () => {
+  it("ポイント残高の集計が end_user_id 単独で行われていない（personで分裂しない）", () => {
+    // 複数メイト契約では end_users は「人×メイトの関係行」。
+    // 行単位で残高を集計すると関係行ごとに残高が分裂する。
+    const offenders = SOURCE_FILES.filter((f) => {
+      const src = read(f);
+      // ledger を end_user_id で絞って delta_points を集計するパターンを検出
+      return /user_point_ledger[\s\S]{0,200}\.eq\("end_user_id"/.test(src);
+    }).map((f) => f.replace(ROOT + "/", ""));
+    expect(offenders).toEqual([]);
+  });
+
+  it("LINE枠の警告は日次サマリーから運営通知に配線されている", () => {
+    const src = read(join(ROOT, "app/api/jobs/daily-summary/route.ts"));
+    expect(src).toContain("getLineAccountQuotaAlerts");
+    // 同日重複の1回制御（claim）があること
+    expect(src).toContain("quota-alert:");
+  });
+
+  it("枠警告の判定は表示と通知で同じ関数を使う（基準のズレ防止）", () => {
+    const alerts = read(join(ROOT, "lib/line-quota-alerts.ts"));
+    expect(alerts).toContain("assessLineQuota");
+  });
+});

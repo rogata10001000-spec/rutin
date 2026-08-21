@@ -33,7 +33,17 @@ export function UsersTable({ items }: UsersTableProps) {
           >
             <div className="flex items-start justify-between">
               <div>
-                <span className="font-bold text-stone-800">{item.nickname}</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="font-bold text-stone-800">{item.nickname}</span>
+                  {item.isMultiContract && (
+                    <span
+                      title="同じ方が複数のメイトと契約しています（メイトごとに行が分かれます）"
+                      className="shrink-0 whitespace-nowrap rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700"
+                    >
+                      複数契約
+                    </span>
+                  )}
+                </span>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <BadgePlan plan={item.planCode as "light" | "standard" | "premium"} />
                   <BadgeStatus status={item.status as "trial" | "active" | "past_due" | "paused" | "canceled" | "incomplete"} />
@@ -100,9 +110,17 @@ export function UsersTable({ items }: UsersTableProps) {
               <td className="whitespace-nowrap px-6 py-4">
                 <Link
                   href={`/users/${item.id}`}
-                  className="font-bold text-stone-800 hover:text-terracotta"
+                  className="inline-flex items-center gap-1.5 font-bold text-stone-800 hover:text-terracotta"
                 >
                   {item.nickname}
+                  {item.isMultiContract && (
+                    <span
+                      title="同じ方が複数のメイトと契約しています（メイトごとに行が分かれます）"
+                      className="shrink-0 whitespace-nowrap rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700"
+                    >
+                      複数契約
+                    </span>
+                  )}
                 </Link>
               </td>
               <td className="whitespace-nowrap px-6 py-4">

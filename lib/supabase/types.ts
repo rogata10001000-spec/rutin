@@ -329,6 +329,8 @@ type GiftCatalogRow = {
 type UserPointLedgerRow = {
   id: string;
   end_user_id: string;
+  /** この台帳行が属する人。未指定INSERTはDBトリガーが end_user_id から導出して埋める */
+  person_id: string;
   delta_points: number;
   reason: PointReason;
   ref_type: string;
@@ -823,7 +825,10 @@ export interface Database {
       };
       user_point_ledger: {
         Row: UserPointLedgerRow;
-        Insert: Omit<UserPointLedgerRow, "id" | "created_at"> & { id?: string };
+        Insert: Omit<UserPointLedgerRow, "id" | "person_id" | "created_at"> & {
+          id?: string;
+          person_id?: string;
+        };
         Update: Record<string, never>;
         Relationships: [];
       };
@@ -1090,6 +1095,10 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
+      point_balance_for_end_user: {
+        Args: { p_end_user: string };
+        Returns: number;
+      };
       get_current_staff_role: {
         Args: Record<string, never>;
         Returns: StaffRole | null;

@@ -409,12 +409,18 @@ export async function getUserPointBalance(input?: {
     };
   }
 
-  const { data: ledger } = await supabase
-    .from("user_point_ledger")
-    .select("delta_points")
-    .eq("end_user_id", user.id);
+  // 残高は「人」の資産。関係行単位で集計すると複数メイト契約で分裂するため、
+  // person 単位の集計RPC（単一の真実のソース）で取得する
+  const { data: balanceData, error: balanceError } = await supabase.rpc(
+    "point_balance_for_end_user",
+    { p_end_user: user.id }
+  );
+  if (balanceError) {
+    return {
+      ok: false,
+      error: { code: "UNKNOWN", message: "残高の取得に失敗しました" },
+    };
+  }
 
-  const balance = (ledger ?? []).reduce((sum, row) => sum + row.delta_points, 0);
-
-  return { ok: true, data: { balance } };
+  return { ok: true, data: { balance: Number(balanceData ?? 0) } };
 }

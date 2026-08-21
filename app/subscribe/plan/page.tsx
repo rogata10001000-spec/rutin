@@ -336,7 +336,8 @@ export default async function SubscribePlanPage({ searchParams }: PageProps) {
                       返信目安: {copy[`plan.sla.${planCode}`]}
                     </p>
                   </div>
-                  <div className="text-right">
+                  {/* 価格と /月 は不可分。狭幅(375px)で「/月」だけ折り返さないよう nowrap で束ねる */}
+                  <div className="shrink-0 whitespace-nowrap text-right">
                     <span className="text-xl font-black text-primary">
                       {formatYen(price)}
                     </span>

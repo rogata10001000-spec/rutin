@@ -21,6 +21,12 @@ export type UserListItem = {
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: string | null;
   trialEndAt: string | null;
+  /**
+   * 同じ人（person）の関係行がこの一覧結果に複数含まれるか。
+   * 複数メイト契約では同一人物がメイトごとに別行で並ぶため、
+   * 印が無いと運用側が「別人」と誤認して対応履歴を取り違える。
+   */
+  isMultiContract: boolean;
 };
 
 export type SearchUsersInput = {
@@ -70,6 +76,7 @@ export async function searchUsers(
     .from("end_users")
     .select(`
       id,
+      person_id,
       nickname,
       plan_code,
       status,
@@ -124,6 +131,13 @@ export async function searchUsers(
     created_at: string;
   };
 
+  // 同一 person の行数を数え、複数メイト契約者に印を付ける
+  const personCounts = new Map<string, number>();
+  for (const user of users ?? []) {
+    const pid = (user as { person_id?: string }).person_id;
+    if (pid) personCounts.set(pid, (personCounts.get(pid) ?? 0) + 1);
+  }
+
   const items: UserListItem[] = (users ?? []).map((user) => {
     const staffProfile = user.staff_profiles as unknown as { display_name: string } | null;
     const subscriptions = user.subscriptions as unknown as SubRow | SubRow[] | null;
@@ -148,6 +162,8 @@ export async function searchUsers(
       cancelAtPeriodEnd: subscription?.cancel_at_period_end ?? false,
       currentPeriodEnd: subscription?.current_period_end ?? null,
       trialEndAt: user.trial_end_at ?? null,
+      isMultiContract:
+        (personCounts.get((user as { person_id?: string }).person_id ?? "") ?? 0) > 1,
     };
   });
 
@@ -281,10 +297,12 @@ export async function getUserDetail(
       .eq("end_user_id", input.endUserId)
       .order("created_at", { ascending: false })
       .limit(10),
+    // ポイントは「人」の資産。複数メイト契約では同じ人のどの関係行を開いても
+    // 同じ残高・同じ履歴が見えるべきなので、person 単位で引く
     supabase
       .from("user_point_ledger")
       .select("id, delta_points, reason, created_at")
-      .eq("end_user_id", input.endUserId)
+      .eq("person_id", user.person_id)
       .order("created_at", { ascending: false })
       .limit(50),
     supabase
