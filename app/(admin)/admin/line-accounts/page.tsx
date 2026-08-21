@@ -1,11 +1,16 @@
-import { getLineAccounts } from "@/actions/admin/line-accounts";
+import { getLineAccounts, getLineAccountQuotas } from "@/actions/admin/line-accounts";
+import { LineQuotaSection } from "@/components/admin/line-accounts/LineQuotaSection";
 import { LineAccountSetupGuide } from "@/components/admin/line-accounts/LineAccountSetupGuide";
 import { LineAccountsTable } from "@/components/admin/line-accounts/LineAccountsTable";
 
 export const dynamic = "force-dynamic";
 
 export default async function LineAccountsPage() {
-  const result = await getLineAccounts();
+  // 一覧と枠の取得は独立 → 並列（枠はLINE APIを叩くため直列に足すとページが遅くなる）
+  const [result, quotasResult] = await Promise.all([
+    getLineAccounts(),
+    getLineAccountQuotas(),
+  ]);
 
   if (!result.ok) {
     return (
@@ -34,6 +39,8 @@ export default async function LineAccountsPage() {
           で生成してください。
         </div>
       )}
+
+      {quotasResult.ok && <LineQuotaSection items={quotasResult.data.items} />}
 
       <LineAccountSetupGuide />
 

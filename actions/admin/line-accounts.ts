@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth";
 import { Result } from "../types";
 import { writeAuditLog } from "@/lib/audit";
@@ -310,4 +310,139 @@ export async function toggleLineAccountActive(
   revalidatePath("/admin/line-accounts");
 
   return { ok: true, data: { id } };
+}
+
+// =====================================================
+// 月間メッセージ枠（quota）の表示
+// =====================================================
+
+export type LineAccountQuotaItem = {
+  /** DB行が無い env 共通アカウントは "env-default" */
+  accountKey: string;
+  name: string;
+  castName: string | null;
+  isDefault: boolean;
+  /** null = 取得失敗（0件・無制限と区別する） */
+  quota: {
+    limit: number | null;
+    used: number;
+    remaining: number | null;
+    ratio: number | null;
+    projectedMonthEnd: number;
+    willExceed: boolean;
+    warnLevel: "safe" | "warning" | "critical";
+  } | null;
+};
+
+export type GetLineAccountQuotasResult = Result<{ items: LineAccountQuotaItem[] }>;
+
+/**
+ * 全LINE公式アカウントの今月の送信数・上限・切り替え目安を返す（Admin専用）。
+ *
+ * 上限・消費数はLINEの公式APIが真実源（プラン変更・手動配信に自動追従）。
+ * 5分キャッシュ付きなので画面リロードで外部APIを叩き続けない。
+ */
+export async function getLineAccountQuotas(): Promise<GetLineAccountQuotasResult> {
+  const auth = await requireAdmin();
+  if (!auth) {
+    return {
+      ok: false,
+      error: { code: "FORBIDDEN", message: "LINE公式アカウント管理はAdminのみ可能です" },
+    };
+  }
+
+  const { fetchLineQuotaSnapshot, assessLineQuota } = await import("@/lib/line-quota");
+  const { getDefaultLineAccount, getLineAccountById } = await import("@/lib/line-accounts");
+  const adminClient = createAdminSupabaseClient();
+
+  const { data: accounts } = await adminClient
+    .from("line_official_accounts")
+    .select("id, name, is_default, staff_profiles!line_official_accounts_cast_id_fkey(display_name)")
+    .eq("active", true)
+    .order("is_default", { ascending: false })
+    .order("name");
+
+  const now = new Date();
+
+  const targets: {
+    accountKey: string;
+    name: string;
+    castName: string | null;
+    isDefault: boolean;
+    accessToken: string | null;
+  }[] = [];
+
+  for (const row of accounts ?? []) {
+    const resolved = await getLineAccountById(row.id, adminClient);
+    targets.push({
+      accountKey: row.id,
+      name: row.name,
+      castName:
+        (row.staff_profiles as unknown as { display_name: string } | null)?.display_name ?? null,
+      isDefault: row.is_default,
+      accessToken: resolved?.credentials.accessToken ?? null,
+    });
+  }
+
+  // env フォールバックの共通アカウント（DBに default 行が無い運用）も枠を消費する主体なので表示する
+  if (!targets.some((t) => t.isDefault)) {
+    try {
+      const envDefault = await getDefaultLineAccount(adminClient);
+      if (envDefault.id === null) {
+        targets.unshift({
+          accountKey: "env-default",
+          name: envDefault.name,
+          castName: null,
+          isDefault: true,
+          accessToken: envDefault.credentials.accessToken || null,
+        });
+      }
+    } catch {
+      // env未設定なら共通アカウント無しとして続行
+    }
+  }
+
+  const items: LineAccountQuotaItem[] = await Promise.all(
+    targets.map(async (t) => {
+      if (!t.accessToken) {
+        return {
+          accountKey: t.accountKey,
+          name: t.name,
+          castName: t.castName,
+          isDefault: t.isDefault,
+          quota: null,
+        };
+      }
+      const snapshot = await fetchLineQuotaSnapshot(t.accountKey, {
+        accessToken: t.accessToken,
+      });
+      if (!snapshot) {
+        return {
+          accountKey: t.accountKey,
+          name: t.name,
+          castName: t.castName,
+          isDefault: t.isDefault,
+          quota: null,
+        };
+      }
+      const a = assessLineQuota({ snapshot, now });
+      return {
+        accountKey: t.accountKey,
+        name: t.name,
+        castName: t.castName,
+        isDefault: t.isDefault,
+        quota: {
+          limit: a.limit,
+          used: a.used,
+          remaining: a.remaining,
+          ratio: a.ratio,
+          projectedMonthEnd: a.projectedMonthEnd,
+          willExceed: a.willExceed,
+          warnLevel: a.warnLevel,
+        },
+      };
+    })
+  );
+
+  return { ok: true, data: { items } };
 }
