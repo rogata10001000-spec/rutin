@@ -5,6 +5,7 @@ import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import {
   resolveInboundMessageNotifyStaffIds,
+  resolveNewContractManagerIds,
   truncateMessageBody,
 } from "@/lib/push-notification-targets";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
@@ -250,5 +251,83 @@ export async function notifyAssignedCastOfInboundMessage(params: {
     endUserId: params.endUserId,
     messageId: params.messageId,
     body: "新着メッセージがあります",
+  });
+}
+
+/**
+ * 新規契約（追加契約含む）の成立をスタッフへWeb Push通知する。
+ *
+ * 宛先の条件分岐:
+ *   - 担当メイト: 自分の担当ユーザーの契約のみ（「最初のひと言」への行動導線つき）
+ *   - admin / supervisor: すべての契約（事実の把握用。文言・リンク先も管理向け）
+ *   - 担当メイト自身が admin/supervisor の場合は担当向けの1通だけ（二重送信しない）
+ *
+ * 呼び出し元は契約成立のclaimゲート内（syncNewSubscriptionSideEffects）に限る。
+ * ここで送る＝Stripeの2つのwebhookイベントが両方届いても1契約1回が保証される。
+ */
+export async function notifyStaffOfNewContract(params: {
+  endUserId: string;
+  castId: string;
+  planCode: string;
+}) {
+  const supabase = createAdminSupabaseClient();
+
+  const [{ data: user }, { data: cast }, { data: managers }, planLabels] = await Promise.all([
+    supabase
+      .from("end_users")
+      .select("nickname, line_display_name")
+      .eq("id", params.endUserId)
+      .maybeSingle(),
+    supabase
+      .from("staff_profiles")
+      .select("display_name")
+      .eq("id", params.castId)
+      .maybeSingle(),
+    supabase
+      .from("staff_profiles")
+      .select("id")
+      .in("role", ["admin", "supervisor"])
+      .eq("active", true),
+    import("@/lib/funnel-copy").then((m) => m.resolvePlanLabels()),
+  ]);
+
+  const userName = user?.line_display_name || user?.nickname || "新規ユーザー";
+  const castName = cast?.display_name ?? "担当メイト";
+  const planName =
+    planLabels[params.planCode as keyof typeof planLabels] ?? params.planCode;
+
+  // 担当メイトへ: 行動導線つき（最初のひと言を素早く送れるように）
+  const castResult = await sendPushToStaff(params.castId, {
+    title: "新しい担当ユーザーが契約しました",
+    body: `${userName} さんへ、最初のメッセージを送りましょう。`,
+    url: `/inbox?user=${params.endUserId}`,
+    tag: `new-contract-${params.endUserId}`,
+  });
+
+  // admin / supervisor へ: 事実通知（担当メイト本人が管理者を兼ねる場合は除外）
+  const managerIds = resolveNewContractManagerIds({
+    assignedCastId: params.castId,
+    managerStaffIds: (managers ?? []).map((m) => m.id),
+  });
+
+  const managerResults = await Promise.all(
+    managerIds.map((staffId) =>
+      sendPushToStaff(staffId, {
+        title: "🎉 新規契約が決まりました",
+        body: `${userName} さん（${planName}・担当: ${castName}）`,
+        url: `/users/${params.endUserId}`,
+        tag: `new-contract-${params.endUserId}`,
+      })
+    )
+  );
+
+  logger.info("new contract push attempted", {
+    endUserId: params.endUserId,
+    castId: params.castId,
+    managerCount: managerIds.length,
+    sent:
+      castResult.sent + managerResults.reduce((total, r) => total + r.sent, 0),
+    failed:
+      castResult.failed + managerResults.reduce((total, r) => total + r.failed, 0),
   });
 }

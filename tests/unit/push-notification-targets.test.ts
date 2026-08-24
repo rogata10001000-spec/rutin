@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   resolveInboundMessageNotifyStaffIds,
+  resolveNewContractManagerIds,
   truncateMessageBody,
 } from "@/lib/push-notification-targets";
 
@@ -39,5 +40,34 @@ describe("push-notification-targets", () => {
     });
 
     expect(result).toEqual(["admin-1"]);
+  });
+});
+
+describe("resolveNewContractManagerIds", () => {
+  it("admin/supervisor 全員が宛先になる（担当メイトの契約は全件通知）", () => {
+    expect(
+      resolveNewContractManagerIds({
+        assignedCastId: "cast-1",
+        managerStaffIds: ["admin-1", "supervisor-1"],
+      })
+    ).toEqual(["admin-1", "supervisor-1"]);
+  });
+
+  it("担当メイト本人が管理者を兼ねる場合は除外（同じ人に2通送らない）", () => {
+    expect(
+      resolveNewContractManagerIds({
+        assignedCastId: "admin-1",
+        managerStaffIds: ["admin-1", "supervisor-1"],
+      })
+    ).toEqual(["supervisor-1"]);
+  });
+
+  it("管理者が重複していても1回ずつ", () => {
+    expect(
+      resolveNewContractManagerIds({
+        assignedCastId: "cast-1",
+        managerStaffIds: ["admin-1", "admin-1"],
+      })
+    ).toEqual(["admin-1"]);
   });
 });

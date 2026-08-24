@@ -38,6 +38,7 @@ vi.mock("@/lib/line-accounts", () => ({
 
 vi.mock("@/lib/push-notifications", () => ({
   sendPushToStaff: vi.fn().mockResolvedValue(undefined),
+  notifyStaffOfNewContract: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/operator-notifications", () => ({
@@ -46,7 +47,7 @@ vi.mock("@/lib/operator-notifications", () => ({
 
 import { syncNewSubscriptionSideEffects } from "@/lib/stripe-subscription-sync";
 import { pushTextMessage } from "@/lib/line";
-import { sendPushToStaff } from "@/lib/push-notifications";
+import { notifyStaffOfNewContract } from "@/lib/push-notifications";
 import { notifyOperatorsOfNewMember } from "@/lib/operator-notifications";
 
 function buildSupabase() {
@@ -81,7 +82,7 @@ const params = {
 describe("契約成立時の案内送信の1回制御", () => {
   beforeEach(() => {
     vi.mocked(pushTextMessage).mockClear();
-    vi.mocked(sendPushToStaff).mockClear();
+    vi.mocked(notifyStaffOfNewContract).mockClear();
     vi.mocked(notifyOperatorsOfNewMember).mockClear();
   });
 
@@ -93,7 +94,8 @@ describe("契約成立時の案内送信の1回制御", () => {
     await syncNewSubscriptionSideEffects(supabase, params);
 
     expect(vi.mocked(pushTextMessage)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(sendPushToStaff)).toHaveBeenCalledTimes(1);
+    // Web Push（担当メイト＋admin/supervisor への条件分岐は notifyStaffOfNewContract 内）も1契約1回
+    expect(vi.mocked(notifyStaffOfNewContract)).toHaveBeenCalledTimes(1);
     // 運営向け新規会員通知も同じclaimの中＝イベント到着順に依存せず確実に1回
     expect(vi.mocked(notifyOperatorsOfNewMember)).toHaveBeenCalledTimes(1);
   });
@@ -108,7 +110,7 @@ describe("契約成立時の案内送信の1回制御", () => {
 
     await syncNewSubscriptionSideEffects(supabase, params);
     expect(vi.mocked(pushTextMessage)).not.toHaveBeenCalled();
-    expect(vi.mocked(sendPushToStaff)).not.toHaveBeenCalled();
+    expect(vi.mocked(notifyStaffOfNewContract)).not.toHaveBeenCalled();
     expect(vi.mocked(notifyOperatorsOfNewMember)).not.toHaveBeenCalled();
   });
 });

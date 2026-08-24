@@ -22,3 +22,15 @@ export function resolveInboundMessageNotifyStaffIds(params: {
 
   return Array.from(staffIds);
 }
+
+/**
+ * 新規契約通知の管理者側の宛先。
+ * 担当メイト本人が admin/supervisor を兼ねる場合、担当向けの1通（行動導線つき）を
+ * 優先し、管理者向けの事実通知からは除外する（同じ人に2通送らない）。
+ */
+export function resolveNewContractManagerIds(params: {
+  assignedCastId: string;
+  managerStaffIds: string[];
+}): string[] {
+  return [...new Set(params.managerStaffIds)].filter((id) => id !== params.assignedCastId);
+}

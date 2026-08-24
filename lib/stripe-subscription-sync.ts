@@ -166,21 +166,15 @@ export async function syncNewSubscriptionSideEffects(
     });
   }
 
-  // 担当メイトへ新規契約を即時通知（Web Push・best-effort）。
-  // アクティベーション＝定着のため、担当が最初のひと言を素早く送れるようにする。
+  // 新規契約のWeb Push通知（best-effort）。
+  // 宛先の条件分岐（担当メイト=自分の担当分のみ・admin/supervisor=全件）は
+  // notifyStaffOfNewContract 側に集約。claimゲート内なので1契約1回が保証される。
   try {
-    const { sendPushToStaff } = await import("@/lib/push-notifications");
-    const { data: eu } = await supabase
-      .from("end_users")
-      .select("nickname, line_display_name")
-      .eq("id", params.endUserId)
-      .maybeSingle();
-    const userName = eu?.line_display_name || eu?.nickname || "新規ユーザー";
-    await sendPushToStaff(params.castId, {
-      title: "新しい担当ユーザーが契約しました",
-      body: `${userName} さんへ、最初のメッセージを送りましょう。`,
-      url: `/inbox?user=${params.endUserId}`,
-      tag: `new-contract-${params.endUserId}`,
+    const { notifyStaffOfNewContract } = await import("@/lib/push-notifications");
+    await notifyStaffOfNewContract({
+      endUserId: params.endUserId,
+      castId: params.castId,
+      planCode: params.planCode,
     });
   } catch (err) {
     logger.error("Stripe webhook new-contract push failed", {
