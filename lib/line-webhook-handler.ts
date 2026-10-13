@@ -47,6 +47,7 @@ import {
   getRelationshipsByLineUserId,
 } from "@/lib/person";
 import { pickRelationshipRow } from "@/lib/relationship-routing";
+import { checkinAckText } from "@/lib/checkin-prompt-targets";
 
 type LineFollowEvent = {
   type: "follow";
@@ -1026,6 +1027,19 @@ export async function handleLineWebhook(
             },
             actorStaffId: null,
           });
+
+          // 受け取り確認（reply token＝無料）。報告のハードルを下げる一言で、人の返信の代わりではない。
+          // 再送イベントでは token が失効しているので失敗は握る（記録は済んでいる）。
+          try {
+            await replyMessages(account.credentials, event.replyToken, [
+              { type: "text", text: checkinAckText(checkinStatus) },
+            ]);
+          } catch (err) {
+            logger.warn("LINE checkin: ack reply failed", {
+              eventId,
+              error: err instanceof Error ? err.message : "unknown",
+            });
+          }
 
           return { checkinId: checkin.id };
         });
