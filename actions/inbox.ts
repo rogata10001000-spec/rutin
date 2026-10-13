@@ -1,5 +1,6 @@
 "use server";
 
+import { sortForQueue } from "@/lib/inbox-queue";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentStaff } from "@/lib/auth";
 import { Result } from "./types";
@@ -63,7 +64,7 @@ export type InboxFilters = {
   todaySentZero?: boolean;
   query?: string;
   tags?: string[];
-  sortBy?: "priority" | "last_message" | "nickname" | "unreplied_duration" | "today_sent_asc" | "last_reply_oldest";
+  sortBy?: "priority" | "last_message" | "nickname" | "unreplied_duration" | "today_sent_asc" | "last_reply_oldest" | "queue";
 };
 
 export type GetInboxItemsInput = {
@@ -462,6 +463,9 @@ export async function getInboxItems(
     filteredItems.sort((a, b) => (b.unrepliedMinutes ?? -1) - (a.unrepliedMinutes ?? -1));
   } else if (sortBy === "today_sent_asc") {
     filteredItems.sort((a, b) => a.todaySentCount - b.todaySentCount);
+  } else if (sortBy === "queue") {
+    // 「今日の対応」キュー: 並び規則は lib/inbox-queue.ts（ページの「次へ」と共有）
+    filteredItems = sortForQueue(filteredItems);
   } else if (sortBy === "last_reply_oldest") {
     filteredItems.sort((a, b) => {
       const aTime = a.lastCastMessageAt ? new Date(a.lastCastMessageAt).getTime() : 0;

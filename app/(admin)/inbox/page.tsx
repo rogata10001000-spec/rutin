@@ -10,7 +10,9 @@ import { ChatContainer } from "@/components/chat/ChatContainer";
 import { ChatSidePanel } from "@/components/chat/ChatSidePanel";
 import { EmptyState } from "@/components/common/EmptyState";
 import { normalizeInboxLimit } from "@/lib/inbox-paging";
+import { nextInQueue, queueDraftInstruction, queueRemaining } from "@/lib/inbox-queue";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +33,8 @@ type SearchParams = {
   user?: string;
   bulkSelect?: string;
   limit?: string;
+  /** "1" = 今日の対応キュー（未返信→今日未送信の順に1人ずつ流す） */
+  queue?: string;
 };
 
 export default async function InboxPage({
@@ -55,6 +59,9 @@ export default async function InboxPage({
     query: params.q?.trim() || undefined,
     tags: params.tags ? params.tags.split(",").filter(Boolean) : undefined,
   };
+
+  const queueMode = params.queue === "1";
+  if (queueMode) filters.sortBy = "queue";
 
   const selectedUserId = params.user;
   const limit = normalizeInboxLimit(params.limit);
@@ -94,6 +101,33 @@ export default async function InboxPage({
   const backToListHref = listOnlyParams.toString()
     ? `/inbox?${listOnlyParams.toString()}`
     : "/inbox";
+  const hrefForUser = (userId: string) => {
+    const p = new URLSearchParams(listOnlyParams);
+    p.set("user", userId);
+    return `/inbox?${p.toString()}`;
+  };
+
+  // 今日の対応キュー: 開いた瞬間に最初の未対応者へ。次の人・残り人数はこの並びから決める。
+  if (queueMode && !selectedUserId) {
+    const first = nextInQueue(items, null);
+    if (first) redirect(hrefForUser(first.id));
+  }
+  const queueNext = queueMode ? nextInQueue(items, selectedUserId ?? null) : null;
+  const queue =
+    queueMode && selectedUserId
+      ? {
+          nextHref: queueNext ? hrefForUser(queueNext.id) : null,
+          nextNickname: queueNext?.displayName ?? null,
+          remaining: queueRemaining(items, selectedUserId),
+          listHref: backToListHref,
+          draftInstruction: queueDraftInstruction({
+            lastMessageDirection: selectedItem?.lastMessageDirection ?? null,
+            lastUserMessageAt: selectedItem?.lastUserMessageAt ?? null,
+          }),
+        }
+      : null;
+  const queueStartHref =
+    staff && staff.role !== "cast" ? `/inbox?queue=1&cast=${staff.id}` : "/inbox?queue=1";
 
   // メイトはモバイルでボトムナビ(4rem)が出る。会話を開いていない一覧表示時のみ
   // その分の高さを差し引き、ナビと一覧が重ならないようにする。
@@ -115,9 +149,24 @@ export default async function InboxPage({
         }`}
       >
         <div className="shrink-0 border-b border-stone-100 p-4">
-          <h1 className="mb-3 text-lg font-bold tracking-tight text-stone-800">
-            受信トレイ
-          </h1>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h1 className="text-lg font-bold tracking-tight text-stone-800">受信トレイ</h1>
+            {queueMode ? (
+              <Link
+                href="/inbox"
+                className="shrink-0 whitespace-nowrap rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50"
+              >
+                キューを終了
+              </Link>
+            ) : (
+              <Link
+                href={queueStartHref}
+                className="shrink-0 whitespace-nowrap rounded-lg bg-terracotta px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-[#d0694e]"
+              >
+                今日の対応を始める
+              </Link>
+            )}
+          </div>
           <InboxFilters
             currentFilters={filters}
             casts={casts}
@@ -177,6 +226,7 @@ export default async function InboxPage({
                   sideInfo={chatResult.data.sideInfo}
                   staffRole={staff.role}
                   staffId={staff.id}
+                  queue={queue}
                 />
               </div>
             </div>
@@ -189,11 +239,19 @@ export default async function InboxPage({
         ) : (
           <div className="flex flex-1 items-center justify-center rounded-2xl border border-stone-200 bg-white shadow-soft">
             <EmptyState
-              title={selectedUserId ? "会話を表示できません" : "会話を選択してください"}
+              title={
+                selectedUserId
+                  ? "会話を表示できません"
+                  : queueMode
+                    ? "今日の対応は完了です"
+                    : "会話を選択してください"
+              }
               description={
                 selectedUserId
                   ? "このユーザーのチャットにアクセスできないか、見つかりませんでした"
-                  : "左の一覧からユーザーを選ぶとトークが表示されます"
+                  : queueMode
+                    ? "未返信・今日未送信の人はいません"
+                    : "左の一覧からユーザーを選ぶとトークが表示されます"
               }
             />
           </div>

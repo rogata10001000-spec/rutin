@@ -22,6 +22,13 @@ type MessageComposerProps = {
   birthday?: string | null;
   /** 受信時に用意済みのAI下書き（スレッド取得のペイロードに同梱済み） */
   pregeneratedDrafts?: AiDraft[] | null;
+  /**
+   * 「今日の対応」キュー: 開いた瞬間に事前生成の1案を入力欄へ入れておく
+   * （承認＝送信で次へ進めるように）。保存済みの下書きがあればそちらを優先する。
+   */
+  autoApplyPregenerated?: boolean;
+  /** 事前生成が無いときに自動で生成して入力欄へ入れる（null = しない） */
+  autoGenerate?: { instruction: string | null } | null;
 };
 
 // localStorage key for draft
@@ -37,6 +44,8 @@ export function MessageComposer({
   showBirthdayWidget = true,
   birthday = null,
   pregeneratedDrafts = null,
+  autoApplyPregenerated = false,
+  autoGenerate = null,
 }: MessageComposerProps) {
   const [body, setBody] = useState("");
   // 本文に反映したAI下書き。送信時に「採用」として記録するために保持する
@@ -65,9 +74,23 @@ export function MessageComposer({
   // 初期化時にlocalStorageから下書きを復元
   useEffect(() => {
     const savedDraft = localStorage.getItem(getDraftKey(endUserId));
-    setBody(savedDraft ?? "");
-    // 別ユーザーの下書きIDを持ち越さない
+    if (savedDraft) {
+      setBody(savedDraft);
+      // 別ユーザーの下書きIDを持ち越さない
+      setAppliedDraft(null);
+      return;
+    }
+    // キュー中は事前生成の1案を先に入れておく（採用として追跡する）
+    if (autoApplyPregenerated && pregeneratedDrafts && pregeneratedDrafts.length > 0) {
+      const first = pregeneratedDrafts[0];
+      setBody(first.body);
+      setAppliedDraft({ id: first.id, body: first.body });
+      return;
+    }
+    setBody("");
     setAppliedDraft(null);
+    // pregeneratedDrafts はスレッド取得ごとの新しい配列。ユーザー切り替えだけをトリガーにする
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [endUserId]);
 
   // チャットを開いたら即タイプできるようフォーカスする。
@@ -210,6 +233,7 @@ export function MessageComposer({
             onApplyDraft={handleApplyDraft}
             initialPregenerated={pregeneratedDrafts}
             resetKey={sendCount}
+            autoGenerate={autoGenerate}
           />
           <TemplateSelector onSelect={handleInsertText} />
         </div>

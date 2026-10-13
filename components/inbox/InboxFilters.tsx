@@ -27,7 +27,7 @@ type InboxFiltersProps = {
     todaySentZero?: boolean;
     query?: string;
     tags?: string[];
-    sortBy?: "priority" | "last_message" | "nickname" | "unreplied_duration" | "today_sent_asc" | "last_reply_oldest";
+    sortBy?: "priority" | "last_message" | "nickname" | "unreplied_duration" | "today_sent_asc" | "last_reply_oldest" | "queue";
   };
   casts?: Cast[];
   summary?: InboxSummary;
@@ -43,6 +43,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const SORT_LABELS: Record<string, string> = {
+  queue: "今日の対応順",
   unreplied_duration: "未返信時間が長い順",
   today_sent_asc: "今日の送信が少ない順",
   last_reply_oldest: "最終対応が古い順",
@@ -483,6 +484,7 @@ export function InboxFilters({ currentFilters, casts = [], summary, availableTag
               onChange={(value) => updateFilter("sort", value === "priority" ? null : value)}
               options={[
                 { value: "priority", label: "優先度順" },
+                { value: "queue", label: "今日の対応順" },
                 { value: "unreplied_duration", label: "未返信時間が長い順" },
                 { value: "today_sent_asc", label: "今日の送信が少ない順" },
                 { value: "last_reply_oldest", label: "最終対応が古い順" },

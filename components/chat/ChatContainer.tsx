@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import type { Message, ChatSideInfo } from "@/actions/chat";
 import type { StaffRole } from "@/lib/supabase/types";
 import { sendMessage, sendProxyMessage } from "@/actions/messages";
@@ -17,12 +18,23 @@ import { ChatSidePanel } from "./ChatSidePanel";
 import { resolveChatMediaUrl } from "@/lib/chat-media";
 import { useMessageRealtime } from "@/hooks/useMessageRealtime";
 
+/** 「今日の対応」キューで開いているときの文脈（並び・次の人はサーバー側 lib/inbox-queue.ts で決める） */
+export type ChatQueueContext = {
+  nextHref: string | null;
+  nextNickname: string | null;
+  remaining: number;
+  listHref: string;
+  /** 事前生成が無いときに自動生成する下書きへの指示（null = 通常の3案） */
+  draftInstruction: string | null;
+};
+
 type ChatContainerProps = {
   endUserId: string;
   initialMessages: Message[];
   sideInfo: ChatSideInfo;
   staffRole: StaffRole;
   staffId: string;
+  queue?: ChatQueueContext | null;
 };
 
 export function ChatContainer({
@@ -31,7 +43,9 @@ export function ChatContainer({
   sideInfo,
   staffRole,
   staffId,
+  queue = null,
 }: ChatContainerProps) {
+  const router = useRouter();
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [sending, setSending] = useState(false);
   const [proxyMode, setProxyMode] = useState(false);
@@ -183,8 +197,17 @@ export function ChatContainer({
             m.id === optimisticId ? { ...m, id: messageId } : m
           );
         });
-        showToast("メッセージを送信しました", "success");
         succeeded = true;
+        if (queue) {
+          // キュー中は送信＝完了。次の人へ進む（残りが無ければ一覧＝完了表示へ）
+          showToast(
+            queue.nextNickname ? `送信しました。次は ${queue.nextNickname} さん` : "送信しました。今日の対応は完了です",
+            "success"
+          );
+          router.push(queue.nextHref ?? queue.listHref, { scroll: false });
+        } else {
+          showToast("メッセージを送信しました", "success");
+        }
       } else {
         // 失敗: 楽観的メッセージを削除（ロールバック）。入力欄は呼び出し側で保持される
         setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
@@ -247,7 +270,25 @@ export function ChatContainer({
               </svg>
               <span className="hidden sm:inline">情報</span>
             </button>
-            <NextUserButton currentUserId={endUserId} />
+            {queue ? (
+              <div className="flex items-center gap-2">
+                <span className="whitespace-nowrap text-xs tabular-nums text-stone-500">
+                  残り {queue.remaining}人
+                </span>
+                <button
+                  type="button"
+                  onClick={() => router.push(queue.nextHref ?? queue.listHref, { scroll: false })}
+                  className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-lg border border-stone-200 bg-white px-3 text-xs font-medium text-stone-600 shadow-sm transition-colors hover:bg-stone-50"
+                >
+                  {queue.nextNickname ? `スキップして ${queue.nextNickname} さんへ` : "一覧へ戻る"}
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <NextUserButton currentUserId={endUserId} />
+            )}
             {canProxy && (
               <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm font-medium shadow-sm transition-colors hover:bg-stone-50">
                 <input
@@ -276,6 +317,8 @@ export function ChatContainer({
           endUserId={endUserId}
           birthday={sideInfo.birthday}
           pregeneratedDrafts={sideInfo.pregeneratedDrafts}
+          autoApplyPregenerated={Boolean(queue)}
+          autoGenerate={queue ? { instruction: queue.draftInstruction } : null}
         />
       </div>
 

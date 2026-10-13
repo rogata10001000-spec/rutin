@@ -89,7 +89,7 @@ function KpiSkeleton() {
  * KPIセクション（最重量の getInboxItems を含む）。
  * Suspense でストリーミングし、ページの枠（挨拶・クイックアクセス）を即時表示する。
  */
-async function DashboardKpis({ isAdmin }: { isAdmin: boolean }) {
+async function DashboardKpis({ isAdmin, queueHref }: { isAdmin: boolean; queueHref: string }) {
   const [inboxResult, cancelResult, webhookResult, revenueResult, kpiResult] = await Promise.all([
     // ダッシュボードは件数サマリー（全件に対して計算される）しか使わないため、
     // 明細は最小限だけ受け取る（使わない一覧をペイロードに載せない）。
@@ -146,10 +146,10 @@ async function DashboardKpis({ isAdmin }: { isAdmin: boolean }) {
               まとめて送る
             </Link>
             <Link
-              href="/inbox?reply=unreplied"
+              href={queueHref}
               className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-amber-600"
             >
-              受信トレイで対応
+              今日の対応を始める
               <span className="material-symbols-outlined text-[16px]" aria-hidden>
                 arrow_forward
               </span>
@@ -267,7 +267,7 @@ export default async function AdminDashboardPage() {
 
       {/* KPI（重いクエリを含むためSuspenseでストリーミング） */}
       <Suspense fallback={<KpiSkeleton />}>
-        <DashboardKpis isAdmin={isAdmin} />
+        <DashboardKpis isAdmin={isAdmin} queueHref={`/inbox?queue=1&cast=${staff.id}`} />
       </Suspense>
 
       {/* クイックアクセス（即時表示） */}
