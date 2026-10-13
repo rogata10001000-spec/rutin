@@ -1,4 +1,5 @@
 import "server-only";
+import { GOAL_CATEGORY_LABELS, goalStage, jstDateOf, type GoalCategory } from "@/lib/goal-defs";
 
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { getServerEnv } from "@/lib/env";
@@ -79,6 +80,8 @@ type DraftContext = {
     birthday: string | null;
   } | null;
   hasOpenRisk: boolean;
+  /** 進行中の目標（3か月の型のどこにいるかを含めて下書きに反映する）。省略可（旧テスト互換） */
+  goal?: { category: string; title: string; weeklyTarget: number | null; startedAt: string } | null;
 };
 
 /**
@@ -101,6 +104,7 @@ async function collectContext(
     { data: fewShot },
     { data: user },
     { data: openRisk },
+    { data: goalRow },
   ] = await Promise.all([
     supabase
       .from("messages")
@@ -154,6 +158,13 @@ async function collectContext(
       .in("status", ["open", "ack"])
       .limit(1)
       .maybeSingle(),
+    // 目標（テーブル未適用なら error になるだけで data=null → 文脈に載せない）
+    supabase
+      .from("end_user_goals")
+      .select("category, title, weekly_target, started_at")
+      .eq("end_user_id", endUserId)
+      .eq("status", "active")
+      .maybeSingle(),
   ]);
 
   // few-shot は短すぎる相槌と長文を除き、多様な3〜5件に絞る
@@ -173,6 +184,14 @@ async function collectContext(
       ? { nickname: user.nickname, planCode: user.plan_code, birthday: user.birthday }
       : null,
     hasOpenRisk: Boolean(openRisk),
+    goal: goalRow
+      ? {
+          category: goalRow.category,
+          title: goalRow.title,
+          weeklyTarget: goalRow.weekly_target,
+          startedAt: goalRow.started_at,
+        }
+      : null,
   };
 }
 
@@ -225,6 +244,17 @@ ${fewShot || "（なし）"}
 
 ## ユーザー情報
 ${profileParts.join(" / ") || "（なし）"}
+
+## 利用者の目標（返信はこの目標の継続に結びつける。達成の押し付けはしない）
+${
+  context.goal
+    ? `${GOAL_CATEGORY_LABELS[context.goal.category as GoalCategory] ?? context.goal.category}: ${context.goal.title}${
+        context.goal.weeklyTarget ? `（週${context.goal.weeklyTarget}回）` : ""
+      } / 開始から${goalStage(context.goal.startedAt, jstDateOf(new Date())).days}日目・${
+        goalStage(context.goal.startedAt, jstDateOf(new Date())).label
+      }`
+    : "（未登録。会話の中で「いま続けたいこと」を自然に聞いてよい）"
+}
 
 ## 会話履歴（直近・古い順）
 ${messageHistory || "（履歴なし）"}

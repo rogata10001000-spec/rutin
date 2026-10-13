@@ -4,6 +4,8 @@ import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/sup
 import { canAccessUser } from "@/lib/auth";
 import { getFreshPregeneratedDrafts } from "@/lib/ai-drafts";
 import { resolveChatMediaUrl } from "@/lib/chat-media";
+import { getActiveGoal } from "@/lib/goals";
+import type { ActiveGoal } from "@/lib/goal-defs";
 import { Result } from "./types";
 
 export type Message = {
@@ -37,6 +39,9 @@ export type ChatSideInfo = {
    * 追加往復をゼロにしたまま「クリックで即表示」を成立させる。
    */
   pregeneratedDrafts: { id: string; type: "empathy" | "praise" | "suggest"; body: string }[] | null;
+  /** 進行中の目標（無ければ null）。goalsAvailable=false は取得不能＝欄を出さない */
+  goal: ActiveGoal | null;
+  goalsAvailable: boolean;
 };
 
 export type GetChatThreadInput = {
@@ -104,6 +109,7 @@ export async function getChatThread(
     { data: pinnedMemos },
     { data: checkins },
     pregenerated,
+    goalResult,
   ] = await Promise.all([
     query,
     supabase
@@ -148,6 +154,8 @@ export async function getChatThread(
       .order("date", { ascending: false }),
     // 事前生成済みのAI下書き（鮮度判定込み）。失敗しても null になるだけで会話表示は壊れない
     getFreshPregeneratedDrafts(createAdminSupabaseClient(), input.endUserId).catch(() => null),
+    // 目標（RLS クライアント経由。テーブル未適用なら available=false で欄を出さない）
+    getActiveGoal(supabase, input.endUserId).catch(() => ({ goal: null, available: false })),
   ]);
 
   if (msgError) {
@@ -223,6 +231,8 @@ export async function getChatThread(
           status: c.status,
         })),
         pregeneratedDrafts: pregenerated?.drafts ?? null,
+        goal: goalResult.goal,
+        goalsAvailable: goalResult.available,
       },
     },
   };

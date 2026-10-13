@@ -7,6 +7,9 @@ import { getFunnelCopyValues } from "@/lib/funnel-copy";
 import { renderFunnelCopy } from "@/lib/funnel-copy-defs";
 import { getLineAccountForCast } from "@/lib/line-accounts";
 import { getLiveContractedCastIds, getRelationshipsByLineUserId } from "@/lib/person";
+import { getActiveGoal } from "@/lib/goals";
+import type { ActiveGoal } from "@/lib/goal-defs";
+import { GoalForm } from "@/components/goals/GoalForm";
 
 type PageProps = {
   searchParams?: Promise<{ session_id?: string; preview?: string }>;
@@ -116,6 +119,8 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
   // ここを出し忘れると「契約したのに何も起きない」で終わる。
   let addMateFriendUrl: string | null = null;
   let addMateName: string | null = null;
+  // 最初の目標（3か月の型）。登録先は「このメイトとの関係行」。取得できないときは欄ごと出さない
+  let goalForm: { existing: ActiveGoal | null } | null = null;
   if (castId && lineUserId) {
     try {
       const admin = createAdminSupabaseClient();
@@ -128,6 +133,11 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
           addMateFriendUrl = account?.friendAddUrl ?? null;
           addMateName = account?.name ?? null;
         }
+      }
+      const relation = rows.find((r) => r.assignedCastId === castId) ?? (rows.length === 1 ? rows[0] : null);
+      if (relation && sessionId) {
+        const g = await getActiveGoal(admin, relation.endUserId);
+        if (g.available) goalForm = { existing: g.goal };
       }
     } catch {
       // 友だち追加の案内が出せなくても完了画面自体は表示する（LINEからも案内が届く）
@@ -159,6 +169,7 @@ export default async function SubscribeCompletePage({ searchParams }: PageProps)
       </div>
       <h1 className="text-2xl font-bold text-stone-900">{title}</h1>
       <p className="mt-3 text-sm leading-relaxed text-stone-600">{body}</p>
+      {goalForm && sessionId && <GoalForm sessionId={sessionId} existing={goalForm.existing} />}
       {addMateFriendUrl && (
         <div className="mt-6 w-full rounded-2xl border border-primary/20 bg-primary/5 p-5 text-left">
           <h2 className="text-sm font-bold text-primary">

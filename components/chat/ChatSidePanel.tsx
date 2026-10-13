@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ChatSideInfo } from "@/actions/chat";
 import { format } from "date-fns";
 import { MemoEditor } from "./MemoEditor";
+import { GoalCard } from "./GoalCard";
 import { BadgePlan } from "@/components/common/Badge";
 import { getRenewalInfo, formatRenewalDate } from "@/lib/subscription-display";
 
@@ -79,6 +80,9 @@ export function ChatSidePanel({ sideInfo, endUserId }: ChatSidePanelProps) {
           )}
         </dl>
       </div>
+
+      {/* 目標（3か月の型。達成したら次の目標へ） */}
+      <GoalCard endUserId={endUserId} goal={sideInfo.goal} available={sideInfo.goalsAvailable} />
 
       {/* チェックイン */}
       <div className="rounded-2xl border border-stone-200 bg-white p-5 shadow-soft">

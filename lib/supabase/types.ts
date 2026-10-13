@@ -183,6 +183,21 @@ type MessagesRow = {
   handling_seconds: number | null;
 };
 
+type EndUserGoalsRow = {
+  id: string;
+  end_user_id: string;
+  category: "exercise" | "study" | "life" | "work" | "other";
+  title: string;
+  weekly_target: number | null;
+  started_at: string;
+  review_at: string;
+  status: "active" | "achieved" | "replaced";
+  achieved_at: string | null;
+  created_by_staff_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type CheckinsRow = {
   id: string;
   end_user_id: string;
@@ -738,6 +753,18 @@ export interface Database {
           friend_add_url?: string | null;
         };
         Update: Partial<Omit<LineOfficialAccountsRow, "id" | "created_at" | "updated_at">>;
+        Relationships: [];
+      };
+      end_user_goals: {
+        Row: EndUserGoalsRow;
+        Insert: Omit<EndUserGoalsRow, "id" | "created_at" | "updated_at" | "status" | "achieved_at" | "created_by_staff_id" | "weekly_target"> & {
+          id?: string;
+          status?: EndUserGoalsRow["status"];
+          achieved_at?: string | null;
+          created_by_staff_id?: string | null;
+          weekly_target?: number | null;
+        };
+        Update: Partial<Omit<EndUserGoalsRow, "id" | "end_user_id" | "created_at">>;
         Relationships: [];
       };
       checkins: {

@@ -85,6 +85,17 @@ describe("buildDraftUserPrompt", () => {
     expect(messages[0].body).toBe("最近ねむれてません");
   });
 
+  it("目標があればステージ付きで載せ、無ければ未登録として扱う", () => {
+    const withGoal = mod.buildDraftUserPrompt(
+      { ...baseContext, goal: { category: "exercise", title: "週3回ジムに行く", weeklyTarget: 3, startedAt: "2000-01-01" } },
+      null
+    );
+    expect(withGoal).toContain("運動: 週3回ジムに行く（週3回）");
+    expect(withGoal).toContain("次の目標を決める");
+    const noGoal = mod.buildDraftUserPrompt(baseContext, null);
+    expect(noGoal).toContain("未登録");
+  });
+
   it("スタイル・実返信例・ユーザー情報を含める", () => {
     const prompt = mod.buildDraftUserPrompt(baseContext, null);
     expect(prompt).toContain("やわらかい丁寧語");
