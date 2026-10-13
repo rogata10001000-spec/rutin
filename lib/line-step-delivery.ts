@@ -41,37 +41,48 @@ export async function runLineStepDelivery(): Promise<StepDeliveryResult> {
   for (const step of steps) {
     const cutoffIso = new Date(now - step.delay_hours * 3600 * 1000).toISOString();
 
-    // トリガー種別で起点列を切り替える。
-    // follow=友だち追加(line_followed_at) / checkout_abandoned=決済開始(checkout_started_at)。
-    // いずれも status=incomplete（＝未契約・カゴ落ち）のみが対象。契約すれば自動で対象外。
-    const anchorColumn =
-      step.trigger === "checkout_abandoned" ? "checkout_started_at" : "line_followed_at";
+    // トリガー種別で起点列と対象状態を切り替える。
+    // follow=友だち追加(line_followed_at) / checkout_abandoned=決済開始(checkout_started_at)
+    //   → いずれも status=incomplete（＝未契約・カゴ落ち）のみが対象。契約すれば自動で対象外。
+    // subscribe=契約(subscribed_at) → 契約中（trial/active/past_due）が対象。
+    //   3か月の型の振り返り（7・30・60・90日目）に使う。一時停止・解約は対象外。
+    const isSubscribeStep = step.trigger === "subscribe";
+    const anchorColumn = isSubscribeStep
+      ? "subscribed_at"
+      : step.trigger === "checkout_abandoned"
+        ? "checkout_started_at"
+        : "line_followed_at";
 
-    const { data: users } = await supabase
+    let usersQuery = supabase
       .from("end_users")
       .select("id, person_id, line_user_id, primary_line_account_id")
-      .eq("status", "incomplete")
       .not("line_user_id", "is", null)
       .not(anchorColumn, "is", null)
       .lte(anchorColumn, cutoffIso)
       .limit(MAX_USERS_PER_STEP);
+    usersQuery = isSubscribeStep
+      ? usersQuery.in("status", ["trial", "active", "past_due"]).eq("is_blocked", false)
+      : usersQuery.eq("status", "incomplete");
+    const { data: users } = await usersQuery;
 
     if (!users || users.length === 0) continue;
 
-    // 複数メイト契約対応: 「行が incomplete」でも「人が契約者」のことがある。
+    // 複数メイト契約対応（未契約向けステップのみ）: 「行が incomplete」でも「人が契約者」のことがある。
     // 契約者が未契約メイトへ連絡すると見込み行（incomplete）が作られるため、
     // 行の状態だけで対象にすると、支払い中の人に新規向けの勧誘ステップが届く。
     // 人単位でライブ契約の有無を確認し、契約者の見込み行は配信対象から外す。
-    const personIds = [...new Set(users.map((u) => u.person_id).filter(Boolean))];
     const contractedPersonIds = new Set<string>();
-    if (personIds.length > 0) {
-      const { data: liveRows } = await supabase
-        .from("end_users")
-        .select("person_id")
-        .in("person_id", personIds)
-        .in("status", ["trial", "active", "past_due", "paused"]);
-      for (const row of liveRows ?? []) {
-        if (row.person_id) contractedPersonIds.add(row.person_id);
+    if (!isSubscribeStep) {
+      const personIds = [...new Set(users.map((u) => u.person_id).filter(Boolean))];
+      if (personIds.length > 0) {
+        const { data: liveRows } = await supabase
+          .from("end_users")
+          .select("person_id")
+          .in("person_id", personIds)
+          .in("status", ["trial", "active", "past_due", "paused"]);
+        for (const row of liveRows ?? []) {
+          if (row.person_id) contractedPersonIds.add(row.person_id);
+        }
       }
     }
     const eligibleUsers = users.filter((u) => !contractedPersonIds.has(u.person_id));

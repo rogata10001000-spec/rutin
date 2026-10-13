@@ -49,6 +49,17 @@ export default async function HelpPage() {
         </div>
       </section>
 
+      {/* 3か月の型（達成したら次の目標へ切り替える前提） */}
+      <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-bold text-stone-900">3か月の進め方</h2>
+        <ol className="mt-3 space-y-2 text-sm leading-relaxed text-stone-600">
+          <li className="flex gap-3"><span className="w-16 shrink-0 font-bold text-stone-800">1か月目</span><span>まず始める。できた日を1日ずつ積み重ねます。</span></li>
+          <li className="flex gap-3"><span className="w-16 shrink-0 font-bold text-stone-800">2か月目</span><span>続けやすい型を作る。時間・場所・やり方を固めます。</span></li>
+          <li className="flex gap-3"><span className="w-16 shrink-0 font-bold text-stone-800">3か月目</span><span>自分で続けられる日を増やす。メイトの声かけは少しずつ減らします。</span></li>
+          <li className="flex gap-3"><span className="w-16 shrink-0 font-bold text-stone-800">4か月目〜</span><span>目標を達成したら、同じメイトと次の目標を決めます。維持したい方はライトプランでも続けられます。</span></li>
+        </ol>
+      </section>
+
       {/* よくある質問（管理画面で編集可能。0件なら丸ごと出さない） */}
       {faqItems.length > 0 && (
         <section className="rounded-2xl border border-stone-200 bg-white p-6 shadow-sm">

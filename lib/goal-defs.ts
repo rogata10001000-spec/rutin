@@ -1,6 +1,6 @@
 /**
  * 利用者の「目標」の定義（純粋・クライアント/サーバー共用）。
- * 3か月の型（docs/SOLO_SCALE_REQUIREMENTS.md §5・§6）: 卒業はさせず、達成したら次の目標へ。
+ * 3か月の型（docs/SOLO_SCALE_REQUIREMENTS.md §5・§6）: 達成したら同じメイトと次の目標へ切り替える。
  */
 
 export const GOAL_CATEGORIES = ["exercise", "study", "life", "work", "other"] as const;

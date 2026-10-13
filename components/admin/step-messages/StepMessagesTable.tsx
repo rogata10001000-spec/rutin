@@ -23,6 +23,7 @@ function formatDelay(hours: number): string {
 const TRIGGER_CONFIG: Record<StepMessage["trigger"], { label: string; className: string }> = {
   follow: { label: "友だち追加", className: "bg-sage/20 text-sage-800" },
   checkout_abandoned: { label: "カゴ落ち", className: "bg-amber-100 text-amber-700" },
+  subscribe: { label: "契約後", className: "bg-terracotta/10 text-terracotta" },
 };
 
 type StepMessagesTableProps = {

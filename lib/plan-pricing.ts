@@ -11,9 +11,9 @@ export const PLAN_CODES: PlanCode[] = ["light", "standard", "premium"];
 export { PLAN_LABELS } from "@/lib/plan-labels";
 
 export const PLAN_DESCRIPTIONS: Record<PlanCode, string> = {
-  light: "気軽にメッセージで相談したい方向け",
-  standard: "毎日のチェックインで継続的にサポート",
-  premium: "優先返信と週次レビューで集中サポート",
+  light: "維持プラン。週1回の振り返りで、自分で続ける力を保つ",
+  standard: "毎日の報告と返信で、3か月で自分で続けられる状態へ",
+  premium: "週1回の個別振り返りと目標の見直しで、集中して定着させる",
 };
 
 export const PLAN_SLA_LABELS: Record<PlanCode, string> = {

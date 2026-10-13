@@ -115,9 +115,9 @@ export function CancelDeflectionModal({
               )}
 
               <div className="rounded-2xl border border-stone-200 bg-white p-4">
-                <p className="text-sm font-bold text-stone-800">担当メイトはあなたの味方です</p>
+                <p className="text-sm font-bold text-stone-800">目標を達成した方は「次の目標」へ</p>
                 <p className="mt-1 text-xs leading-relaxed text-stone-600">
-                  うまくいかない時こそ、一度メッセージで相談してみませんか。続け方の工夫を一緒に考えます。
+                  同じ担当メイトのまま、次の目標に切り替えられます。LINEのトークで「次の目標にしたい」と送ると、メイトが一緒に決めます。
                 </p>
               </div>
 
@@ -134,9 +134,9 @@ export function CancelDeflectionModal({
                 type="button"
                 onClick={() => setStep("reason")}
                 disabled={busy}
-                className="w-full text-center text-xs font-medium text-stone-400 underline-offset-2 hover:text-stone-600 hover:underline disabled:opacity-50"
+                className="inline-flex min-h-[44px] w-full items-center justify-center rounded-full border border-stone-300 bg-white px-4 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 disabled:opacity-50"
               >
-                それでも解約手続きに進む
+                解約手続きに進む
               </button>
             </div>
           </>

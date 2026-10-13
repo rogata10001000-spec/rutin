@@ -71,7 +71,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     screen: "cast",
     group: "トライアル案内",
     defaultValue:
-      "気になる伴走メイトを選んで、まずは{days}日間無料でメッセージのやりとりを体験できます。いつでも解約可能です。",
+      "気になる伴走メイトを選んで、まずは{days}日間無料でメッセージのやりとりを体験できます。最初の目標を1つ決めて、3か月で自分で続けられる状態を目指します。いつでも解約できます。",
     fieldType: "multiline",
     vars: ["days"],
   },
@@ -213,7 +213,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     label: "ライトの説明文",
     screen: "plan",
     group: "プラン説明",
-    defaultValue: "気軽にメッセージで相談したい方向け",
+    defaultValue: "維持プラン。週1回の振り返りで、自分で続ける力を保つ",
     fieldType: "text",
   },
   {
@@ -221,7 +221,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     label: "スタンダードの説明文",
     screen: "plan",
     group: "プラン説明",
-    defaultValue: "毎日のチェックインで継続的にサポート",
+    defaultValue: "毎日の報告と返信で、3か月で自分で続けられる状態へ",
     fieldType: "text",
   },
   {
@@ -229,7 +229,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     label: "プレミアムの説明文",
     screen: "plan",
     group: "プラン説明",
-    defaultValue: "優先返信と週次レビューで集中サポート",
+    defaultValue: "週1回の個別振り返りと目標の見直しで、集中して定着させる",
     fieldType: "text",
   },
   {
@@ -375,7 +375,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     label: "次にやることの案内（1行目）",
     screen: "complete",
     group: "次の案内",
-    defaultValue: "担当の伴走メイトからのメッセージをお待ちください。",
+    defaultValue: "担当の伴走メイトから、最初の声かけが届きます。目標は達成したら次の目標に切り替えられます。",
     fieldType: "text",
   },
   {
@@ -412,7 +412,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     screen: "line",
     group: "友だち追加",
     defaultValue:
-      "Rutinへようこそ！\n\n以下のリンクからメイトを選んで、{days}日間の無料トライアルを始めましょう。\n{subscribeUrl}",
+      "Rutin公式アカウントです。\n\n伴走メイトを選ぶと、{days}日間無料でお試しいただけます。\n{subscribeUrl}\n\nリンクの有効期限は30分です。切れたときは、このトークに「メイトを選ぶ」と送ってください。",
     fieldType: "multiline",
     vars: ["days", "subscribeUrl"],
   },
@@ -431,7 +431,7 @@ export const FUNNEL_COPY_DEFS: readonly FunnelCopyDef[] = [
     label: "申込案内カードの見出し",
     screen: "line",
     group: "申込案内カード",
-    defaultValue: "メイトを選んで始めましょう",
+    defaultValue: "伴走メイトを選ぶ",
     fieldType: "text",
   },
   {

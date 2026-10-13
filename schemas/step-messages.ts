@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const STEP_TRIGGERS = ["follow", "checkout_abandoned"] as const;
+export const STEP_TRIGGERS = ["follow", "checkout_abandoned", "subscribe"] as const;
 export type StepTrigger = (typeof STEP_TRIGGERS)[number];
 
 export const upsertStepMessageSchema = z

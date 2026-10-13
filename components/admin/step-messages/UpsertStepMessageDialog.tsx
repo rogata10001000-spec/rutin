@@ -14,6 +14,7 @@ import { Select } from "@/components/common/Select";
 const TRIGGER_OPTIONS = [
   { value: "follow", label: "友だち追加から（通常のステップ配信）" },
   { value: "checkout_abandoned", label: "カゴ落ち（決済開始後・未完了）から" },
+  { value: "subscribe", label: "契約から（3か月の型の振り返り）" },
 ] as const;
 
 type UpsertStepMessageDialogProps = {
@@ -177,7 +178,9 @@ export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepM
                 <p className="mt-1.5 text-xs text-stone-400">
                   {trigger === "checkout_abandoned"
                     ? "決済を開始したのに完了しなかった人へ、決済開始からの経過時間で送ります。"
-                    : "友だち追加した未契約の人へ、追加からの経過時間で送ります。"}
+                    : trigger === "subscribe"
+                      ? "契約中の人へ、契約からの経過時間で送ります（7日・30日・60日・90日目の振り返りなど）。"
+                      : "友だち追加した未契約の人へ、追加からの経過時間で送ります。"}
                 </p>
               </div>
 
@@ -209,7 +212,7 @@ export function UpsertStepMessageDialog({ open, editItem, onClose }: UpsertStepM
                     className={inputClass}
                   />
                   <p className="mt-1.5 text-xs text-stone-400">
-                    登録から{delayDays > 0 ? `約${delayDays}日後` : "即時"}に送信
+                    {trigger === "subscribe" ? "契約" : trigger === "checkout_abandoned" ? "決済開始" : "友だち追加"}から{delayDays > 0 ? `約${delayDays}日後` : "即時"}に送信
                   </p>
                   {errors.delayHours && (
                     <p className="mt-1.5 text-xs font-medium text-red-600">{errors.delayHours}</p>
