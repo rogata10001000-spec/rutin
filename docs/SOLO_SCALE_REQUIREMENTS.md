@@ -112,3 +112,29 @@ CAC は広告費の手入力が要るため**後続**（月次の広告費入力
 - 広告費の入力と CAC（P0 に昇格させる時期は広告開始時）
 - メイト配分 60% への変更は配分ルール画面で運用（実施日は緒方判断）
 - 自分の担当 70→130 の増やし方（新規の割当先の既定を自分にするか）
+
+## 9. 実装状況（2026-10-14 時点）
+
+| フェーズ | 状態 | 主なファイル |
+|---|---|---|
+| ①KPI | 実装済み（画面・日次通知・実作業時間の計測・運営担当の割当と配分0%） | lib/kpi-targets.ts, lib/kpi-calculations.ts, lib/kpi-metrics.ts, app/(admin)/admin/kpi |
+| ②チェックイン | 実装済み（9:00 JST 催促 cron・受け取り確認 reply・KPI連携） | lib/checkin-prompts.ts, app/api/jobs/daily-checkin-prompt |
+| ③対応キュー | 実装済み（/inbox?queue=1・事前生成の自動挿入・自動生成・次へ） | lib/inbox-queue.ts, app/(admin)/inbox/page.tsx, components/chat/* |
+| ④目標登録 | 実装済み（完了画面フォーム・横パネルの目標カード・AI文脈） | lib/goal-defs.ts, lib/goals.ts, actions/goals.ts, components/goals/* |
+| ⑤文言 | 実装済み（ファネル既定文言・解約フロー・ヘルプ・契約後ステップ配信トリガー） | lib/funnel-copy-defs.ts, components/user/CancelDeflectionModal.tsx |
+
+### 適用が必要なマイグレーション（本番DB・要承認）
+1. `20261014100000_messages_handling_seconds.sql` — 返信の実作業時間（未適用でも送信は成立。KPIは「データ不足」表示）
+2. `20261014110000_end_user_goals.sql` — 目標テーブル（未適用でも完了画面・横パネルは欄を出さないだけ）
+3. `20261014120000_step_trigger_subscribe.sql` — ステップ配信の subscribe トリガー（未適用だと subscribe の作成が制約違反で失敗）
+
+### 運用で行うこと（コード外）
+- 配分ルール画面で 70% → 60% に変更（実施日は緒方判断）
+- 自分で持つ利用者は、担当変更ダイアログで管理者アカウントを担当に割り当てる（配分は自動で0%＝運営100%）
+- ステップ配信で「契約から」トリガーの振り返り文面を作成（168h / 720h / 1440h / 2160h = 7・30・60・90日目）
+- メイト（れん・ゆい）の端末で Web Push を許可（受信・新規契約の通知）
+
+### 未実施・後続
+- 受信の自動仕分け（相談／雑談／解約兆候）: 現状はリスク検知（risk_flags）のみ。解約兆候の分類は後続
+- 広告費の入力と CAC（広告開始時に P0 へ）
+- 管理画面の実機確認（スタッフのログインセッションが必要。KPI・キュー・目標カードの画面はログイン後に確認する）
