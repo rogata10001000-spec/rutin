@@ -6,6 +6,8 @@ import { getInboxItems } from "@/actions/inbox";
 import { getPendingCancellations } from "@/actions/admin/cancellations";
 import { getWebhookStats } from "@/actions/admin/webhooks";
 import { getRevenueSummary } from "@/actions/admin/revenue";
+import { getKpiSnapshot } from "@/actions/admin/kpi";
+import { formatKpiValue } from "@/lib/kpi-targets";
 import { LoadingSkeleton } from "@/components/common/LoadingSkeleton";
 
 export const dynamic = "force-dynamic";
@@ -88,14 +90,28 @@ function KpiSkeleton() {
  * Suspense でストリーミングし、ページの枠（挨拶・クイックアクセス）を即時表示する。
  */
 async function DashboardKpis({ isAdmin }: { isAdmin: boolean }) {
-  const [inboxResult, cancelResult, webhookResult, revenueResult] = await Promise.all([
+  const [inboxResult, cancelResult, webhookResult, revenueResult, kpiResult] = await Promise.all([
     // ダッシュボードは件数サマリー（全件に対して計算される）しか使わないため、
     // 明細は最小限だけ受け取る（使わない一覧をペイロードに載せない）。
     getInboxItems({ filters: {}, limit: 1 }),
     getPendingCancellations({}),
     getWebhookStats(),
     isAdmin ? getRevenueSummary({ preset: "current_month" }) : Promise.resolve(null),
+    isAdmin ? getKpiSnapshot() : Promise.resolve(null),
   ]);
+  const kpi = kpiResult && kpiResult.ok ? kpiResult.data : null;
+  const kpiMetric = (key: string) => kpi?.metrics.find((m) => m.key === key) ?? null;
+  const grossMargin = kpiMetric("gross_margin");
+  const churn = kpiMetric("monthly_churn");
+  const ownerAssigned = kpiMetric("owner_assigned");
+  const kpiTone: Tone =
+    !grossMargin || grossMargin.status === "insufficient" || grossMargin.status === "none"
+      ? "neutral"
+      : grossMargin.status === "achieved"
+        ? "good"
+        : grossMargin.status === "warn"
+          ? "warn"
+          : "bad";
 
   const summary = inboxResult.ok ? inboxResult.data.summary : null;
   const total = summary?.total ?? 0;
@@ -185,6 +201,20 @@ async function DashboardKpis({ isAdmin }: { isAdmin: boolean }) {
           icon="person_off"
           tone={(cancel?.endingThisMonthCount ?? 0) > 0 ? "warn" : "neutral"}
         />
+        {isAdmin && (
+          <StatCard
+            href="/admin/kpi"
+            label="運営粗利（推定・月）"
+            value={grossMargin ? formatKpiValue("jpy", grossMargin.value) : "—"}
+            sub={
+              kpi
+                ? `解約率 ${formatKpiValue("percent", churn?.value ?? null)} ／ 自分の担当 ${ownerAssigned?.value ?? 0}人`
+                : "取得できませんでした"
+            }
+            icon="monitoring"
+            tone={kpiTone}
+          />
+        )}
         {isAdmin && (
           <StatCard
             href="/admin/revenue"

@@ -202,6 +202,42 @@ export async function GET(request: Request) {
       });
     }
 
+    // KPI（P0）の未達通知。判定は /admin/kpi の表示と同じ lib/kpi-targets.ts を使う。
+    // データ不足（分母が最小標本未満）は通知しない。1日1回 claim。
+    try {
+      const { buildKpiSnapshot } = await import("@/lib/kpi-metrics");
+      const { formatKpiValue } = await import("@/lib/kpi-targets");
+      const snapshot = await buildKpiSnapshot(supabase);
+      const breached = snapshot.metrics.filter((m) => m.tier === "p0" && m.status === "bad");
+      if (breached.length > 0) {
+        const claimTs3 = new Date().toISOString();
+        const { error: claimError3 } = await supabase.from("webhook_events").insert({
+          provider: "line",
+          event_id: `kpi-alert:${todayJst}`,
+          event_type: "kpi_alert",
+          status: "processed",
+          processing_started_at: claimTs3,
+          processed_at: claimTs3,
+          success: true,
+        });
+        if (!claimError3) {
+          const { pushToOperatorRecipients } = await import("@/lib/operator-notifications");
+          const lines = breached.map(
+            (m) => `・${m.label}: ${formatKpiValue(m.unit, m.value)}（目標 ${m.targetLabel}）`
+          );
+          await pushToOperatorRecipients(
+            supabase,
+            "new_member",
+            `⚠️ 事業KPIが目標を下回っています\n\n${lines.join("\n")}\n\n詳細は管理画面「KPI」で確認できます。`
+          );
+        }
+      }
+    } catch (err) {
+      logger.warn("daily summary: kpi alert failed", {
+        error: err instanceof Error ? err.message : "unknown",
+      });
+    }
+
     // 監査ログに保存
     await supabase.from("audit_logs").insert({
       actor_staff_id: null,

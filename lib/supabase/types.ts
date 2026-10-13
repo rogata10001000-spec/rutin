@@ -179,6 +179,8 @@ type MessagesRow = {
   sent_as_proxy: boolean;
   proxy_for_cast_id: string | null;
   created_at: string;
+  /** 送信者が会話を開いてから送信するまでの秒数（out のみ・任意） */
+  handling_seconds: number | null;
 };
 
 type CheckinsRow = {
@@ -689,7 +691,8 @@ export interface Database {
       };
       messages: {
         Row: MessagesRow;
-        Insert: Omit<MessagesRow, "id" | "created_at" | "sent_as_proxy" | "message_type" | "media_url" | "line_message_id" | "line_account_id" | "proxy_for_cast_id" | "sent_by_staff_id"> & {
+        Insert: Omit<MessagesRow, "id" | "created_at" | "sent_as_proxy" | "message_type" | "media_url" | "line_message_id" | "line_account_id" | "proxy_for_cast_id" | "sent_by_staff_id" | "handling_seconds"> & {
+          handling_seconds?: number | null;
           id?: string;
           sent_as_proxy?: boolean;
           message_type?: string;
@@ -699,7 +702,7 @@ export interface Database {
           proxy_for_cast_id?: string | null;
           sent_by_staff_id?: string | null;
         };
-        Update: Record<string, never>;
+        Update: Partial<Pick<MessagesRow, "handling_seconds">>;
         Relationships: [];
       };
       line_official_accounts: {

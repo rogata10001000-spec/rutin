@@ -83,6 +83,8 @@ export type SendMessageInput = {
   body: string;
   /** この送信の元になったAI下書きのID（採用トラッキング用・任意） */
   aiDraftId?: string;
+  /** 会話を開いてから送信までの秒数（KPI用・任意。クライアント計測） */
+  handlingSeconds?: number;
 };
 
 export type SendMessageResult = Result<{ messageId: string }>;
@@ -181,6 +183,7 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
   // 旧来の「awaitなし呼びっぱなし」（サーバーレスでは実行途中で凍結され記録が欠落しうる）
   // と違い完了が保証される。
   const aiDraftId = input.aiDraftId ?? null;
+  const handlingSeconds = parsed.data.handlingSeconds ?? null;
   const sentBody = parsed.data.body;
   after(async () => {
     await writeAuditLog({
@@ -194,6 +197,19 @@ export async function sendMessage(input: SendMessageInput): Promise<SendMessageR
       }),
     });
     await recordResponseMetric(user.id, auth.id, message.id);
+    // 実作業時間は insert と分けて best-effort で書く（列未適用の環境でも送信本体を壊さない）
+    if (handlingSeconds !== null) {
+      try {
+        await createAdminSupabaseClient()
+          .from("messages")
+          .update({ handling_seconds: handlingSeconds })
+          .eq("id", message.id);
+      } catch (err) {
+        logger.warn("sendMessage: handling_seconds not recorded", {
+          error: err instanceof Error ? err.message : "unknown",
+        });
+      }
+    }
     // AI下書きの採用記録（採用率・編集率の計測用）。
     // 対象ユーザーのリクエスト配下の下書きであることを確認して他ユーザーの下書きIDを弾く。
     if (aiDraftId) {

@@ -38,7 +38,8 @@ export async function getCastOptions(): Promise<GetCastOptionsResult> {
   const { data: casts, error } = await supabase
     .from("staff_profiles")
     .select("id, display_name, capacity_limit, accepting_new_users, active")
-    .eq("role", "cast")
+    // 運営（admin）も担当者になれる（自分で利用者を持つ体制。配分は0%＝運営100%）
+    .in("role", ["cast", "admin"])
     .eq("active", true)
     .order("display_name");
 

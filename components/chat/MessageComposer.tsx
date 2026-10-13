@@ -13,7 +13,7 @@ type MessageComposerProps = {
    * aiDraftId はAI下書きを採用した送信のみ渡る（採用率・編集率の計測用）。
    * 戻り値 true = 送信成功。false のときは入力欄を保持する（失敗時に書き直させない）。
    */
-  onSend: (body: string, aiDraftId?: string) => Promise<boolean>;
+  onSend: (body: string, aiDraftId?: string, handlingSeconds?: number) => Promise<boolean>;
   sending: boolean;
   proxyMode: boolean;
   endUserId: string;
@@ -46,6 +46,8 @@ export function MessageComposer({
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // 実作業時間の起点（会話を開いた時刻。送信のたびに更新して「次の1件」を測る）
+  const openedAtRef = useRef<number>(Date.now());
 
   // テキストエリアの高さを内容に合わせて自動調整
   const autoResize = useCallback(() => {
@@ -132,11 +134,17 @@ export function MessageComposer({
         ? appliedDraft.id
         : undefined;
 
+    // 会話を開いて（または前の送信から）この送信までの秒数。
+    // 1時間を超えるものは「開きっぱなし」なので実作業時間として扱わない。
+    const elapsedSeconds = Math.round((Date.now() - openedAtRef.current) / 1000);
+    const handlingSeconds = elapsedSeconds >= 0 && elapsedSeconds <= 3600 ? elapsedSeconds : undefined;
+
     // 送信に失敗したら入力は消さない（書き直しをさせない）。
     // onSend は成功時のみ true を返す。
-    const sent = await onSend(trimmed, aiDraftId);
+    const sent = await onSend(trimmed, aiDraftId, handlingSeconds);
     if (!sent) return;
 
+    openedAtRef.current = Date.now();
     setBody("");
     setAppliedDraft(null);
     setSendCount((c) => c + 1);

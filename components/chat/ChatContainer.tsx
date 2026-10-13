@@ -126,7 +126,11 @@ export function ChatContainer({
 
   // 戻り値の true = 送信成功。入力欄のクリアは成功時のみ行う
   // （失敗しても入力を保持する。書き直しをさせない）。
-  const handleSend = async (body: string, aiDraftId?: string): Promise<boolean> => {
+  const handleSend = async (
+    body: string,
+    aiDraftId?: string,
+    handlingSeconds?: number
+  ): Promise<boolean> => {
     if (proxyMode && canProxy) {
       setPendingMessage(body);
       setProxyConfirmOpen(true);
@@ -134,15 +138,16 @@ export function ChatContainer({
       return false;
     }
 
-    return doSend(body, false, aiDraftId);
+    return doSend(body, false, aiDraftId, handlingSeconds);
   };
 
-  // aiDraftId は通常送信のみ。代理返信(sendProxyMessage)は採用トラッキングの
-  // 引数を持たないため、代理では下書きIDを渡さない。
+  // aiDraftId / handlingSeconds は通常送信のみ。代理返信(sendProxyMessage)は
+  // これらの引数を持たないため渡さない。
   const doSend = async (
     body: string,
     isProxy: boolean,
-    aiDraftId?: string
+    aiDraftId?: string,
+    handlingSeconds?: number
   ): Promise<boolean> => {
     setSending(true);
     let succeeded = false;
@@ -164,7 +169,7 @@ export function ChatContainer({
     try {
       const result = isProxy
         ? await sendProxyMessage({ endUserId, body, reason: "代理返信" })
-        : await sendMessage({ endUserId, body, aiDraftId });
+        : await sendMessage({ endUserId, body, aiDraftId, handlingSeconds });
 
       if (result.ok) {
         // 成功: 楽観的メッセージを実際のIDで置き換え（Realtime分と重複しないようdedupe）

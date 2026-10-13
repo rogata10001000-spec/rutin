@@ -493,32 +493,46 @@ export async function recognizeSubscriptionRevenue(
     return { skipped: true, reason: "revenue event lookup failed" };
   }
 
-  const payoutRule = await resolveSubscriptionPayoutRule(
-    supabase,
-    castId,
-    subscription.plan_code,
-    occurredOn
-  );
-  if (!payoutRule) {
-    logger.error("invoice.paid: payout rule not found (revenue NOT recorded)", {
-      stripeInvoiceId: invoice.id,
+  // 運営（admin）が自分で担当する利用者は配分なし（売上の100%が運営）。
+  // 配分ルールを引かず payout_calculations も作らない（精算対象外）。
+  const { data: castProfile } = await supabase
+    .from("staff_profiles")
+    .select("role")
+    .eq("id", castId)
+    .maybeSingle();
+  const ownerHandled = castProfile?.role === "admin";
+
+  let payoutAmount = 0;
+  let payoutPercent = 0;
+  if (!ownerHandled) {
+    const payoutRule = await resolveSubscriptionPayoutRule(
+      supabase,
       castId,
-      planCode: subscription.plan_code,
+      subscription.plan_code,
+      occurredOn
+    );
+    if (!payoutRule) {
+      logger.error("invoice.paid: payout rule not found (revenue NOT recorded)", {
+        stripeInvoiceId: invoice.id,
+        castId,
+        planCode: subscription.plan_code,
+      });
+      return { skipped: true, reason: "payout rule not found" };
+    }
+    payoutPercent = Number(payoutRule.percent);
+    payoutAmount = Math.floor((amountExclTax * payoutPercent) / 100);
+
+    const { error: payoutError } = await supabase.from("payout_calculations").insert({
+      revenue_event_id: revenueEventId,
+      cast_id: castId,
+      rule_id: payoutRule.id,
+      percent_snapshot: payoutRule.percent,
+      amount_jpy: payoutAmount,
     });
-    return { skipped: true, reason: "payout rule not found" };
-  }
-  const payoutAmount = Math.floor((amountExclTax * Number(payoutRule.percent)) / 100);
 
-  const { error: payoutError } = await supabase.from("payout_calculations").insert({
-    revenue_event_id: revenueEventId,
-    cast_id: castId,
-    rule_id: payoutRule.id,
-    percent_snapshot: payoutRule.percent,
-    amount_jpy: payoutAmount,
-  });
-
-  if (payoutError && payoutError.code !== "23505") {
-    throw new Error(`Failed to create payout calculation: ${payoutError.message}`);
+    if (payoutError && payoutError.code !== "23505") {
+      throw new Error(`Failed to create payout calculation: ${payoutError.message}`);
+    }
   }
 
   await writeAuditLog({
@@ -532,7 +546,8 @@ export async function recognizeSubscriptionRevenue(
       amount_incl_tax_jpy: amountInclTax,
       amount_excl_tax_jpy: amountExclTax,
       payout_amount_jpy: payoutAmount,
-      payout_percent: payoutRule.percent,
+      payout_percent: payoutPercent,
+      owner_handled: ownerHandled,
     },
     actorStaffId: null,
   });

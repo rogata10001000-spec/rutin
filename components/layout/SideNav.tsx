@@ -191,6 +191,7 @@ const navGroups: NavGroup[] = [
   {
     label: "分析",
     items: [
+      { name: "KPI", href: "/admin/kpi", icon: <MarketingIcon />, roles: ["admin", "supervisor"] },
       { name: "マーケ分析", href: "/admin/marketing", icon: <MarketingIcon />, roles: ["admin"] },
       { name: "ファネル分析", href: "/admin/funnel", icon: <FunnelIcon />, roles: ["admin", "supervisor"] },
     ],
