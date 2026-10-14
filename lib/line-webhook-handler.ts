@@ -1029,16 +1029,19 @@ export async function handleLineWebhook(
           });
 
           // 受け取り確認（reply token＝無料）。報告のハードルを下げる一言で、人の返信の代わりではない。
+          // 顧客への自動送信は既定で無効（CHECKIN_PROMPT_ENABLED=true を承認のうえ設定したときだけ）。
           // 再送イベントでは token が失効しているので失敗は握る（記録は済んでいる）。
-          try {
-            await replyMessages(account.credentials, event.replyToken, [
-              { type: "text", text: checkinAckText(checkinStatus) },
-            ]);
-          } catch (err) {
-            logger.warn("LINE checkin: ack reply failed", {
-              eventId,
-              error: err instanceof Error ? err.message : "unknown",
-            });
+          if (process.env.CHECKIN_PROMPT_ENABLED === "true") {
+            try {
+              await replyMessages(account.credentials, event.replyToken, [
+                { type: "text", text: checkinAckText(checkinStatus) },
+              ]);
+            } catch (err) {
+              logger.warn("LINE checkin: ack reply failed", {
+                eventId,
+                error: err instanceof Error ? err.message : "unknown",
+              });
+            }
           }
 
           return { checkinId: checkin.id };
